@@ -12,6 +12,7 @@ pub struct Generator<'ast>{
 }
 
 impl<'ast> Generator<'ast> {
+    // TODO[~](#generator/visitor):U[F(generate_visitor)], "target: () and unimplemented!() are placeholders so the crate compiles - needs a real target type (likely &ProcessorPipeline or &StructExtraction) and a body that emits the ItemImpl"
     fn generate_visitor(target: ()) -> ItemImpl {
         let _ = target;
         unimplemented!()

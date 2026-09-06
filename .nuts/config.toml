@@ -1,0 +1,147 @@
+# nuts config — when a commit happens, and what it moves.
+#
+# Everything below is commented out, so right now this file changes nothing and
+# nuts behaves exactly as it always has (policy `each`). Uncomment a block to
+# turn it on. Every example uses this repo's own prefixes, paths and bookmarks,
+# so anything you uncomment does something real immediately.
+#
+# Layering, nearest wins:
+#
+#   a --flag  >  this file  >  ~/.config/nuts/config.toml  >  built-in default
+#
+# `nuts config` prints every setting and which layer set it.
+# `nuts config --check` parses without applying, for CI.
+# Full reference: `nuts manual config`.
+
+
+# ---------------------------------------------------------------------------
+# COMMIT — the cadence
+# ---------------------------------------------------------------------------
+#
+# Reminder about the two verbs, since this is the thing that bites:
+#
+#   nuts jj sync       rewrites @'s description. NEVER commits. Not once.
+#   nuts jj snapshot   commits, when the policy below says so.
+#   nuts jj commit     commits now, whatever the policy says.
+#
+# Whenever a snapshot declines, it still refreshes the description and tells
+# you what it is waiting for. Silence means nothing measurable changed.
+
+# [commit]
+
+# --- policy = "each" (the default; what you have today) ---------------------
+#
+# Commits every completion and every [ ] -> [~] pickup. One commit per box you
+# move. Good for a session where each task is genuinely its own step.
+#
+# policy = "each"
+
+# --- policy = "goal" --------------------------------------------------------
+#
+# Holds until a goal in .nuts/goals is reached, then makes ONE commit titled
+# after the goal. Your tasks group naturally into three goals already:
+#
+#     goal: Extractor stage        prefix: extractor/     (7 tasks)
+#     goal: Processor stage        prefix: processor/     (4 tasks)
+#     goal: Generator stage        prefix: generator/     (4 tasks)
+#
+# `nuts goals --add "Extractor stage" --prefix extractor/ --done all` writes
+# one without leaving the terminal.
+#
+# Your two #cleanup tasks are claimed by no goal. They will not be stranded —
+# unclaimed work falls back to `each` and commits as you finish it, and nuts
+# says so when it does. (A goal with `done: manual` takes that same fallback,
+# since it never reaches on its own.)
+#
+# policy = "goal"
+
+# --- policy = "batch" -------------------------------------------------------
+#
+# Lets a few completions pile up, then commits them together. `threshold` is a
+# count of finished/started tasks; `interval` commits regardless once that long
+# has passed since the last commit. Whichever fires first wins.
+#
+# There is no hidden counter — a held delta means the parent revision does not
+# move, so the next measurement already includes everything since your last
+# commit. It survives `jj undo`, `jj abandon`, a rebase, and restarting a
+# --watch loop.
+#
+# policy = "batch"
+# threshold = 3            # 3 completions, e.g. a third of the extractor stage
+# interval = "45m"         # ...or 45m, whichever comes first. 90s / 2h / 1d too
+
+# --- policy = "manual" ------------------------------------------------------
+#
+# Never commits on its own. The description stays live so you can watch the
+# checklist, and nothing enters history until you run `nuts jj commit`.
+# Good for an exploratory session where the shape is still moving.
+#
+# policy = "manual"
+
+# Trying one without editing this file:
+#
+#     nuts jj snapshot --policy manual
+#     nuts jj snapshot --policy batch
+
+
+# ---------------------------------------------------------------------------
+# BOOKMARKS — which bookmark a commit advances
+# ---------------------------------------------------------------------------
+#
+# You already have `derive` and `traits`. These rules move them onto each
+# commit they claim, so working in the derive crate advances `derive` and
+# working in the traits crate advances `traits`, independently.
+#
+# A rule matches on any of:
+#
+#   paths   globs over every file the change touches (not just .rs)
+#   tags    identity prefixes, claimed exactly as a goal claims them
+#   goal    a goal's title — borrows its prefix, so goal and bookmark are one unit
+#
+# Tags match the work, not the plan: a rule fires on tasks you *finished* or
+# picked up, never on tasks you merely added. Writing a TODO in an area does
+# not advance its bookmark; finishing one does.
+#
+# Every matching rule moves. A change touching both crates advances both.
+
+[[bookmark]]
+name  = "derive"
+paths = ["proc_macro_flow_derive/**"]
+tags  = ["extractor/", "processor/", "generator/"]
+
+[[bookmark]]
+name  = "traits"
+paths = ["proc_macro_flow_traits/**"]
+
+# A bookmark that does not exist yet needs `create`, or nuts warns and skips it
+# rather than inventing a name. `nuts doctor` lists rules stuck in that state.
+#
+[[bookmark]]
+name   = "cleanup"
+tags   = ["cleanup"]
+create = true
+
+# Tying a bookmark to a goal instead of a directory:
+#
+# [[bookmark]]
+# name = "derive"
+# goal = "Extractor stage"
+
+# What this will never do:
+#
+#   - push. Nothing in nuts runs `jj git push`. What to publish, and when, is
+#     yours alone.
+#   - move a bookmark backwards. jj refuses a non-fast-forward move and nuts
+#     does not override it — after a `jj abandon`, undo or rebase, it prints
+#     the exact command that would and leaves the call to you.
+
+
+# ---------------------------------------------------------------------------
+# Worth knowing about this repo specifically
+# ---------------------------------------------------------------------------
+#
+# `nuts doctor` currently reports one thing: #cleanup is claimed by two
+# comments. Tasks are keyed by identity, so those two collapse into one — jj
+# sync can list one while jj snapshot measures the other, and finishing the
+# second goes unrecorded. Give them separate ids (#cleanup/location and
+# #cleanup/typestate, say) and it clears.

@@ -29,6 +29,4 @@ pub trait Extractor {
     type Source: Parse;
 
     fn new(source: &Self::Source) -> Self;
-
-    fn visit_source(&mut self);
 }

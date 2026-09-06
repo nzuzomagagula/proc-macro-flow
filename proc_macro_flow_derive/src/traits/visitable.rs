@@ -1,28 +1,216 @@
-// @review [ ]
+// @review [x]
 use syn::visit::Visit;
-use syn::{Attribute, Field, Fields};
 
-/// Binds a concrete `syn` AST node type to the `Visit` method that visits it,
-/// so generic code can dispatch on the node's type instead of hardcoding the
-/// `visit_*` method name at each call site.
+/// Binds a concrete `syn` (or `proc_macro2`) AST node type to the `Visit`
+/// method that visits it, so generic code can dispatch on the node's type
+/// instead of hardcoding the `visit_*` method name at each call site.
 pub(crate) trait Visitable<'ast> {
     fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V);
 }
 
-impl<'ast> Visitable<'ast> for Field {
-    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
-        visitor.visit_field(self);
-    }
+macro_rules! impl_visitable {
+    ($($ty:path => $method:ident),+ $(,)?) => {
+        $(
+            impl<'ast> Visitable<'ast> for $ty {
+                fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
+                    visitor.$method(self);
+                }
+            }
+        )+
+    };
 }
 
-impl<'ast> Visitable<'ast> for Fields {
-    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
-        visitor.visit_fields(self);
-    }
-}
-
-impl<'ast> Visitable<'ast> for Attribute {
-    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
-        visitor.visit_attribute(self);
-    }
+// Generated from syn 2.0.119's gen/visit.rs: one entry per `visit_*` method on
+// `syn::visit::Visit`, mapping the node type it visits to that method - kept
+// in this order (alphabetised by type) to make diffing against a future syn
+// version's method list easy.
+impl_visitable! {
+    proc_macro2::Ident => visit_ident,
+    proc_macro2::Span => visit_span,
+    proc_macro2::TokenStream => visit_token_stream,
+    syn::Abi => visit_abi,
+    syn::AngleBracketedGenericArguments => visit_angle_bracketed_generic_arguments,
+    syn::Arm => visit_arm,
+    syn::AssocConst => visit_assoc_const,
+    syn::AssocType => visit_assoc_type,
+    syn::AttrStyle => visit_attr_style,
+    syn::Attribute => visit_attribute,
+    syn::BareFnArg => visit_bare_fn_arg,
+    syn::BareVariadic => visit_bare_variadic,
+    syn::BinOp => visit_bin_op,
+    syn::Block => visit_block,
+    syn::BoundLifetimes => visit_bound_lifetimes,
+    syn::CapturedParam => visit_captured_param,
+    syn::ConstParam => visit_const_param,
+    syn::Constraint => visit_constraint,
+    syn::Data => visit_data,
+    syn::DataEnum => visit_data_enum,
+    syn::DataStruct => visit_data_struct,
+    syn::DataUnion => visit_data_union,
+    syn::DeriveInput => visit_derive_input,
+    syn::Expr => visit_expr,
+    syn::ExprArray => visit_expr_array,
+    syn::ExprAssign => visit_expr_assign,
+    syn::ExprAsync => visit_expr_async,
+    syn::ExprAwait => visit_expr_await,
+    syn::ExprBinary => visit_expr_binary,
+    syn::ExprBlock => visit_expr_block,
+    syn::ExprBreak => visit_expr_break,
+    syn::ExprCall => visit_expr_call,
+    syn::ExprCast => visit_expr_cast,
+    syn::ExprClosure => visit_expr_closure,
+    syn::ExprConst => visit_expr_const,
+    syn::ExprContinue => visit_expr_continue,
+    syn::ExprField => visit_expr_field,
+    syn::ExprForLoop => visit_expr_for_loop,
+    syn::ExprGroup => visit_expr_group,
+    syn::ExprIf => visit_expr_if,
+    syn::ExprIndex => visit_expr_index,
+    syn::ExprInfer => visit_expr_infer,
+    syn::ExprLet => visit_expr_let,
+    syn::ExprLit => visit_expr_lit,
+    syn::ExprLoop => visit_expr_loop,
+    syn::ExprMacro => visit_expr_macro,
+    syn::ExprMatch => visit_expr_match,
+    syn::ExprMethodCall => visit_expr_method_call,
+    syn::ExprParen => visit_expr_paren,
+    syn::ExprPath => visit_expr_path,
+    syn::ExprRange => visit_expr_range,
+    syn::ExprRawAddr => visit_expr_raw_addr,
+    syn::ExprReference => visit_expr_reference,
+    syn::ExprRepeat => visit_expr_repeat,
+    syn::ExprReturn => visit_expr_return,
+    syn::ExprStruct => visit_expr_struct,
+    syn::ExprTry => visit_expr_try,
+    syn::ExprTryBlock => visit_expr_try_block,
+    syn::ExprTuple => visit_expr_tuple,
+    syn::ExprUnary => visit_expr_unary,
+    syn::ExprUnsafe => visit_expr_unsafe,
+    syn::ExprWhile => visit_expr_while,
+    syn::ExprYield => visit_expr_yield,
+    syn::Field => visit_field,
+    syn::FieldMutability => visit_field_mutability,
+    syn::FieldPat => visit_field_pat,
+    syn::FieldValue => visit_field_value,
+    syn::Fields => visit_fields,
+    syn::FieldsNamed => visit_fields_named,
+    syn::FieldsUnnamed => visit_fields_unnamed,
+    syn::File => visit_file,
+    syn::FnArg => visit_fn_arg,
+    syn::ForeignItem => visit_foreign_item,
+    syn::ForeignItemFn => visit_foreign_item_fn,
+    syn::ForeignItemMacro => visit_foreign_item_macro,
+    syn::ForeignItemStatic => visit_foreign_item_static,
+    syn::ForeignItemType => visit_foreign_item_type,
+    syn::GenericArgument => visit_generic_argument,
+    syn::GenericParam => visit_generic_param,
+    syn::Generics => visit_generics,
+    syn::ImplItem => visit_impl_item,
+    syn::ImplItemConst => visit_impl_item_const,
+    syn::ImplItemFn => visit_impl_item_fn,
+    syn::ImplItemMacro => visit_impl_item_macro,
+    syn::ImplItemType => visit_impl_item_type,
+    syn::ImplRestriction => visit_impl_restriction,
+    syn::Index => visit_index,
+    syn::Item => visit_item,
+    syn::ItemConst => visit_item_const,
+    syn::ItemEnum => visit_item_enum,
+    syn::ItemExternCrate => visit_item_extern_crate,
+    syn::ItemFn => visit_item_fn,
+    syn::ItemForeignMod => visit_item_foreign_mod,
+    syn::ItemImpl => visit_item_impl,
+    syn::ItemMacro => visit_item_macro,
+    syn::ItemMod => visit_item_mod,
+    syn::ItemStatic => visit_item_static,
+    syn::ItemStruct => visit_item_struct,
+    syn::ItemTrait => visit_item_trait,
+    syn::ItemTraitAlias => visit_item_trait_alias,
+    syn::ItemType => visit_item_type,
+    syn::ItemUnion => visit_item_union,
+    syn::ItemUse => visit_item_use,
+    syn::Label => visit_label,
+    syn::Lifetime => visit_lifetime,
+    syn::LifetimeParam => visit_lifetime_param,
+    syn::Lit => visit_lit,
+    syn::LitBool => visit_lit_bool,
+    syn::LitByte => visit_lit_byte,
+    syn::LitByteStr => visit_lit_byte_str,
+    syn::LitCStr => visit_lit_cstr,
+    syn::LitChar => visit_lit_char,
+    syn::LitFloat => visit_lit_float,
+    syn::LitInt => visit_lit_int,
+    syn::LitStr => visit_lit_str,
+    syn::Local => visit_local,
+    syn::LocalInit => visit_local_init,
+    syn::Macro => visit_macro,
+    syn::MacroDelimiter => visit_macro_delimiter,
+    syn::Member => visit_member,
+    syn::Meta => visit_meta,
+    syn::MetaList => visit_meta_list,
+    syn::MetaNameValue => visit_meta_name_value,
+    syn::ParenthesizedGenericArguments => visit_parenthesized_generic_arguments,
+    syn::Pat => visit_pat,
+    syn::PatIdent => visit_pat_ident,
+    syn::PatOr => visit_pat_or,
+    syn::PatParen => visit_pat_paren,
+    syn::PatReference => visit_pat_reference,
+    syn::PatRest => visit_pat_rest,
+    syn::PatSlice => visit_pat_slice,
+    syn::PatStruct => visit_pat_struct,
+    syn::PatTuple => visit_pat_tuple,
+    syn::PatTupleStruct => visit_pat_tuple_struct,
+    syn::PatType => visit_pat_type,
+    syn::PatWild => visit_pat_wild,
+    syn::Path => visit_path,
+    syn::PathArguments => visit_path_arguments,
+    syn::PathSegment => visit_path_segment,
+    syn::PointerMutability => visit_pointer_mutability,
+    syn::PreciseCapture => visit_precise_capture,
+    syn::PredicateLifetime => visit_predicate_lifetime,
+    syn::PredicateType => visit_predicate_type,
+    syn::QSelf => visit_qself,
+    syn::RangeLimits => visit_range_limits,
+    syn::Receiver => visit_receiver,
+    syn::ReturnType => visit_return_type,
+    syn::Signature => visit_signature,
+    syn::StaticMutability => visit_static_mutability,
+    syn::Stmt => visit_stmt,
+    syn::StmtMacro => visit_stmt_macro,
+    syn::TraitBound => visit_trait_bound,
+    syn::TraitBoundModifier => visit_trait_bound_modifier,
+    syn::TraitItem => visit_trait_item,
+    syn::TraitItemConst => visit_trait_item_const,
+    syn::TraitItemFn => visit_trait_item_fn,
+    syn::TraitItemMacro => visit_trait_item_macro,
+    syn::TraitItemType => visit_trait_item_type,
+    syn::Type => visit_type,
+    syn::TypeArray => visit_type_array,
+    syn::TypeBareFn => visit_type_bare_fn,
+    syn::TypeGroup => visit_type_group,
+    syn::TypeImplTrait => visit_type_impl_trait,
+    syn::TypeInfer => visit_type_infer,
+    syn::TypeMacro => visit_type_macro,
+    syn::TypeNever => visit_type_never,
+    syn::TypeParam => visit_type_param,
+    syn::TypeParamBound => visit_type_param_bound,
+    syn::TypeParen => visit_type_paren,
+    syn::TypePath => visit_type_path,
+    syn::TypePtr => visit_type_ptr,
+    syn::TypeReference => visit_type_reference,
+    syn::TypeSlice => visit_type_slice,
+    syn::TypeTraitObject => visit_type_trait_object,
+    syn::TypeTuple => visit_type_tuple,
+    syn::UnOp => visit_un_op,
+    syn::UseGlob => visit_use_glob,
+    syn::UseGroup => visit_use_group,
+    syn::UseName => visit_use_name,
+    syn::UsePath => visit_use_path,
+    syn::UseRename => visit_use_rename,
+    syn::UseTree => visit_use_tree,
+    syn::Variadic => visit_variadic,
+    syn::Variant => visit_variant,
+    syn::VisRestricted => visit_vis_restricted,
+    syn::Visibility => visit_visibility,
+    syn::WhereClause => visit_where_clause,
+    syn::WherePredicate => visit_where_predicate,
 }
