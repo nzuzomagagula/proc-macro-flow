@@ -1,5 +1,5 @@
 // @review [ ]
-use crate::traits::visitable::Visitable;
+use crate::traits::{Validate, visitable::Visitable};
 
 #[derive(Default)]
 pub enum ExtractionState<T> {
@@ -8,7 +8,7 @@ pub enum ExtractionState<T> {
     Uninitialised,
 }
 
-pub(crate) trait ExtractFrom<'ast>: Sized {
+pub(crate) trait Extractor<'ast>: Sized + Validate {
     type Node: Visitable<'ast> + ?Sized;
 
     fn extract_from(node: &'ast Self::Node) -> ExtractionState<Self>;
@@ -17,7 +17,7 @@ pub(crate) trait ExtractFrom<'ast>: Sized {
 impl<T> ExtractionState<T> {
     pub(crate) fn extract<'ast>(node: &'ast T::Node) -> Self
     where
-        T: ExtractFrom<'ast>,
+        T: Extractor<'ast>,
     {
         T::extract_from(node)
     }

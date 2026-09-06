@@ -4,6 +4,7 @@ use crate::{
     base::extractor::extractor::{attribute::TransformationExtraction, field::FieldExtraction},
 };
 
+// Query(#processor/base-scope):Q[this ??], "What should the base ExtractorProcessor/FieldProcessor/TransformationProcessor actually validate or transform before generation, versus what's left for a concrete processor built on top? Decide before wiring #processor/expansion in extractor/mod.rs"
 pub struct ExtractorProcessor<'ast> {
     source: StructExtraction<'ast>,
 }

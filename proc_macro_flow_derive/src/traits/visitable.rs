@@ -1,5 +1,5 @@
 // @review [x]
-use syn::visit::Visit;
+use syn::{parse::Parse, visit::Visit};
 
 /// Binds a concrete `syn` (or `proc_macro2`) AST node type to the `Visit`
 /// method that visits it, so generic code can dispatch on the node's type

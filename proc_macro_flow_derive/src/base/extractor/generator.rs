@@ -7,12 +7,13 @@ use syn::ItemImpl;
 
 use crate::base::extractor::processor::ExtractorProcessor;
 
-pub struct Generator<'ast>{
-    processor: ExtractorProcessor<'ast>,   
+// Query(#generator/base-scope):Q[this ??], "What should the base Generator::generate_visitor actually emit - just the ItemImpl shape, or the full derive expansion body? Decide before wiring #generator/expansion"
+pub struct Generator<'ast> {
+    processor: ExtractorProcessor<'ast>,
 }
 
 impl<'ast> Generator<'ast> {
-    // TODO[~](#generator/visitor):U[F(generate_visitor)], "target: () and unimplemented!() are placeholders so the crate compiles - needs a real target type (likely &ProcessorPipeline or &StructExtraction) and a body that emits the ItemImpl"
+    // TODO[ ](#generator/visitor):U[F(generate_visitor)], "target: () and unimplemented!() are placeholders so the crate compiles - needs a real target type (likely &ProcessorPipeline or &StructExtraction) and a body that emits the ItemImpl"
     fn generate_visitor(target: ()) -> ItemImpl {
         let _ = target;
         unimplemented!()

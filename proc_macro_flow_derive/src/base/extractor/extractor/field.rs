@@ -2,7 +2,7 @@
 use syn::Field;
 
 use crate::base::extractor::extractor::attribute::TransformationExtraction;
-use crate::traits::extractor::ExtractFrom;
+use crate::traits::extractor::Extractor;
 
 use super::super::ExtractionState;
 pub(crate) struct FieldExtraction<'ast> {
@@ -10,7 +10,7 @@ pub(crate) struct FieldExtraction<'ast> {
     pub(crate) transformation: Vec<ExtractionState<TransformationExtraction<'ast>>>,
 }
 
-impl<'ast> ExtractFrom<'ast> for FieldExtraction<'ast> {
+impl<'ast> Extractor<'ast> for FieldExtraction<'ast> {
     type Node = Field;
 
     fn extract_from(node: &'ast Field) -> ExtractionState<Self> {
