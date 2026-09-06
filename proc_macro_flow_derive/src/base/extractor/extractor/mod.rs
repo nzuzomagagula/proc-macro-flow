@@ -5,7 +5,7 @@
 // TODO(#processor/helpers):C[Tr(ProcessorHelpers)], "Shared trait/helpers so concrete processors (visit_field, visit_fields, visit_attribute, and future ones) don't reimplement Visit boilerplate for per-field/per-attribute customisation"
 // TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
 // TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
-// TODO(#extractor/macro):U[F(extractor)], "lib.rs::extractor is already the extractor stage's proc-macro entry point but doesn't compile (E0308: no TokenStream returned) - finish it once ExtractorPipeline::expand exists"
+// TODO[~](#extractor/macro):U[F(extractor)], "lib.rs::extractor now compiles but returns an empty TokenStream() as a placeholder - finish it once ExtractorPipeline::expand exists"
 use syn::{Fields, visit::Visit};
 
 use crate::base::extractor::extractor::field::FieldExtraction;
