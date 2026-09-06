@@ -20,10 +20,6 @@ macro_rules! impl_visitable {
     };
 }
 
-// Generated from syn 2.0.119's gen/visit.rs: one entry per `visit_*` method on
-// `syn::visit::Visit`, mapping the node type it visits to that method - kept
-// in this order (alphabetised by type) to make diffing against a future syn
-// version's method list easy.
 impl_visitable! {
     proc_macro2::Ident => visit_ident,
     proc_macro2::Span => visit_span,

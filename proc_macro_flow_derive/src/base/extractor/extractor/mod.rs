@@ -13,17 +13,18 @@ pub(crate) use crate::traits::extractor::ExtractionState;
 pub mod attribute;
 pub mod field;
 
-//NOTE[x](#cleanup):M[this, "Move this to a more common location for all extractors"]
-// TODO[~](#cleanup):U[this, "This should become a typestate instead of a runtime enum"]
+// TODO[x](#cleanup):U[this, "This should become a typestate instead of a runtime enum"]
 
 pub(crate) struct StructExtraction<'ast> {
     pub(crate) fields: Vec<ExtractionState<FieldExtraction<'ast>>>,
 }
+
+//Fix[ ](#extractor/macro):U[this, "When expanding the Extractors, future macros should not use their children's genesis syn types (like Fields here) and instead use their *own* source type, to keep things recursive and should find their children from there"]
 impl<'ast> Visit<'ast> for ExtractionState<StructExtraction<'ast>> {
     fn visit_fields(&mut self, i: &'ast Fields) {
         let fields = i
             .iter()
-            .map(|field| ExtractionState::<FieldExtraction<'_>>::extract(field))
+            .map(ExtractionState::<FieldExtraction<'_>>::extract)
             .collect();
         *self = ExtractionState::Initialised(StructExtraction { fields });
     }

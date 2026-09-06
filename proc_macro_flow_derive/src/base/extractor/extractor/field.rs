@@ -1,7 +1,8 @@
 // @review [ ]
-use syn::{Field, visit::Visit};
+use syn::Field;
 
 use crate::base::extractor::extractor::attribute::TransformationExtraction;
+use crate::traits::extractor::ExtractFrom;
 
 use super::super::ExtractionState;
 pub(crate) struct FieldExtraction<'ast> {
@@ -9,16 +10,18 @@ pub(crate) struct FieldExtraction<'ast> {
     pub(crate) transformation: Vec<ExtractionState<TransformationExtraction<'ast>>>,
 }
 
-impl<'ast> Visit<'ast> for ExtractionState<FieldExtraction<'ast>> {
-    fn visit_field(&mut self, i: &'ast Field) {
-        let transformation = i
+impl<'ast> ExtractFrom<'ast> for FieldExtraction<'ast> {
+    type Node = Field;
+
+    fn extract_from(node: &'ast Field) -> ExtractionState<Self> {
+        let transformation = node
             .attrs
             .iter()
             .map(|att| ExtractionState::<TransformationExtraction<'_>>::extract(att))
             .collect();
-        *self = ExtractionState::Initialised(FieldExtraction {
-            field: i,
+        ExtractionState::Initialised(FieldExtraction {
+            field: node,
             transformation,
-        });
+        })
     }
 }

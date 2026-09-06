@@ -1,0 +1,12 @@
+# nuts goals — what the current work is for.
+# A goal claims an identity prefix: every task under it belongs to the goal.
+# See `nuts manual goals`.
+
+[[goal]]
+title = "Widen the accepted range"
+prefix = "core/widen"
+why = """
+Archival records overflow 32 bits, and every consumer downstream
+already reads u64.
+"""
+done = "all"

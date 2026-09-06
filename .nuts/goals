@@ -7,9 +7,9 @@
 # done: all | any | manual — when the goal counts as reached. It never decides
 # whether a commit happens, only whether nuts calls the goal satisfied.
 
-# goal: Widen the accepted range
-#   prefix: core/widen
-#   why: |
-#     Archival records overflow 32 bits, and every consumer downstream
-#     already reads u64.
-#   done: all
+goal: Widen the accepted range
+  prefix: core/widen
+  why: |
+    Archival records overflow 32 bits, and every consumer downstream
+    already reads u64.
+  done: all
