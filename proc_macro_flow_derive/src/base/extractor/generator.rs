@@ -12,7 +12,8 @@ pub struct Generator<'ast>{
 }
 
 impl<'ast> Generator<'ast> {
-    fn generate_visitor(target: ) -> ItemImpl {
-                
+    fn generate_visitor(target: ()) -> ItemImpl {
+        let _ = target;
+        unimplemented!()
     }
 }

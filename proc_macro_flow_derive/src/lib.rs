@@ -29,4 +29,6 @@ pub fn extractor(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
     let mut extractor = ExtractionState::<StructExtraction>::Uninitialised;
     extractor.visit_derive_input(&derive_input);
+    // TODO[~](#extractor/macro):U[F(extractor)], "Stub return so the crate compiles - replace with the real expansion once ExtractorPipeline::expand exists (see base/extractor/extractor/mod.rs)"
+    TokenStream::new()
 }

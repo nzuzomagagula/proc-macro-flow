@@ -14,11 +14,7 @@ impl<'ast> Visit<'ast> for ExtractionState<FieldExtraction<'ast>> {
         let transformation = i
             .attrs
             .iter()
-            .map(|att| {
-                let mut te = ExtractionState::<TransformationExtraction>::Uninitialised;
-                te.visit_attribute(att);
-                te
-            })
+            .map(|att| ExtractionState::<TransformationExtraction<'_>>::extract(att))
             .collect();
         *self = ExtractionState::Initialised(FieldExtraction {
             field: i,
