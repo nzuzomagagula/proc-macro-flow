@@ -1,12 +1,11 @@
+[workspace]
+members = ["proc_macro_flow_derive", "proc_macro_flow_traits"]
+
 [package]
 name = "proc_macro_flow"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-proc-macro = true
-
 [dependencies]
-syn = { version = "2", features = ["full", "visit"] }
-quote = "1"
-proc-macro2 = "1"
+proc_macro_flow_derive = { path = "proc_macro_flow_derive" }
+proc_macro_flow_traits = { path = "proc_macro_flow_traits" }
