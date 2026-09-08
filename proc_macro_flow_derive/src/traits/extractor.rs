@@ -8,10 +8,12 @@ pub enum ExtractionState<T> {
     Uninitialised,
 }
 
-pub(crate) trait Extractor<'ast>: Sized + Validate {
+pub(crate) trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<I> {
     type Node: Visitable<'ast> + ?Sized;
+    type ExtractionError;
 
-    fn extract_from(node: &'ast Self::Node) -> ExtractionState<Self>;
+    fn extract_from(node: &'ast Self::Node)
+    -> Result<ExtractionState<Self>, Self::ExtractionError>;
 }
 
 impl<T> ExtractionState<T> {

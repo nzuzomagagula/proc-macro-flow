@@ -9,7 +9,7 @@ use std::error::Error;
 // TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
 // TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
 // TODO[~](#extractor/macro):U[F(extractor)], "lib.rs::extractor now compiles but returns an empty TokenStream() as a placeholder - finish it once ExtractorPipeline::expand exists"
-use syn::{DeriveInput, Fields, visit::Visit};
+use syn::{DataStruct, DeriveInput, Fields, visit::Visit};
 
 pub(crate) use crate::traits::extractor::ExtractionState;
 use crate::{
@@ -26,23 +26,29 @@ pub(crate) struct StructExtraction<'ast> {
     pub(crate) fields: Vec<ExtractionState<FieldExtraction<'ast>>>,
 }
 
-impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
+pub struct ExtractionError;
+
+impl<'ast> Extractor<'ast, DeriveInput> for StructExtraction<'ast> {
+    type ExtractionError = ExtractionError;
     type Node = DeriveInput;
 
-    fn extract_from(node: &'ast Self::Node) -> ExtractionState<Self> {
-        ExtractionState::Initialised(Self { fields: vec![] })
+    fn extract_from(
+        node: &'ast Self::Node,
+    ) -> Result<ExtractionState<Self>, Self::ExtractionError> {
+        if let Ok(di) = Self::validate(node) {}
     }
 }
 
 //TODO[ ](#extractor/error):U[this.T(struct) => enum, "Make more meaningful Errors"]
 pub struct StructExtractionValidityError;
 
-impl<'ast> Validate<&'ast DeriveInput> for StructExtraction<'ast> {
+impl<'ast> Validate<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
     type ValidityError = StructExtractionValidityError;
+    type Valid = &'ast DataStruct;
 
-    fn validate(&self, input: &'ast DeriveInput) -> Result<&'ast DeriveInput, Self::ValidityError> {
+    fn validate(input: &'ast DeriveInput) -> Result<&'ast DataStruct, Self::ValidityError> {
         match input.data {
-            syn::Data::Struct(data_struct) => Ok(input),
+            syn::Data::Struct(data_struct) => Ok(&data_struct),
             syn::Data::Enum(data_enum) => Err(StructExtractionValidityError),
             syn::Data::Union(data_union) => Err(StructExtractionValidityError),
         }

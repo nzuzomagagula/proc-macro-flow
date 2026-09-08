@@ -8,6 +8,18 @@ pub(crate) trait Visitable<'ast> {
     fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V);
 }
 
+/// Lets a reference to any `Visitable` node stand in for the node itself, so
+/// callers that hold `&'ast T` (the common case) don't need `T` to be `Copy`
+/// or to reborrow through an extra deref before dispatching.
+impl<'ast, T> Visitable<'ast> for &'ast T
+where
+    T: Visitable<'ast> + ?Sized,
+{
+    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
+        (*self).accept(visitor);
+    }
+}
+
 macro_rules! impl_visitable {
     ($($ty:path => $method:ident),+ $(,)?) => {
         $(
