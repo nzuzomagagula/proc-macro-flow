@@ -1,7 +1,7 @@
 // @review [ ]
 use syn::{Attribute, Expr, Meta};
 
-use crate::traits::extractor::Extractor;
+use crate::traits::{Validate, extractor::Extractor};
 
 use super::super::ExtractionState;
 
@@ -12,16 +12,25 @@ use super::super::ExtractionState;
 pub(crate) struct TransformationExtraction<'ast> {
     pub(crate) expression: &'ast Expr,
 }
+pub struct TransformationExtractionError;
 
-impl<'ast> Extractor<'ast> for TransformationExtraction<'ast> {
+impl<'ast> Extractor<'ast, &'ast Attribute> for TransformationExtraction<'ast> {
     type Node = Attribute;
 
-    fn extract_from(node: &'ast Attribute) -> ExtractionState<Self> {
-        match &node.meta {
-            Meta::NameValue(mnv) => ExtractionState::Initialised(TransformationExtraction {
-                expression: &mnv.value,
-            }),
-            _ => ExtractionState::Uninitialised,
-        }
+    type ExtractionError = TransformationExtractionError;
+
+    fn extract_from(
+        node: &'ast Self::Node,
+    ) -> Result<ExtractionState<Self>, Self::ExtractionError> {
+        todo!()
     }
+}
+
+impl<'ast> Validate<'ast, &'ast Attribute> for TransformationExtraction<'ast> {
+    type ValidityError = TransformationExtractionError;
+
+    type Valid = &'ast Attribute;
+
+    //TODO[~](#i-was-busy/finish-this):U[this, "Finish this"]
+    fn validate(input: &'ast Attribute) -> Result<Self::Valid, Self::ValidityError> {}
 }

@@ -8,7 +8,7 @@ pub enum ExtractionState<T> {
     Uninitialised,
 }
 
-pub(crate) trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<I> {
+pub(crate) trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     type Node: Visitable<'ast> + ?Sized;
     type ExtractionError;
 

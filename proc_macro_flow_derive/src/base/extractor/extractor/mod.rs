@@ -28,14 +28,20 @@ pub(crate) struct StructExtraction<'ast> {
 
 pub struct ExtractionError;
 
-impl<'ast> Extractor<'ast, DeriveInput> for StructExtraction<'ast> {
+impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
     type ExtractionError = ExtractionError;
     type Node = DeriveInput;
 
     fn extract_from(
         node: &'ast Self::Node,
     ) -> Result<ExtractionState<Self>, Self::ExtractionError> {
-        if let Ok(di) = Self::validate(node) {}
+        if let Ok(ds) = Self::validate(node) {
+            Ok(ExtractionState::Initialised(Self {
+                fields: { ds.fields.iter().map(|f| FieldExtraction::extract_from(f)) },
+            }))
+        } else {
+            Err(ExtractionError)
+        }
     }
 }
 
