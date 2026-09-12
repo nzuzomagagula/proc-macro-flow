@@ -1,0 +1,35 @@
+# nuts goals - proc_macro_flow_traits
+#
+# The ordinary lib crate. Everything downstream is allowed to NAME lives here, which is the
+# whole reason it exists: a proc-macro crate cannot export any pub non-macro item, so a type
+# that has to be nameable from outside cannot live in proc_macro_flow_derive at all.
+
+[[goal]]
+title  = "Base trait surface"
+prefix = "pipeline"
+done   = "all"
+why    = """
+Pipeline, Validate, Extractor, Processor and Generator are defined here once and
+implemented in the derive crate. Today they are declared in proc_macro_flow_derive,
+where `proc-macro = true` makes them unreachable to any other crate - so the pub
+keyword on them is currently a lie. Moving them is what makes the framework a
+framework rather than one macro's private scaffolding.
+"""
+
+[[goal]]
+title  = "Syntax public surface"
+prefix = "syntax"
+done   = "all"
+why    = """
+The attribute-grammar vocabulary: the three shape traits, FromExpr, Reason,
+Extraction, Node, Diagnostics and the parse entry points.
+
+These are public for two distinct reasons, and both matter. An author's grammar
+types must be nameable so the grammar appears in cargo doc and so a re-emitted
+path resolves at the downstream use site. And the parse helpers must be callable
+from an ordinary test, which is what lets a grammar be tested without invoking a
+macro at all.
+
+Gated on the crate gaining syn and proc-macro2 dependencies - it has none today,
+so every item here is currently unwritable in place.
+"""

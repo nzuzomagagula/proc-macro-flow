@@ -1,0 +1,78 @@
+# nuts goals - proc_macro_flow_derive
+#
+# The proc-macro crate: it IMPLEMENTS the traits crate's surface and EMITS code.
+# Nothing pub and non-macro can live here, so anything that has to be nameable
+# downstream belongs in proc_macro_flow_traits instead.
+
+[[goal]]
+title  = "Syntax stage"
+prefix = "syntax"
+done   = "all"
+why    = """
+Attribute grammars declared as ordinary Rust items, so parsing is resolution
+against real variants and paths rather than matching token shapes.
+
+This is a prerequisite of the extractor stage and not a sibling of it: once a
+grammar is a type, TransformationExtraction collapses into a grammar parse and
+the three hand-written Meta matchers become three shape traits.
+
+What is tracked here is only what this crate builds - the derive macro, the
+#[shape] and #[alias] helper attributes, and the scratch that illustrates them.
+The trait surface they implement against is a separate goal in the traits crate.
+"""
+
+[[goal]]
+title  = "Retire the hand-written attribute matchers"
+prefix = "attribute"
+done   = "all"
+why    = """
+parse_list, parse_path and parse_name_value were three functions that would have
+matched syn::Meta by hand at every extraction site. The syntax stage makes them
+trait impls on the grammar type instead, so these are deletions, not rewrites -
+tracked so the deletion is deliberate rather than forgotten.
+
+TransformationExtraction is the one that changes shape rather than disappearing:
+it becomes parameterised by the grammar type it parses against.
+"""
+
+[[goal]]
+title  = "Hand the base traits over"
+prefix = "pipeline"
+done   = "all"
+why    = """
+The derive-crate half of the move: delete the local trait definitions once
+proc_macro_flow_traits declares them, and keep only the impls. Two of these tasks
+are deprecations rather than work - they asked for trait definitions that must
+not exist twice.
+"""
+
+[[goal]]
+title  = "Extractor stage"
+prefix = "extractor"
+done   = "all"
+why    = """
+DeriveInput -> StructExtraction -> FieldExtraction, self-hosting: the stage is
+built by the pipeline it defines. Blocked behind the syntax stage, because until
+a grammar is a type the extractor has nothing typed to extract into.
+"""
+
+[[goal]]
+title  = "Processor stage"
+prefix = "processor"
+done   = "all"
+why    = """
+The transform between a well-formed extraction and whatever the generator
+consumes. Deliberately narrow: it validates nothing, because the syntax stage
+already produced a tree carrying its own reasons and re-checking would discard
+the spans that make a result diagnosable.
+"""
+
+[[goal]]
+title  = "Generator stage"
+prefix = "generator"
+done   = "all"
+why    = """
+Emitting the final TokenStream. The one constraint already settled: it must emit
+a stub impl even when extraction failed, or the missing impl cascades into
+'does not implement' errors at every use site and buries the real diagnostic.
+"""

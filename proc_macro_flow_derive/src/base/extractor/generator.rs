@@ -8,12 +8,7 @@ use syn::ItemImpl;
 use crate::base::extractor::processor::ExtractorProcessor;
 
 // Query(#generator/base-scope):Q[this ??], "What should the base Generator::generate_visitor actually emit - just the ItemImpl shape, or the full derive expansion body? Decide before wiring #generator/expansion"
-// Answer(#generator/scope-reply):A[ID(generator/base-scope) ==? ID(syntax/render)],
-//   "Partially answered by the syntax stage: whatever it emits, it must emit it EVEN WHEN the
-//   extraction failed. A generator that returns only compile_error!s leaves the impl missing, and
-//   the resulting 'does not implement' cascade at every use site buries the real diagnostic. So the
-//   floor is a stub ItemImpl beside the errors. Whether the base also emits the full body, or only
-//   the shape for a concrete generator to fill, stays open until ID(generator/expansion)"
+// Answer(#generator/scope-reply):A[ID(generator/base-scope) ==? ID(syntax/render)], "Partially answered by the syntax stage: whatever it emits, it must emit it EVEN WHEN the extraction failed. A generator that returns only compile_error!s leaves the impl missing, and the resulting 'does not implement' cascade at every use site buries the real diagnostic. So the floor is a stub ItemImpl beside the errors. Whether the base also emits the full body, or only the shape for a concrete generator to fill, stays open until ID(generator/expansion)"
 pub struct Generator<'ast> {
     processor: ExtractorProcessor<'ast>,
 }

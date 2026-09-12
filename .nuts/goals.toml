@@ -1,29 +1,19 @@
-# nuts goals — what the current work is for.
-# A goal claims an identity prefix: every task under it belongs to the goal.
-# See `nuts manual goals`.
-
-[[goal]]
-title = "Widen the accepted range"
-prefix = "core/widen"
-why = """
-Archival records overflow 32 bits, and every consumer downstream
-already reads u64.
-"""
-done = "all"
-
-[[goal]]
-title  = "Syntax stage"
-prefix = "syntax"
-done   = "all"
-why    = """
-Attribute grammars declared as ordinary Rust items, so parsing is resolution
-against real variants and paths instead of matching token shapes. This is the
-prerequisite for the extractor stage, not a sibling of it: once a grammar is a
-type, TransformationExtraction collapses into a grammar parse and the three
-#attribute/* Meta matchers become three shape traits.
-
-The stage is gated on moving the base traits to this workspace's ordinary lib
-crate - VERIFIED that a proc-macro crate cannot export any pub non-macro item,
-so it is a language constraint rather than a preference. Same fix as
-#pipeline/relocate-traits.
-"""
+# nuts goals - workspace root
+#
+# Intentionally empty. Goals live with the crate that owns the work:
+#
+#   proc_macro_flow_derive/.nuts/goals.toml    syntax, attribute, extractor,
+#                                              processor, generator, pipeline
+#   proc_macro_flow_traits/.nuts/goals.toml    pipeline, syntax
+#
+# Both crates are their own nuts projects. Declaring their goals up here made one
+# flat list of everything in the workspace, which is exactly the view that stops
+# being useful once there is more than one stage in flight - `nuts goals` should
+# answer "what is this crate for", not "what exists".
+#
+# INTERIM: nuts resolves .nuts from the repository root regardless of the working
+# directory, so until it reads child projects recursively BOTH files above are
+# inert and `nuts goals` reports none - running from inside a crate does not help.
+# Verified, not assumed. The per-crate files are written for the recursive nuts;
+# if a working goal view is wanted before then, mirror them back here and delete
+# the mirror once recursion lands.

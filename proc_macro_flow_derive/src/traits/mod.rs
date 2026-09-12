@@ -12,7 +12,7 @@ pub(crate) mod visitable;
 pub trait Pipeline<'ast, E: Extractor<'ast>, P: Processor<'ast>, G: Generator<'ast>> {}
 
 pub trait Validate<'ast, I: Visitable<'ast>> {
-    //TODO[ ](#helper): U[this.Tr(Error), These should enforce better error management]
+    // Answer(#pipeline/validity-error):A[ID(syntax/reason) ==? this], "Was #helper, with an unquoted message that never parsed as a task. Answered: ValidityError should not be bounded by std::error::Error, it should stop being an associated type at all. Failures become a Reason recorded on the node (ID(syntax/extraction)), because a proc macro only ever EMITS an error - it never handles one - so a per-type error buys nothing and cannot combine with a sibling's, which is what accumulation needs"
     type ValidityError;
     type Valid;
 
