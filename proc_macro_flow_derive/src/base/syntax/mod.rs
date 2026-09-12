@@ -172,6 +172,13 @@ pub mod extractor;
 // exist yet - but the attribute bodies below are VERIFIED to parse: both spines as
 // Punctuated<Meta, Comma>, every nested body as Meta, every leaf as Expr. Mapping table and the
 // rejection cases: see SCRATCH.md beside this file.
+// GATED(#syntax/scratch-gate): #[cfg(any())] is "never compile". The scratch is a reference
+// document that happens to be written in Rust, and it names Syntax/SomeDerive and the
+// proc_macro_flow_traits::syntax support types that do not exist yet - so while it was a live
+// `mod` no `cargo check` in this crate could ever be green, which costs far more than the
+// 18 errors it raises are worth. Ungate it to re-run the checklist once ID(syntax/traits) and
+// ID(syntax/derive) land; it is meant to compile eventually, and that is the signal they are done.
+#[cfg(any())]
 pub mod scratch {
     use proc_macro_flow_traits::syntax::{AttributeKind, NonEmpty, Spanned};
     use syn::{punctuated::Punctuated, Expr, Ident, LitInt, LitStr, Path, Token};
