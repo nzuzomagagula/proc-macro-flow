@@ -1,4 +1,4 @@
-// @review [ ]
+// @review [~]
 //
 // ===========================================================================
 // THE SYNTAX STAGE - attribute grammars declared as ordinary Rust items
@@ -140,212 +140,183 @@
 // ---------------------------------------------------------------------------
 
 /* @group(#syntax)
- * NOTE(#placement): V[N(proc_macro_flow_traits)], "Shape traits, Reason,
- *   Extraction and Node live in the ordinary lib crate, never here. VERIFIED
- *   that a pub non-macro item in a proc-macro crate is rejected by rustc, so
- *   this is a language constraint and not a preference. Blocks every other
- *   #syntax task; shares its fix with #pipeline/relocate-traits"
  *
- * NOTE(#no-path-head): V[Attr(shape)], "The shape selector must stay a
- *   SINGLE-SEGMENT helper attribute whose argument is the variant path.
- *   VERIFIED that #[AttributeKind::MetaList] fails to resolve: attribute heads
- *   resolve in the macro namespace, enum variants are not in it, and derive
- *   helpers are bare idents with no path to them. Do not retry the qualified
- *   head form - it is unfixable, not merely inconvenient"
+ * --- GATES -----------------------------------------------------------------
  *
- * TODO[ ](#traits): C[Tr(FromPath)] && C[Tr(FromMetaList)] && C[Tr(FromNameValue)],
- *   "One trait per attribute shape, so #[shape(..)] lowers to a trait bound
- *   instead of a runtime match on AttributeKind. Justification: a type that was
- *   never declared parsable in the selected shape must fail in the AUTHOR's
- *   crate at declaration time, which trait resolution gives for free and a
- *   runtime enum cannot. Three and only three, because syn::Meta has exactly
- *   three variants - that is Rust's real attribute grammar, not our taxonomy"
+ * NOTE(#placement): V[N(proc_macro_flow_traits).has(N(syntax))]
+ *   && V[ID(pipeline/relocate-traits) ==? this],
+ *   "Step zero, and the same problem #pipeline/relocate-traits already names. The shape traits,
+ *   Reason, Extraction and Node must live in the ordinary lib crate. VERIFIED: rustc refuses a
+ *   proc-macro crate that declares ANY pub non-macro item, so this is a language constraint, not
+ *   a preference. A private grammar type does parse fine, so expansion-time resolution works
+ *   either way - but pub in a lib is what puts the grammar in cargo doc and what lets a
+ *   re-emitted path resolve downstream. Every other #syntax task is blocked on this"
  *
- * TODO[ ](#leaves): C[Tr(FromExpr)], "Leaf trait for value positions, plus impls
- *   for the syn terminals (Ident, Path, Type, the Lit* family, Expr) and the
- *   primitives bridged from literals (String <- LitStr, integers <- LitInt,
- *   bool <- LitBool). Justification: Meta cannot represent bare literals, so
- *   `sizes(1, 2)` needs Expr underneath; Meta::List::tokens being raw is what
- *   lets a terminal node choose this parser instead"
+ * NOTE(#no-path-head): V[Attr(shape) != Attr(AttributeKind::MetaList)],
+ *   "The selector must stay a SINGLE-SEGMENT helper attribute taking the variant path as an
+ *   ARGUMENT. VERIFIED: #[AttributeKind::MetaList] fails with `cannot find type AttributeKind in
+ *   this scope` - attribute heads resolve in the macro namespace, enum variants are not in it,
+ *   and derive helpers are registered as bare idents with no path to them. Unfixable, not merely
+ *   inconvenient. Inside the delimiters rustc resolves nothing, so the path survives as tokens
+ *   and can be re-emitted into generated code, where it does resolve"
  *
- * TODO[ ](#bool-double-duty): V[Tr(FromPath).impl(bool)], "bool implements BOTH
- *   FromPath (a flag) and FromNameValue (a literal). Recorded deliberately so
- *   nobody later 'fixes' it: shape selection resolves the ambiguity, which is
- *   the whole point of shapes being a capability set rather than a property"
+ * --- THE TRAIT SURFACE -----------------------------------------------------
  *
- * TODO[ ](#forwarding): C[Impl(FromMetaList)], "Adapters for Option<T>, Vec<T>,
- *   NonEmpty<T>, Punctuated<T, Sep>, Box<T> and Spanned<T>. Justification: this
- *   is where requiredness and arity are enforced, and putting them here keeps
- *   'how many' in exactly one place - the field type - rather than smeared
- *   across the shape traits. Box<T> is what makes recursive grammars work;
- *   Spanned<T> is the opt-in span boundary so plain types stay plain"
+ * TODO[ ](#traits): C[Tr(FromPath).F(from_path).R(Extraction<Self>)]
+ *   && C[Tr(FromMetaList).F(from_list).R(Extraction<Self>)]
+ *   && C[Tr(FromNameValue).F(from_nv).R(Extraction<Self>)],
+ *   "One trait per attribute shape, so #[shape(..)] lowers to a trait BOUND rather than a runtime
+ *   match on AttributeKind: a type never declared parsable in the selected shape must fail in the
+ *   AUTHOR's crate at declaration time, which only trait resolution gives. Three and exactly
+ *   three, because syn::Meta has three variants - that is Rust's real attribute grammar and not a
+ *   taxonomy of ours, which is also why it will not drift as the language grows.
+ *   Closes ID(attribute/list), ID(attribute/path) and ID(attribute/name-value)"
  *
- * TODO[ ](#node-table): C[S(Node)], "Reflection const emitted by the derive:
- *   name, aliases, accepted shapes, children. Justification: this single table
- *   is what pays for 'expected one of ..', 'did you mean ..', and 'colour is a
- *   list here, not a name-value'. Generating meaning from a table beats an error
- *   taxonomy, and it is the honest answer to #extractor/error. Later it also
- *   gives generated grammar documentation for near-free"
+ * TODO[ ](#leaves): C[Tr(FromExpr).F(from_expr).A(\1).T(&Expr)],
+ *   "Leaf trait for value positions, with impls for the syn terminals (Ident, Path, Type, the Lit*
+ *   family, Expr) and primitives bridged from literals. Justification: Meta cannot represent bare
+ *   literals, so `sizes(1, 2)` needs Expr underneath, and Meta::List::tokens being raw is exactly
+ *   what lets a terminal node choose this parser instead. syn::MetaNameValue::value is ALREADY an
+ *   Expr, so the rhs of `=` costs nothing - half the reason Expr is the leaf grammar"
  *
- * TODO[ ](#reason): C[E(Reason)], "Closed reason set - WrongShape, UnknownKey,
- *   Missing, Ambiguous, NotResolvable, Custom(String). Justification: CLOSED
- *   REASONS, OPEN RENDERING. Closed so the framework can interpret what it
- *   caught and render it against Node; Custom as the escape hatch so an exotic
- *   grammar is not blocked. Authors never construct a message, so they cannot
- *   produce an unspanned or context-free one"
+ * TODO[ ](#bool-double-duty): V[Impl(bool).impl(FromPath)] && V[Impl(bool).impl(FromNameValue)],
+ *   "bool implements BOTH, deliberately: FromPath is a flag, FromNameValue is a literal. Recorded
+ *   as an assertion so nobody later 'fixes' the apparent conflict - shape selection resolves it,
+ *   which is the whole point of a shape being a capability rather than a property"
  *
- * TODO[ ](#extraction): R[E(ExtractionState) -> S(Extraction)], "Replace the
- *   Initialised/Uninitialised enum with { value: Option<T>, reasons:
- *   Vec<Spanned<Reason>> }. Justification: the current Result<ExtractionState<T>,
- *   E> encodes 'did it work' twice, and neither a 2-state enum nor a 3-state one
- *   can say 'this node extracted fine AND has a complaint of its own' - which is
- *   exactly unknown-key, a failure of the PARENT to consume its input. All four
- *   combinations are meaningful: Some/[] clean, Some/[..] partial, None/[..]
- *   failed, None/[] absent. Supersedes #cleanup's typestate framing"
+ * TODO[ ](#forwarding): C[Impl(Option<T>).impl(FromMetaList)]
+ *   && C[Impl(Vec<T>).impl(FromMetaList)]
+ *   && C[Impl(Box<T>).impl(FromMetaList)],
+ *   "Adapters for Option<T>, Vec<T>, NonEmpty<T>, Punctuated<T, Sep>, Box<T> and Spanned<T>.
+ *   Justification: this is where requiredness and arity are enforced, which keeps 'how many' in
+ *   exactly one place - the field type - instead of smeared across the shape traits. Box<T> is
+ *   what makes a recursive grammar terminate; Spanned<T> is the opt-in span boundary that lets
+ *   every other grammar type stay plain data"
  *
- * TODO[ ](#no-result): U[Tr(Extractor).F(extract_from).R(Extraction<Self>)],
- *   "extract_from must return Extraction<Self>, never Result. Justification:
- *   this is the enforcement. With no Result there is no `?`, no early return,
- *   and no control-flow path that throws a node away, so losing a sibling or a
- *   position becomes unrepresentable rather than merely discouraged. A failed
- *   node is still a node, which is also what lets later stages see WHICH subtree
- *   broke instead of finding a hole"
+ * --- ERRORS AS DATA --------------------------------------------------------
  *
- * TODO[ ](#diagnostics): C[Tr(Diagnostics)], "Author-overridable RENDERING, with
- *   a blanket default. Justification: scope it to rephrasing, never to
- *   construction - the framework keeps the span and the tree position, so the
- *   worst an author can do is bad prose in the right place. The case that earns
- *   it is domain vocabulary: a DSL wants 'unknown column option', which the
- *   framework cannot know and which should not cost the author spans or
- *   did-you-mean to obtain"
+ * TODO[ ](#extraction): R[E(ExtractionState) -> S(Extraction)]
+ *   && C[S(Extraction).P(value).T(Option<T>)]
+ *   && C[S(Extraction).P(reasons).T(Vec<Spanned<Reason>>)],
+ *   "Justification: Result<ExtractionState<Self>, E> encodes 'did it work' twice, and NEITHER a
+ *   two-state enum nor a three-state one can say 'this node extracted fine AND carries a complaint
+ *   of its own' - which is exactly what an unknown key is, a failure of the PARENT to consume its
+ *   input while its value stays perfectly good. All four combinations are meaningful: Some/[]
+ *   clean, Some/[..] partial, None/[..] failed, None/[] absent. Reasons carry their own spans
+ *   because one node can hold several pointing at different tokens, which also settles absence
+ *   spans. Supersedes the typestate framing in ID(cleanup)"
  *
- * TODO[ ](#render): C[F(render)], "One walk over the finished Extraction tree
- *   producing N spanned compile_error!s, sorted by span. Justification: traversal
- *   order is not source order (written keys are visited before missing-required
- *   is discovered), and only a single final pass can sort, dedupe and cap. Emit
- *   a stub expansion ALONGSIDE the errors - without it the missing impl produces
- *   a cascade of 'does not implement' errors at every use site that buries the
- *   real diagnostic"
+ * TODO[ ](#no-result): U[Tr(Extractor).F(extract_from).R(Result<ExtractionState<Self>, Self::ExtractionError>) -> R(Extraction<Self>)],
+ *   "THE enforcement, and the reason the stage is shaped this way at all. With no Result there is
+ *   no `?`, no early return, and no control-flow path that discards a node - so losing a sibling
+ *   or a position becomes unrepresentable rather than discouraged by convention. A failed node is
+ *   still a node, which is also what lets a later stage see WHICH subtree broke instead of finding
+ *   a hole and not knowing why"
  *
- * TODO[ ](#entry): C[F(from_body)] && C[F(from_attributes)] && C[F(from_args)],
- *   "from_body does the work; the other two are thin adapters. Justification:
- *   every attribute-bearing syn node exposes .attrs, so &[Attribute] is the
- *   universal entry and POSITION (item / field / variant) never needs modelling.
- *   A proc_macro_attribute hands over its args already unwrapped, so that path
- *   is less work, not different work. Document the one real asymmetry: empty
- *   args have no span, and #[a] is indistinguishable from #[a()] there, so a
- *   bare-flag grammar root works under a derive only"
+ * TODO[ ](#reason): C[E(Reason).V(WrongShape)] && C[E(Reason).V(UnknownKey)]
+ *   && C[E(Reason).V(Missing)] && C[E(Reason).V(Ambiguous)] && C[E(Reason).V(Custom)],
+ *   "CLOSED REASONS, OPEN RENDERING. Closed so the framework can interpret what it caught and
+ *   render it against Node; Custom so an exotic grammar is never blocked. Authors never construct
+ *   a message, so they cannot produce an unspanned or context-free one. Answers ID(extractor/error)
+ *   structurally: meaning comes from a reason set crossed with a reflection table, never from a
+ *   taxonomy of error types - a proc macro only ever EMITS an error, so per-type errors buy
+ *   nothing and actively fight accumulation, since two error structs cannot combine"
  *
- * TODO[ ](#shape-attr): C[Attr(shape)], "The selector attribute. Absent = accept
- *   every shape the type implements; present = narrow. Takes several variant
- *   paths, so it is itself a MetaList over an enum - the framework's own grammar
- *   dogfooded at the first opportunity. See #no-path-head for why the variant
- *   path is an argument and not the head"
+ * TODO[ ](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)]
+ *   && C[S(Node).P(shapes)] && C[S(Node).P(children)],
+ *   "The reflection const each derive emits. Justification: this one table pays for 'expected one
+ *   of ..', 'did you mean ..' and 'colour is a list here, not a name-value'. It is what makes
+ *   STRICT MATCHING, LENIENT SUGGESTIONS possible - resolution stays case-sensitive while the
+ *   did-you-mean search is not, so leniency sits in diagnostics where a wrong guess is free
+ *   rather than in resolution where it costs a canonical form"
  *
- * TODO[ ](#alias-attr): C[Attr(alias)], "Explicit aliases: on a field they add
- *   keys, on a type or variant they add a SEGMENT that joins suffix matching, so
- *   #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single
- *   idents, since an alias substitutes for one segment. Justification: with
- *   exact matching chosen, this is the ONLY bridging mechanism, so watch for
- *   authors writing piles of case aliases - that, and not before, is the signal
- *   that a normalisation policy is worth its opinion"
+ * TODO[ ](#diagnostics): C[Tr(Diagnostics).F(message).R(String)],
+ *   "Author-overridable RENDERING, blanket default provided. Scoped to rephrasing and never to
+ *   construction: the framework keeps the span and the tree position, so the worst an author can
+ *   do is bad prose in the right place. The case that earns it is domain vocabulary - a DSL wants
+ *   'unknown column option', which the framework cannot know and which should not cost the author
+ *   spans or did-you-mean to obtain"
  *
- * TODO[ ](#resolve): C[F(resolve)], "Type-directed resolution: gather the
- *   expected type's candidates, match exactly, accept any SUFFIX of a canonical
- *   path, allow a ZST field to be written as key or value, then zero matches ->
- *   'not accepted here, expected one of ..' and several -> 'ambiguous, qualify'.
- *   Justification: suffix matching is free for every node and needs nothing
- *   declared, and mirroring rustc's import semantics means the rule is one
- *   users already hold"
+ * TODO[ ](#render): C[F(render).R(TokenStream)] && V[F(render).contains(compile_error)],
+ *   "One walk over the finished tree emitting N spanned compile_error!s, sorted by span.
+ *   VERIFIED: syn::Error::combine keeps each error's own span and to_compile_error emits one
+ *   compile_error! per error, so all-at-once reporting needs no nightly diagnostics. Justification
+ *   for a single final pass: traversal order is not source order (written keys are visited before
+ *   missing-required is discovered), and only one pass can sort, dedupe and cap. Emit a stub
+ *   expansion ALONGSIDE the errors - without it the missing impl cascades into 'does not
+ *   implement' at every use site and buries the real diagnostic"
  *
- * TODO[ ](#positional): V[S(ConfigName)], "Tuple struct = all positional, named
- *   struct = all named, no mixing. Justification: Rust has no named function
- *   arguments, so a mixed form has no analogue to borrow intuition from -
- *   forbid it rather than invent a rule nobody can predict"
+ * --- GRAMMAR AND RESOLUTION ------------------------------------------------
  *
- * TODO[ ](#derive): C[MacDef(Syntax)], "The derive itself: emit the shape impls
- *   plus the Node const. Bootstrap note - v1 is hand-rolled because Syntax is
- *   what lets the extractor read its own #[shape(..)] attributes, and only then
- *   can it be re-expressed in itself. That self-hosting step is also the first
- *   real test of the design"
+ * TODO[ ](#shape-attr): C[Attr(shape)],
+ *   "The selector. Absent = accept every shape the type implements and let the written Meta
+ *   variant choose; present = narrow to the listed ones. Purely additive, so it never restates
+ *   what the type already says. Takes several variant paths, making it a MetaList over an enum -
+ *   the framework's own grammar dogfooded at the first opportunity. See ID(syntax/no-path-head)
+ *   for why the path is an argument and not the head"
  *
- * TODO[ ](#testing): C[F(parse_grammar)], "A helper that parses a &str into an
- *   Attribute and runs a grammar against it, so grammar tests need no macro
- *   invocation at all, plus trybuild snapshots of the messages. Justification:
- *   messages are now GENERATED from Reason x Node rather than written by hand,
- *   which makes them exactly the kind of output worth pinning - a regression
- *   there is silent otherwise"
+ * TODO[ ](#alias-attr): C[Attr(alias)],
+ *   "On a field it adds keys; on a type or variant it adds a SEGMENT that joins suffix matching,
+ *   so #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single idents, since an
+ *   alias substitutes for one segment. Justification: with exact matching chosen this is the only
+ *   bridging mechanism, so watch for authors writing piles of case aliases - that, and not before,
+ *   is the signal a normalisation policy is worth its opinion"
  *
- * TODO[ ](#scratch): U[B(scratch)], "Bring the illustration below in line with
- *   the worked example in this header: Vec<ColourSetting>, Other(Ident),
- *   Option<NoClean>, no configuration:: key prefix, and #[shape(..)] instead of
- *   the #[AttributeKind::..] head that #no-path-head proved cannot resolve"
+ * TODO[ ](#resolve): C[F(resolve).R(Extraction<Self>)],
+ *   "Type-directed: gather the expected type's candidates, match exactly, accept any SUFFIX of a
+ *   canonical path, allow a ZST field to be written as key OR value, then zero matches -> 'not
+ *   accepted here, expected one of ..' and several -> 'ambiguous, qualify'. Justification: suffix
+ *   matching is free for every node and needs nothing declared, and mirroring rustc's own import
+ *   semantics means the rule is one users already hold. Keys are idents and values are paths,
+ *   exactly the asymmetry Rust has in `Foo { bar: Baz::Qux }` - fields are not items, so there is
+ *   no `configuration::colour` to resolve and the qualified key form is dropped"
+ *
+ * NOTE(#positional): V[S(ConfigName).T(LitStr)],
+ *   "Tuple struct = all positional, named struct = all named, no mixing. Justification: Rust has
+ *   no named function arguments, so a mixed form has no analogue to borrow intuition from -
+ *   forbid it rather than invent a rule nobody can predict. ConfigName stands as the newtype case"
+ *
+ * TODO[ ](#entry): C[F(from_body).A(\1).T(TokenStream)]
+ *   && C[F(from_attributes).A(\1).T(&[Attribute])]
+ *   && C[F(from_args).A(\1).T(TokenStream)],
+ *   "from_body does the work; the other two are thin adapters. Justification: every attribute-
+ *   bearing syn node exposes .attrs, so &[Attribute] is the universal entry and POSITION (item /
+ *   field / variant) never needs modelling at all. A proc_macro_attribute hands its args over
+ *   already unwrapped, so that path is less work, not different work. Document the one real
+ *   asymmetry: empty args have no span, and #[a] is indistinguishable from #[a()] there, so a
+ *   bare-flag grammar ROOT works under a derive only"
+ *
+ * --- THE DERIVE ITSELF -----------------------------------------------------
+ *
+ * TODO[ ](#derive): C[MacDef(Syntax)],
+ *   "Emits the shape impls plus the Node const. Bootstrap: v1 is hand-rolled, because Syntax is
+ *   what lets the extractor read its own #[shape(..)] attributes and only then can it be
+ *   re-expressed in itself. That self-hosting step is also the first real test of the design"
+ *
+ * TODO[ ](#testing): C[F(parse_grammar).A(\1).T(&str)],
+ *   "Parse a &str into an Attribute and run a grammar against it, so grammar tests need no macro
+ *   invocation, plus trybuild snapshots of the messages. Justification: messages are GENERATED
+ *   from Reason x Node rather than written by hand, which makes them exactly the output worth
+ *   pinning - a regression there is otherwise silent"
+ *
+ * TODO[ ](#scratch): U[N(scratch)],
+ *   "Bring the illustration below in line with the worked example in the header: Vec<ColourSetting>
+ *   because arity lives in the type, Other(Ident) because String has no Expr reading and bare Blue
+ *   is an ident, Option<NoClean> so every token still resolves to a real item, no configuration::
+ *   key prefix, and #[shape(..)] in place of the #[AttributeKind::..] head that
+ *   ID(syntax/no-path-head) proved cannot resolve"
+ *
+ * --- STILL OPEN ------------------------------------------------------------
+ *
+ * Query(#separator): Q[T(Punctuated<T, Sep>) ??],
+ *   "Meta::List::tokens is raw, so Punctuated<T, Token![;]> should let a grammar pick its own
+ *   separator - but does rustc accept #[attr(a; b)] as an inert derive helper in the first place?
+ *   Unverified. If it does not, the separator knob is decoration and Sep should be dropped from
+ *   the forwarding impls in ID(syntax/forwarding)"
+ *
+ * Query(#custom-reason): Q[E(Reason).V(Custom).T(String) != T(Error)],
+ *   "Should the escape hatch carry a String or a fully-formed syn::Error? String keeps the
+ *   framework in charge of span and position, which is the property ID(syntax/diagnostics) exists
+ *   to protect; syn::Error lets an author report something genuinely structural we have no reason
+ *   for. Leaning String - decide before ID(syntax/reason) is written"
  */
-
-pub mod syntax_extractor {
-    use syn::Type;
-    //FIXME[~](#syntax/implementation):I[this], "The syntax stage is designed but unbuilt - the
-    //   task list is in the header block above, and #syntax/placement gates all of it. This FIXME
-    //   is the CI gate for the stage as a whole; clear it when the header tasks are done"
-    pub struct SyntaxExtractor {
-        field: SyntaxFieldExtractor,
-    }
-
-    pub struct SyntaxFieldExtractor {
-        attribute_kind: AttributeKind,
-        required: bool,
-        syntax_type: Type,
-    }
-
-    pub enum AttributeKind {
-        MetaList,
-        Path,
-        NamedValue,
-    }
-
-    mod scratch {
-        #[derive(Syntax)]
-        pub struct Configuration {
-            //TODO[x](#syntax/requiredness):D[Attr(required)], "ANSWERED - no. Requiredness is the
-            //   field TYPE: T required, Option<T> optional, Vec<T>/NonEmpty<T> repeated. An
-            //   attribute that can disagree with the type is a second source of truth, which is
-            //   the darling failure mode this whole stage exists to avoid. Delete the marker"
-            #[AttributeKind::MetaList]
-            #[required]
-            colour: ColourSetting,
-            #[AttributeKind::NamedValue]
-            name: ConfigName,
-            #[AttributeKind::Path]
-            no_clean: bool,
-        }
-
-        #[derive(Syntax)]
-        pub enum ColourSetting {
-            Red,
-            Black,
-            Other(String),
-        }
-
-        #[derive(SomeDerive)]
-        #[configuration(configuration.colour(ColourSetting::Red, ColorSetting::Other(Blue)), name = "Fuck", NoClean)]
-        pub struct Thing;
-    }
-}
-
-pub mod metalist {
-    pub struct MetalistExtractor {
-        name: MetalistName,
-    }
-    pub struct MetaListName(Path);
-
-    pub mod scratch {
-        use syn::Token;
-
-        #[derive(MetaList, Syntax)]
-        pub struct Operation {
-            tables: Punctuated<OperationOption, Token![,]>,
-        }
-
-        #[derive()]
-    }
-}

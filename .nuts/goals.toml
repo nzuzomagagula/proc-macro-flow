@@ -10,3 +10,20 @@ Archival records overflow 32 bits, and every consumer downstream
 already reads u64.
 """
 done = "all"
+
+[[goal]]
+title  = "Syntax stage"
+prefix = "syntax"
+done   = "all"
+why    = """
+Attribute grammars declared as ordinary Rust items, so parsing is resolution
+against real variants and paths instead of matching token shapes. This is the
+prerequisite for the extractor stage, not a sibling of it: once a grammar is a
+type, TransformationExtraction collapses into a grammar parse and the three
+#attribute/* Meta matchers become three shape traits.
+
+The stage is gated on moving the base traits to this workspace's ordinary lib
+crate - VERIFIED that a proc-macro crate cannot export any pub non-macro item,
+so it is a language constraint rather than a preference. Same fix as
+#pipeline/relocate-traits.
+"""
