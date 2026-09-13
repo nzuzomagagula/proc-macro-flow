@@ -1,0 +1,63 @@
+@startuml pipeline-status
+title What is actually wired, as of this review
+
+skinparam shadowing false
+skinparam legendBackgroundColor #FFFFFF
+
+rectangle "lib.rs::extractor\n(#[proc_macro_derive(Extractor)])" as Entry #E8F4EA
+
+rectangle "StructExtraction\n<&'ast DeriveInput>" as S #E8F4EA
+rectangle "FieldExtraction\n<&'ast Field>" as F #E8F4EA
+rectangle "TransformationExtraction\n<&'ast Attribute>" as T #FFD9D9
+rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
+
+rectangle "Processor" as P #EEEEEE
+rectangle "Generator" as G #EEEEEE
+
+Entry --> S : parse_macro_input\nthen extract_from
+S --> F : extract_each(data.fields.iter())
+F --> T : extract_each(field.attrs.iter())
+
+S ..> P : Extracted<..>
+P ..> G
+
+note bottom of T
+  **todo!()** — panics if reached.
+  Nothing currently reaches it.
+  Blocked on #syntax/traits.
+end note
+
+note bottom of Y
+  Works, and is tested — but is driven
+  ONLY by base/syntax/worked.rs, never
+  by the macro path. #syntax/not-driven
+end note
+
+note bottom of P
+  comment-only stub in both crates.
+  Extractor::Output is deliberately
+  unbounded until this exists.
+end note
+
+legend right
+  |<#E8F4EA>| live on the macro path |
+  |<#FFF4E5>| works, tested, not wired |
+  |<#FFD9D9>| todo!() — would panic |
+  |<#EEEEEE>| does not exist yet |
+endlegend
+
+note as Gap
+  **The load-bearing gap**
+
+  The extraction tree is BUILT and then
+  nobody reads it. ""fields"" and
+  ""transformation"" carry
+  ""#[allow(dead_code)]"" saying exactly
+  that. lib.rs renders top-level reasons
+  and emits a stub — the recursive walk
+  is #syntax/render.
+end note
+
+Gap .. P
+
+@enduml

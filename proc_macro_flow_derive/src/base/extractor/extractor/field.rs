@@ -1,14 +1,22 @@
 // @review [ ]
-use proc_macro_flow_traits::{extractor::Extraction, source::Sourced};
-use syn::Field;
+use proc_macro_flow_traits::{
+    extractor::{Extracted, Extraction},
+    source::Sourced,
+};
+use syn::{Attribute, Field};
 
 use crate::base::extractor::extractor::attribute::TransformationExtraction;
 use crate::traits::Validate;
-use crate::traits::extractor::Extractor;
+use crate::traits::extractor::{Extractor, extract_each};
 
 pub(crate) struct FieldExtraction<'ast> {
     pub(crate) field: &'ast Field,
-    pub(crate) transformation: Vec<Extraction<TransformationExtraction<'ast>>>,
+    // UNWIRED(#extraction/unconsumed): V[this.built && !this.read], "The children are
+    // extracted and then nobody looks at them - the processor that would is ID(pipeline/base-processor),
+    // still a stub. This is the single most load-bearing warning in the crate, so it is
+    // suppressed HERE and named rather than left to blend into the noise."
+    #[allow(dead_code)]
+    pub(crate) transformation: Vec<Extracted<TransformationExtraction<'ast>, &'ast Attribute>>,
 }
 
 pub struct FieldExtractionError;
@@ -22,20 +30,22 @@ impl<'ast> Sourced<'ast> for FieldExtraction<'ast> {
 }
 
 impl<'ast> Extractor<'ast, &'ast Field> for FieldExtraction<'ast> {
-    fn extract_from(node: &'ast Field) -> Extraction<Self> {
+    type Output = Extracted<Self, &'ast Field>;
+
+    fn extract_from(node: &'ast Field) -> Self::Output {
         // `validate` is infallible today, so this cannot currently produce a Reason of its own -
         // every complaint comes from a child. That changes with ID(syntax/extraction).
-        match Self::validate(node) {
+        let extraction = match Self::validate(node) {
+            // Same shape, same reason - `#[from = source.attrs]`. Arity comes off the Vec,
+            // never off the attribute.
             Ok(field) => Extraction::value(Self {
                 field,
-                transformation: field
-                    .attrs
-                    .iter()
-                    .map(TransformationExtraction::extract_from)
-                    .collect(),
+                transformation: extract_each::<TransformationExtraction, _, _>(field.attrs.iter()),
             }),
             Err(_) => Extraction::default(),
-        }
+        };
+
+        Extracted::new(extraction, node)
     }
 }
 

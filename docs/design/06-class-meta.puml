@@ -1,0 +1,121 @@
+@startuml class-meta
+title The translation layer — syn::Meta in, openings out
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+package syn <<Frame>> {
+  enum "syn::Meta" as Meta {
+    Path(Path)
+    List(MetaList)
+    NameValue(MetaNameValue)
+  }
+  note bottom of Meta
+    **This is the attribute AST.**
+    Nothing here invents a node layer beside
+    it — Meta already IS the set of shapes an
+    attribute can be written in, and
+    ""Punctuated<Meta, Comma>"" is its spine.
+  end note
+}
+
+package "proc_macro_flow_traits::meta" <<Frame>> {
+
+  enum "Opening<'ast>" as Opening {
+    Path(PathOnly<'ast>)
+    List(ListBody<'ast>)
+    Value(ValueExpr<'ast>)
+    --
+    +shape_name() -> &'static str
+  }
+
+  class "PathOnly<'ast>" as PathOnly {
+    +0: &'ast syn::Path
+  }
+  note right of PathOnly : nothing to parse —\npresence is the signal
+
+  class "ListBody<'ast>" as ListBody {
+    +0: &'ast TokenStream
+    --
+    +metas() -> Result<Punctuated<Meta, Comma>>
+    +exprs() -> Result<Punctuated<Expr, Comma>>
+    +is_empty() -> bool
+  }
+  note right of ListBody
+    **UNPARSED.** ""MetaList::tokens"" is raw,
+    which is what lets a terminal node choose
+    ""exprs()"" instead of ""metas()"".
+
+    ""bounds(0, 64)"" is impossible without it:
+    a bare literal is not valid Meta at all.
+    (#meta-vs-expr)
+  end note
+
+  class "ValueExpr<'ast>" as ValueExpr {
+    +0: &'ast syn::Expr
+  }
+  note right of ValueExpr
+    **UNPARSED**, and needs no parser of ours:
+    ""MetaNameValue::value"" is already an Expr.
+  end note
+
+  interface Shape {
+    +type Input<'ast>
+  }
+  note left of Shape
+    A shape is not a tag we attach — it is
+    WHICH OPENING the payload arrives through.
+    That collapses two concepts into one, and
+    is what makes ""#[shape(..)]"" checkable by
+    rustc rather than by us.
+    (#shape-is-the-opening)
+  end note
+
+  package "AttributeKind" <<Node>> {
+    class MetaList <<unit struct>>
+    class NamedValue <<unit struct>>
+    class "Path" as PathMarker <<unit struct>>
+  }
+  note bottom of MetaList
+    A **module of unit structs**, not an enum:
+    a variant cannot be named in type position,
+    and the selector has to be an ARGUMENT to
+    ""#[shape(..)]"" rather than the attribute
+    head (#no-path-head).
+  end note
+}
+
+Meta --> Opening : From<&'ast Meta>
+Opening *-- PathOnly
+Opening *-- ListBody
+Opening *-- ValueExpr
+
+MetaList ..|> Shape
+NamedValue ..|> Shape
+PathMarker ..|> Shape
+
+MetaList ..> ListBody : Input
+NamedValue ..> ValueExpr : Input
+PathMarker ..> PathOnly : Input
+
+note as Recursion
+  Each element of a ""ListBody::metas()"" is
+  itself a ""Meta"", hence itself an ""Opening"".
+  That is the whole recursion — the spine
+  goes as deep as there are named nodes,
+  and ""exprs()"" is where it stops.
+end note
+
+Recursion .. ListBody
+
+note as Emit
+  Every opening implements ""ToTokens"" and
+  re-emits what it came from unchanged.
+  The compiler-checked selector depends on
+  that holding: ""#[shape(AttributeKind::MetaList)]""
+  round-trips verbatim into a type position.
+end note
+
+Emit .. Opening
+
+@enduml

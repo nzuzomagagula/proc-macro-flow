@@ -156,7 +156,7 @@
  *
  * TODO[ ](#alias-attr): C[Attr(alias)], "On a field it adds keys; on a type or variant it adds a SEGMENT that joins suffix matching, so #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single idents, since an alias substitutes for one segment. With exact matching chosen this is the only bridging mechanism, so watch for authors writing piles of case aliases - that, and not before, is the signal a normalisation policy is worth its opinion"
  *
- * TODO[ ](#scratch): V[N(scratch).has(S(Configuration))] && V[N(scratch).has(E(ColourSetting))], "The maximal grammar at the foot of this file - every shape, arity rule and resolution rule in one pair of items, and the thing to check any behaviour change against. It does NOT compile, deliberately: Syntax, SomeDerive and the proc_macro_flow_traits::syntax support types are all still unwritten, so the errors it raises are a live checklist of what ID(syntax/traits), ID(syntax/forwarding) and ID(syntax/derive) still owe it. The attribute BODIES are verified to parse as Meta spine plus Expr leaves, so any parse failure here is a regression and not a missing feature. Mapping table and rejection cases in SCRATCH.md"
+ * TODO[ ](#scratch): V[N(scratch).has(S(Configuration))] && V[N(scratch).has(E(ColourSetting))], "The maximal grammar at the foot of this file - every shape, arity rule and resolution rule in one pair of items, and the thing to check any behaviour change against. It is GATED behind #[cfg(any())] and does not compile, deliberately: Syntax, SomeDerive and the proc_macro_flow_traits::syntax support types are all still unwritten, so the errors it raises are a live checklist of what ID(syntax/traits), ID(syntax/forwarding) and ID(syntax/derive) still owe it. The attribute BODIES are verified to parse as Meta spine plus Expr leaves, so any parse failure here is a regression and not a missing feature. Mapping table and rejection cases in SCRATCH.md. NOTE that a second, SMALLER worked example now lives beside it in worked.rs, whose layer 3 does compile and is asserted - scratch remains the maximal grammar to check behaviour against, worked.rs is the minimal one that actually runs"
  *
  * --- STILL OPEN ------------------------------------------------------------
  *
@@ -166,6 +166,7 @@
  */
 
 pub mod extractor;
+pub mod worked;
 
 // The maximal grammar: every shape, every arity rule, every resolution rule the stage has to
 // handle, in one pair of items. Does NOT compile - Syntax/SomeDerive and the support types do not

@@ -1,5 +1,5 @@
 // @review [ ]
-use proc_macro_flow_traits::{extractor::Extraction, source::Sourced};
+use proc_macro_flow_traits::{extractor::Extracted, source::Sourced};
 use syn::{Attribute, Expr};
 
 use crate::traits::{Validate, extractor::Extractor};
@@ -13,6 +13,7 @@ pub(crate) struct TransformationExtraction<'ast> {
     // The attribute is the SOURCE - the thing the user wrote and the thing a diagnostic has to
     // underline. `expression` is a derived value and makes a poor span even once it exists.
     pub(crate) attribute: &'ast Attribute,
+    #[allow(dead_code)] // the placeholder ID(attribute/generic-grammar) replaces; see above
     pub(crate) expression: &'ast Expr,
 }
 pub struct TransformationExtractionError;
@@ -31,7 +32,9 @@ impl<'ast> Extractor<'ast, &'ast Attribute> for TransformationExtraction<'ast> {
     // it becomes 'parse this attribute against grammar type G', which needs ID(syntax/traits).
     // The `expression: &'ast Expr` field is the placeholder that made that necessary - it can hold
     // a value but cannot say which grammar produced it, or why another one failed"
-    fn extract_from(node: &'ast Attribute) -> Extraction<Self> {
+    type Output = Extracted<Self, &'ast Attribute>;
+
+    fn extract_from(node: &'ast Attribute) -> Self::Output {
         let _ = node;
         todo!()
     }

@@ -1,0 +1,95 @@
+@startuml component
+title proc_macro_flow — crate structure
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+package "proc_macro_flow\n(facade)" as facade {
+  [lib.rs] as Facade
+  note right of Facade
+    pub use of both crates.
+    Re-exports only MACROS from the
+    derive crate — see the constraint below.
+  end note
+}
+
+package "proc_macro_flow_traits\n(ordinary lib)" as traits {
+  [extractor] as T_Extractor
+  [resolution] as T_Resolution
+  [source] as T_Source
+  [meta] as T_Meta
+  [processor] as T_Processor
+  [generator] as T_Generator
+
+  note bottom of T_Processor
+    comment-only stub
+    (#pipeline/base-processor)
+  end note
+  note bottom of T_Generator
+    comment-only stub
+    (#pipeline/base-generator)
+  end note
+}
+
+package "proc_macro_flow_derive\n(proc-macro = true)" as derive {
+  package "traits" as traits_mod {
+    [Extractor] as D_Extractor
+    [Validate] as D_Validate
+    [Visitable] as D_Visitable
+  }
+  package "base/extractor" as base_extractor {
+    [StructExtraction] as D_Struct
+    [FieldExtraction] as D_Field
+    [TransformationExtraction] as D_Transform
+  }
+  package "base/syntax" as base_syntax {
+    [SyntaxFieldAttributeExtraction] as D_Syntax
+    [worked_rs_tests] as D_Worked
+  }
+}
+
+cloud "external" {
+  [syn 3] as Syn
+  [quote] as Quote
+  [proc-macro2] as PM2
+}
+
+derive ..> traits : depends
+facade ..> traits
+facade ..> derive
+traits ..> Syn
+traits ..> Quote
+traits ..> PM2
+derive ..> Syn
+
+note as Constraint
+  **Why two crates**
+
+  VERIFIED: rustc rejects a `pub` non-macro
+  item in a proc-macro crate outright —
+  "proc-macro crate types cannot export any
+  items other than functions tagged with
+  #[proc_macro*]".
+
+  So every type that must be NAMEABLE from
+  outside lives in proc_macro_flow_traits.
+  The derive crate keeps only the macro
+  entry points and its own stage impls.
+
+  (#syntax/placement, #pipeline/relocate-traits)
+end note
+
+Constraint .. derive
+
+note as TraitHome
+  Extractor / Validate / Visitable are still
+  pub(crate) HERE, not in the traits crate.
+  That was going to move, but the urgency
+  dropped when the stage boundary was fixed:
+  author grammar types do NOT implement them,
+  so nothing outside needs to name them.
+end note
+
+TraitHome .. traits_mod
+
+@enduml

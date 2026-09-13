@@ -1,30 +1,34 @@
 // @review [x]
-use syn::{parse::Parse, visit::Visit};
+use syn::visit::Visit;
 
 /// Binds a concrete `syn` (or `proc_macro2`) AST node type to the `Visit`
 /// method that visits it, so generic code can dispatch on the node's type
 /// instead of hardcoding the `visit_*` method name at each call site.
+///
+/// This is half of what an extractor declares. The pipeline only ever asks two
+/// questions of one - what is the source of this extraction, and how do we get
+/// there - and this trait is the second. It never asks how to PARSE a node;
+/// making a node mean something is the processor's job.
+///
+/// FIX(#visitable/by-value): U[Tr(Visitable).F(accept).A(\1)], "Was
+/// `accept(&'ast self)`, which is uncallable on anything passed by value: it
+/// needs a `&'ast Self`, and a wrapper built at a call site can never live that
+/// long. Taking `self` and implementing for the REFERENCE types fixes it, and
+/// `self` is then already the `&'ast T` every visit_* wants. Nothing caught
+/// this because accept has been dead code since it was written"
 pub(crate) trait Visitable<'ast> {
-    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V);
-}
-
-/// Lets a reference to any `Visitable` node stand in for the node itself, so
-/// callers that hold `&'ast T` (the common case) don't need `T` to be `Copy`
-/// or to reborrow through an extra deref before dispatching.
-impl<'ast, T> Visitable<'ast> for &'ast T
-where
-    T: Visitable<'ast> + ?Sized,
-{
-    fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
-        (*self).accept(visitor);
-    }
+    // Exercised by base/syntax/worked.rs and by nothing else yet: no stage drives a visitor
+    // over its input. It was accept's being dead that hid the uncallable-receiver bug fixed
+    // at ID(visitable/by-value), so the allow is deliberately narrow.
+    #[allow(dead_code)]
+    fn accept<V: Visit<'ast> + ?Sized>(self, visitor: &mut V);
 }
 
 macro_rules! impl_visitable {
     ($($ty:path => $method:ident),+ $(,)?) => {
         $(
-            impl<'ast> Visitable<'ast> for $ty {
-                fn accept<V: Visit<'ast> + ?Sized>(&'ast self, visitor: &mut V) {
+            impl<'ast> Visitable<'ast> for &'ast $ty {
+                fn accept<V: Visit<'ast> + ?Sized>(self, visitor: &mut V) {
                     visitor.$method(self);
                 }
             }

@@ -1,0 +1,92 @@
+@startuml pipeline
+title The three stages — what each one is allowed to know
+
+skinparam shadowing false
+skinparam ArrowColor #333333
+
+|#F5F5F5|EXTRACTION|
+start
+:downstream user writes
+""#[configuration(colour(Red), name = "thing")]"" ;
+note right
+  arrives as ""syn::DeriveInput""
+end note
+
+:**walk** to the nodes;
+note right
+  Answers exactly two questions:
+  * what is the SOURCE of this extraction? → ""Sourced""
+  * how do we GET THERE? → ""Visitable""
+
+  Never answers "how should this be parsed".
+end note
+
+:**carry** what it finds;
+note right
+  May hand on raw tokens.
+  ""Unresolved<'ast, T>"" is the carrier.
+end note
+
+:surface-level ""Validate"" only;
+note right
+  does this exist where required?
+  is this value within a bound?
+  — NOT parsing, NOT grammar
+  (#pipeline/validity-scope)
+end note
+
+:emit ""Extracted<T, I>"";
+note right
+  Output is UNBOUNDED on the trait.
+  Source rides on the OUTPUT so it
+  survives a failed extraction, where
+  there is no T to ask.
+end note
+
+|#FFF4E5|PROCESSING|
+:receive ""Extracted<T, I>"" **whole**;
+note right
+  The pipeline does NOT unwrap between
+  stages — unwrapping would strip the
+  source off exactly the value that
+  needs it.
+end note
+
+:**understand** the tokens;
+note right
+  ""Meta"" → openings → grammar types.
+  THIS is where a ""ColourSetting"" is
+  read out of a ""Meta"". It is NOT
+  extraction — putting it there was a
+  stage-boundary violation.
+end note
+
+:accumulate ""Reason""s — never abort;
+note right
+  no ""?"", no early return, so no way
+  to drop a sibling (#no-result)
+end note
+
+|#E8F4EA|GENERATION|
+:**splice** selectors verbatim;
+note right
+  ""#[shape(AttributeKind::MetaList)]""
+  goes into a TYPE position and rustc
+  resolves it. Never parsed by us.
+end note
+
+:re-emit keys as a struct literal;
+note right
+  hands UnknownKey / Missing / Duplicate
+  to rustc, with did-you-mean
+end note
+
+:emit stub impl **alongside** errors;
+note right
+  or the missing impl cascades into
+  "does not implement" at every use
+  site and buries the real diagnostic
+end note
+stop
+
+@enduml

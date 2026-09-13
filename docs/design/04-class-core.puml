@@ -1,0 +1,166 @@
+@startuml class-core
+title Core types and the extraction contract
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+package proc_macro_flow_traits <<Frame>> {
+
+  class "Extraction<T>" as Extraction {
+    +value: Option<T>
+    +reasons: Vec<Reason>
+    --
+    +value(T) -> Self
+    +failed(Reason) -> Self
+    +with_reason(Reason) -> Self
+    +is_failure() -> bool
+    +absorb<U>(Extraction<U>) -> Option<U>
+  }
+  note right of Extraction
+    A struct, NOT a typestate.
+    A node can extract fine AND carry a
+    complaint of its own — an unknown key
+    is the PARENT failing to consume its
+    input while the value stays good.
+    Two states could not say that.
+    (#cleanup)
+  end note
+
+  class "Extracted<T, I>" as Extracted {
+    -extraction: Extraction<T>
+    -source: I
+    --
+    +new(Extraction<T>, I) -> Self
+    +source() -> &I
+    +extraction() -> &Extraction<T>
+    +into_extraction() -> Extraction<T>
+    +value() -> Option<&T>
+    +reasons() -> &[Reason]
+    +to_error(msg) -> syn::Error
+  }
+  note right of Extracted
+    The extractor's OUTPUT and the
+    processor's INPUT. Source lives here,
+    not behind ""T: Sourced"", because a
+    FAILED extraction has no T to ask —
+    which is the case a diagnostic needs
+    most. (#extracted/source-when-absent)
+
+    ""new"" is public and must be: the
+    stage impls live in the other crate.
+    Not a capability token.
+  end note
+
+  class Reason {
+    +kind: ReasonKind
+    -span: Option<Span>
+    --
+    +new(ReasonKind) -> Self
+    +at(ReasonKind, &impl Spanned) -> Self
+    +span() -> Option<Span>
+    +to_error(&impl ToTokens, msg) -> syn::Error
+  }
+  note left of Reason
+    Stores a **Span**, while ""Extracted""
+    stores a **node**. Deliberate asymmetry:
+    a node is multi-token, so ""new_spanned""
+    is needed for its full range; a reason
+    points at ONE token, which needs no
+    ""Span::join"" and is therefore exact.
+
+    ""to_error"" takes the fallback node as an
+    ARGUMENT — position belongs to where a
+    reason sits in the tree, not to the
+    reason. (#reason/span-not-node)
+  end note
+
+  enum ReasonKind {
+    WrongShape
+    UnknownKey
+    Missing
+    Duplicate
+    Ambiguous
+    Custom(String)
+  }
+  note bottom of ReasonKind
+    CLOSED reasons, open rendering.
+    Closed so the framework can interpret
+    what it caught; ""Custom"" so an exotic
+    grammar is never blocked outright.
+  end note
+
+  interface "Sourced<'ast>" as Sourced {
+    +type Source: ToTokens
+    +source() -> &'ast Source
+    +additional() -> &[&'ast Source]
+  }
+}
+
+package proc_macro_flow_derive <<Frame>> {
+
+  interface "Extractor<'ast, I>" as Extractor {
+    +type Output
+    +extract_from(I) -> Self::Output
+  }
+  note right of Extractor
+    Supertraits are the two questions:
+    ""Sourced"" = what is the source,
+    ""I: Visitable"" = how do we get there.
+    No third question about PARSING.
+
+    ""Output"" is unbounded on purpose until
+    Processor exists (#extractor/output-bound).
+  end note
+
+  interface "Validate<'ast, I>" as Validate {
+    +type ValidityError
+    +type Valid
+    +validate(I) -> Result<Valid, ValidityError>
+  }
+  note bottom of Validate
+    SURFACE-LEVEL ONLY: does this exist
+    where required, is this within a bound.
+    Never parsing, never grammar.
+    (#pipeline/validity-scope)
+  end note
+
+  interface "Visitable<'ast>" as Visitable {
+    +accept<V: Visit<'ast>>(self, &mut V)
+  }
+  note bottom of Visitable
+    Implemented for the REFERENCE types
+    (""&'ast syn::Attribute""), so ""self"" is
+    already the ""&'ast T"" every ""visit_*""
+    wants. Implementing it for the owned
+    type made the receiver unconstructible
+    for value-passed wrappers.
+    (#visitable/by-value)
+  end note
+
+  ' --- free functions: what #[from] lowers to ---
+  class "extract / extract_each / extract_maybe" as FromHelpers <<(F,#FFCC88)>> {
+    extract<T, I>(I) -> T::Output
+    extract_each<T, I, N>(N) -> Vec<T::Output>
+    extract_maybe<T, I>(Option<I>) -> Option<T::Output>
+  }
+  note bottom of FromHelpers
+    The lowering target of ""#[from = ..]"".
+    Which one a field uses is read off its
+    TYPE, never off the attribute
+    (#from/arity-from-type).
+
+    Call sites must name T: ""T::Output"" is
+    an associated type and so not
+    injective (#from/names-its-target).
+  end note
+}
+
+Extracted *-- Extraction
+Extraction *-- "0..*" Reason
+Reason *-- ReasonKind
+Extractor --|> Sourced
+Extractor --|> Validate
+Extractor ..> Extracted : Output is\ntypically
+FromHelpers ..> Extractor : drives
+
+@enduml

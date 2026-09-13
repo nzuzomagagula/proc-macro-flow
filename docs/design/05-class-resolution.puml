@@ -1,0 +1,89 @@
+@startuml class-resolution
+title Resolution — a typestate, not a runtime flag
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+package "proc_macro_flow_traits::resolution" <<Frame>> {
+
+  class "Unresolved<'ast, T>" as Unresolved {
+    -tokens: &'ast TokenStream
+    -_target: PhantomData<fn() -> T>
+    --
+    +new(&'ast TokenStream) -> Self
+    +resolve() -> Result<Resolved<'ast,T>, Error>
+    +resolve_with<E>(f) -> Result<Resolved<'ast,T>, E>
+  }
+
+  class "Resolved<'ast, T>" as Resolved {
+    -value: T
+    -tokens: &'ast TokenStream
+    --
+    +value() -> &T
+    +into_value() -> T
+  }
+  note right of Resolved
+    **No ""resolve"" method.**
+    Resolving twice is a type error, not a
+    silent no-op — the idempotence problem
+    disappears rather than being handled.
+    (#no-idempotence)
+  end note
+
+  interface "Deferred<'ast>" as Deferred {
+    +tokens() -> &'ast TokenStream
+  }
+  note bottom of Deferred
+    Bounds ""Stage::Item"". Without it, code
+    generic over a stage would hold an item
+    it could not touch.
+  end note
+
+  interface Stage {
+    +type Item<'ast, T>: Deferred + ToTokens
+  }
+  note right of Stage
+    STAGE-level, not item-level: a container
+    takes ONE parameter however many deferred
+    fields it has, and transitions wholesale.
+    A container cannot hold a mix — "half
+    parsed" is not a state anything downstream
+    should have to consider.
+  end note
+
+  class Raw <<uninhabited enum>>
+  class Parsed <<uninhabited enum>>
+}
+
+Unresolved ..> Resolved : resolve()\n**consumes self**
+Unresolved ..|> Deferred
+Resolved ..|> Deferred
+Raw ..|> Stage
+Parsed ..|> Stage
+Raw ..> Unresolved : Item
+Parsed ..> Resolved : Item
+
+note as Splice
+  Both states implement ""ToTokens"" and emit
+  the SAME tokens. A generator never has to
+  ask which state it is holding — splicing
+  is uniform, and resolution never costs you
+  the source.
+end note
+
+Splice .. Unresolved
+Splice .. Resolved
+
+note as Contrast
+  **Why a typestate here but not for Extraction**
+
+  Resolved/unresolved is a true binary with no
+  second axis. Extraction has one — a node can
+  have a value AND a complaint — so it is a
+  struct. The two decisions are consistent,
+  not a reversal.
+end note
+
+Contrast .. Stage
+
+@enduml

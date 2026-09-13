@@ -1,9 +1,4 @@
 // @review [~]
-use crate::{
-    StructExtraction,
-    base::extractor::extractor::{attribute::TransformationExtraction, field::FieldExtraction},
-};
-
 // Moved here from base/extractor/extractor/mod.rs - these describe the PROCESSOR stage and had
 // no reason to sit in the extractor module.
 // TODO(#processor/pipeline):C[S(ProcessorPipeline)], "Bare struct holding its own extractor/processor/generator triple for the processor stage"
@@ -12,14 +7,6 @@ use crate::{
 // TODO(#processor/helpers):C[Tr(ProcessorHelpers)], "Shared trait/helpers so concrete processors (visit_field, visit_fields, visit_attribute, and future ones) don't reimplement Visit boilerplate for per-field/per-attribute customisation"
 // Query(#processor/base-scope):Q[this ??], "What should the base ExtractorProcessor/FieldProcessor/TransformationProcessor actually validate or transform before generation, versus what's left for a concrete processor built on top? Decide before wiring #processor/expansion in extractor/mod.rs"
 // Answer(#processor/scope-reply):A[ID(processor/base-scope) ==? ID(syntax/extraction)], "The validate half is answered: the base processor validates NOTHING. Validation is the syntax stage's job and its output is already a tree of Extraction<T> carrying its own reasons, so a processor that re-validates would be duplicating a check it cannot improve on and discarding the spans that make the result diagnosable. What is left for the base is TRANSFORM only - narrowing a well-formed extraction into whatever the generator wants to consume. The concrete- processor half stays open until ID(processor/expansion) forces it"
-pub struct ExtractorProcessor<'ast> {
-    source: StructExtraction<'ast>,
-}
+// DEPRECATED(#processor/bare-source):D[S(ExtractorProcessor)] && D[S(FieldProcessor)] && D[S(TransformationProcessor)], "Deleted. Each held `source: XExtraction` - the bare extraction, unwrapped - and that is now settled the other way: a processor receives Ty(Extractor::Output) WHOLE, which is Extracted<T, I>, and the pipeline does not unwrap between stages. Unwrapping would strip the source node off exactly the value a processor needs it for, since a failed extraction has no T to ask through Sourced. They were also never constructed, so nothing held them to the change. Re-declare against Extracted when ID(pipeline/base-processor) lands"
 
-pub struct FieldProcessor<'ast> {
-    source: FieldExtraction<'ast>,
-}
-
-pub struct TransformationProcessor<'ast> {
-    source: TransformationExtraction<'ast>,
-}
+// Answer(#processor/receives):A[ID(processor/base-scope) ==? T(Extracted)], "What a processor takes is decided: Extracted<T, I>, as handed over, no unwrapping. What it DOES is still TRANSFORM only - it validates nothing, because by the time an extraction reaches it the reasons are already recorded and re-checking would duplicate a test it cannot improve on while discarding the spans that make the result diagnosable. Note this supersedes the older wording of ID(processor/scope-reply) below, which assigned validation to 'the syntax stage': under the corrected stage boundary the syntax stage IS processing, so that sentence named the wrong owner"
