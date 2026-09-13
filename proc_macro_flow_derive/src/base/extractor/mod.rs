@@ -6,4 +6,4 @@ pub mod extractor;
 pub mod generator;
 pub mod processor;
 
-pub(crate) use extractor::{ExtractionState, StructExtraction};
+pub(crate) use extractor::StructExtraction;

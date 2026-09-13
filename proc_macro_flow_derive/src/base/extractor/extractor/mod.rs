@@ -2,7 +2,7 @@
 // TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
 // TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
 // TODO[~](#extractor/macro-wiring):U[F(extractor)], "Wire ExtractorPipeline::expand into lib.rs::extractor once it exists. Split from #extractor/macro so the two comments stop sharing one identity - nuts keys by identity, so a snapshot was only ever seeing one of them"
-use syn::{DataStruct, DeriveInput, Fields, visit::Visit};
+use syn::{DataStruct, DeriveInput};
 
 pub(crate) use proc_macro_flow_traits::extractor::Extraction;
 use proc_macro_flow_traits::{
@@ -16,7 +16,7 @@ use crate::{
 pub mod attribute;
 pub mod field;
 
-//Fix[ ](#extractor/recursive-source):U[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "When expanding the Extractors, a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type (Fields here). Renamed off #extractor/macro, which three comments were claiming at once. Note this is the OUTER syn traversal and is unrelated to the Meta/Expr walk in the syntax stage - keeping the two traversals distinct is the point of #extractor/expansion's 'two separate passes'"
+//Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"
 
 pub(crate) struct StructExtraction<'ast> {
     // Held so the node can say where it came from - see NOTE(#source-not-span) in
@@ -62,24 +62,5 @@ impl<'ast> Validate<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
             syn::Data::Struct(data_struct) => Ok(data_struct),
             syn::Data::Enum(_) | syn::Data::Union(_) => Err(StructExtractionValidityError),
         }
-    }
-}
-/// Local newtype so the `Visit` impl has a home: `Extraction` now lives in
-/// proc_macro_flow_traits and `Visit` is syn's, so implementing one for the other directly is an
-/// orphan-rule violation (E0117).
-#[derive(Default)]
-pub(crate) struct StructExtractionVisitor<'ast>(pub(crate) Extraction<StructExtraction<'ast>>);
-
-impl<'ast> Visit<'ast> for StructExtractionVisitor<'ast> {
-    // Fix[ ](#extractor/recursive-source) still stands: this traverses from Fields, a CHILD's
-    // genesis type, rather than from StructExtraction's own DeriveInput - which is also why it has
-    // no source to hand Sourced and has to leave `value` alone. Left as-is deliberately; rewiring
-    // the traversal is that task, not this one.
-    fn visit_fields(&mut self, i: &'ast Fields) {
-        self.0.reasons.extend(
-            i.iter()
-                .map(FieldExtraction::extract_from)
-                .flat_map(|extraction| extraction.reasons),
-        );
     }
 }
