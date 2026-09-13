@@ -1,34 +1,40 @@
 // @review [ ]
+use proc_macro_flow_traits::{extractor::Extraction, source::Sourced};
 use syn::Field;
 
 use crate::base::extractor::extractor::attribute::TransformationExtraction;
 use crate::traits::Validate;
 use crate::traits::extractor::Extractor;
 
-use super::super::ExtractionState;
 pub(crate) struct FieldExtraction<'ast> {
     pub(crate) field: &'ast Field,
-    pub(crate) transformation: Vec<ExtractionState<TransformationExtraction<'ast>>>,
+    pub(crate) transformation: Vec<Extraction<TransformationExtraction<'ast>>>,
 }
+
 pub struct FieldExtractionError;
+
+impl<'ast> Sourced<'ast> for FieldExtraction<'ast> {
+    type Source = Field;
+
+    fn source(&self) -> &'ast Field {
+        self.field
+    }
+}
+
 impl<'ast> Extractor<'ast, &'ast Field> for FieldExtraction<'ast> {
-    type Node = Field;
-
-    type ExtractionError = FieldExtractionError;
-
-    fn extract_from(
-        node: &'ast Self::Node,
-    ) -> Result<ExtractionState<Self>, Self::ExtractionError> {
-        if let Ok(f) = Self::validate(node) {
-            Ok(ExtractionState::Initialised(Self {
-                field: f,
-                transformation: f
+    fn extract_from(node: &'ast Field) -> Extraction<Self> {
+        // `validate` is infallible today, so this cannot currently produce a Reason of its own -
+        // every complaint comes from a child. That changes with ID(syntax/extraction).
+        match Self::validate(node) {
+            Ok(field) => Extraction::value(Self {
+                field,
+                transformation: field
                     .attrs
                     .iter()
-                    .map(|att| TransformationExtraction::extract_from(att)),
-            }))
-        } else {
-            Err(FieldExtractionError)
+                    .map(TransformationExtraction::extract_from)
+                    .collect(),
+            }),
+            Err(_) => Extraction::default(),
         }
     }
 }
@@ -38,6 +44,10 @@ impl<'ast> Validate<'ast, &'ast Field> for FieldExtraction<'ast> {
 
     type Valid = &'ast Field;
 
+    // TODO[ ](#extractor/field-validate):U[F(validate)], "Validates nothing - every Field is
+    // accepted. Kept honest rather than made to look busy: what there is to check here is whether
+    // the field's attributes form a well-shaped grammar node, and that is ID(syntax/extraction)'s
+    // job, not a check this stage can do on its own"
     fn validate(input: &'ast Field) -> Result<Self::Valid, Self::ValidityError> {
         Ok(input)
     }

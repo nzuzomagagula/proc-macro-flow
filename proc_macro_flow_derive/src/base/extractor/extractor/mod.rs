@@ -1,13 +1,14 @@
-// @review [x]
-use std::error::Error;
-
 // @review [ ]
 // TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
 // TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
 // TODO[~](#extractor/macro-wiring):U[F(extractor)], "Wire ExtractorPipeline::expand into lib.rs::extractor once it exists. Split from #extractor/macro so the two comments stop sharing one identity - nuts keys by identity, so a snapshot was only ever seeing one of them"
 use syn::{DataStruct, DeriveInput, Fields, visit::Visit};
 
-pub(crate) use crate::traits::extractor::ExtractionState;
+pub(crate) use proc_macro_flow_traits::extractor::Extraction;
+use proc_macro_flow_traits::{
+    extractor::{Reason, ReasonKind},
+    source::Sourced,
+};
 use crate::{
     base::extractor::extractor::field::FieldExtraction,
     traits::{Validate, extractor::Extractor},
@@ -18,24 +19,31 @@ pub mod field;
 //Fix[ ](#extractor/recursive-source):U[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "When expanding the Extractors, a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type (Fields here). Renamed off #extractor/macro, which three comments were claiming at once. Note this is the OUTER syn traversal and is unrelated to the Meta/Expr walk in the syntax stage - keeping the two traversals distinct is the point of #extractor/expansion's 'two separate passes'"
 
 pub(crate) struct StructExtraction<'ast> {
-    pub(crate) fields: Vec<ExtractionState<FieldExtraction<'ast>>>,
+    // Held so the node can say where it came from - see NOTE(#source-not-span) in
+    // proc_macro_flow_traits::source for why this is the DeriveInput and not a Span.
+    pub(crate) derive_input: &'ast DeriveInput,
+    pub(crate) fields: Vec<Extraction<FieldExtraction<'ast>>>,
 }
 
-pub struct ExtractionError;
+impl<'ast> Sourced<'ast> for StructExtraction<'ast> {
+    type Source = DeriveInput;
+
+    fn source(&self) -> &'ast DeriveInput {
+        self.derive_input
+    }
+}
 
 impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
-    type ExtractionError = ExtractionError;
-    type Node = DeriveInput;
-
-    fn extract_from(
-        node: &'ast Self::Node,
-    ) -> Result<ExtractionState<Self>, Self::ExtractionError> {
-        if let Ok(ds) = Self::validate(node) {
-            Ok(ExtractionState::Initialised(Self {
-                fields: { ds.fields.iter().map(|f| FieldExtraction::extract_from(f)) },
-            }))
-        } else {
-            Err(ExtractionError)
+    fn extract_from(node: &'ast DeriveInput) -> Extraction<Self> {
+        match Self::validate(node) {
+            // Children keep their OWN extractions, reasons included. The parent does not absorb
+            // them: a reason belongs where it was recorded, and the render walk collects them on
+            // its way down (ID(no-ancestry)).
+            Ok(data) => Extraction::value(Self {
+                derive_input: node,
+                fields: data.fields.iter().map(FieldExtraction::extract_from).collect(),
+            }),
+            Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape, node)),
         }
     }
 }
@@ -48,19 +56,30 @@ impl<'ast> Validate<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
     type Valid = &'ast DataStruct;
 
     fn validate(input: &'ast DeriveInput) -> Result<&'ast DataStruct, Self::ValidityError> {
-        match input.data {
-            syn::Data::Struct(data_struct) => Ok(&data_struct),
-            syn::Data::Enum(data_enum) => Err(StructExtractionValidityError),
-            syn::Data::Union(data_union) => Err(StructExtractionValidityError),
+        // `&input.data`, not `input.data` - matching by value moves the variant binding out and
+        // the old `Ok(&data_struct)` handed back a reference to a local.
+        match &input.data {
+            syn::Data::Struct(data_struct) => Ok(data_struct),
+            syn::Data::Enum(_) | syn::Data::Union(_) => Err(StructExtractionValidityError),
         }
     }
 }
-impl<'ast> Visit<'ast> for ExtractionState<StructExtraction<'ast>> {
+/// Local newtype so the `Visit` impl has a home: `Extraction` now lives in
+/// proc_macro_flow_traits and `Visit` is syn's, so implementing one for the other directly is an
+/// orphan-rule violation (E0117).
+#[derive(Default)]
+pub(crate) struct StructExtractionVisitor<'ast>(pub(crate) Extraction<StructExtraction<'ast>>);
+
+impl<'ast> Visit<'ast> for StructExtractionVisitor<'ast> {
+    // Fix[ ](#extractor/recursive-source) still stands: this traverses from Fields, a CHILD's
+    // genesis type, rather than from StructExtraction's own DeriveInput - which is also why it has
+    // no source to hand Sourced and has to leave `value` alone. Left as-is deliberately; rewiring
+    // the traversal is that task, not this one.
     fn visit_fields(&mut self, i: &'ast Fields) {
-        let fields = i
-            .iter()
-            .map(ExtractionState::<FieldExtraction<'_>>::extract)
-            .collect();
-        *self = ExtractionState::Initialised(StructExtraction { fields });
+        self.0.reasons.extend(
+            i.iter()
+                .map(FieldExtraction::extract_from)
+                .flat_map(|extraction| extraction.reasons),
+        );
     }
 }
