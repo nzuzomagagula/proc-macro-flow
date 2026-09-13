@@ -166,6 +166,7 @@
  */
 
 pub mod extractor;
+pub mod worked;
 
 // The maximal grammar: every shape, every arity rule, every resolution rule the stage has to
 // handle, in one pair of items. Does NOT compile - Syntax/SomeDerive and the support types do not

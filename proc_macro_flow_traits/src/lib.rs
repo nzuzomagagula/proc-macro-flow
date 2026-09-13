@@ -1,6 +1,7 @@
 // @review [x]
 pub mod extractor;
 pub mod generator;
+pub mod meta;
 pub mod processor;
 pub mod resolution;
 pub mod source;

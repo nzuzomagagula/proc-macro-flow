@@ -2,16 +2,19 @@
 // TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
 // TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
 // TODO[~](#extractor/macro-wiring):U[F(extractor)], "Wire ExtractorPipeline::expand into lib.rs::extractor once it exists. Split from #extractor/macro so the two comments stop sharing one identity - nuts keys by identity, so a snapshot was only ever seeing one of them"
-use syn::{DataStruct, DeriveInput};
+use syn::{DataStruct, DeriveInput, Field};
 
-pub(crate) use proc_macro_flow_traits::extractor::Extraction;
+pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
 use proc_macro_flow_traits::{
     extractor::{Reason, ReasonKind},
     source::Sourced,
 };
 use crate::{
     base::extractor::extractor::field::FieldExtraction,
-    traits::{Validate, extractor::Extractor},
+    traits::{
+        Validate,
+        extractor::{Extractor, extract_each},
+    },
 };
 pub mod attribute;
 pub mod field;
@@ -22,7 +25,7 @@ pub(crate) struct StructExtraction<'ast> {
     // Held so the node can say where it came from - see NOTE(#source-not-span) in
     // proc_macro_flow_traits::source for why this is the DeriveInput and not a Span.
     pub(crate) derive_input: &'ast DeriveInput,
-    pub(crate) fields: Vec<Extraction<FieldExtraction<'ast>>>,
+    pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
 }
 
 impl<'ast> Sourced<'ast> for StructExtraction<'ast> {
@@ -34,17 +37,26 @@ impl<'ast> Sourced<'ast> for StructExtraction<'ast> {
 }
 
 impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
-    fn extract_from(node: &'ast DeriveInput) -> Extraction<Self> {
-        match Self::validate(node) {
+    type Output = Extracted<Self, &'ast DeriveInput>;
+
+    fn extract_from(node: &'ast DeriveInput) -> Self::Output {
+        let extraction = match Self::validate(node) {
             // Children keep their OWN extractions, reasons included. The parent does not absorb
             // them: a reason belongs where it was recorded, and the render walk collects them on
             // its way down (ID(no-ancestry)).
+            // The shape `#[from = source.data.fields]` will generate: the designer names where
+            // the children are, the Vec in the field's type picks `extract_each`, and the walk is
+            // not written out. See @group(#from).
             Ok(data) => Extraction::value(Self {
                 derive_input: node,
-                fields: data.fields.iter().map(FieldExtraction::extract_from).collect(),
+                fields: extract_each::<FieldExtraction, _, _>(data.fields.iter()),
             }),
-            Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape, node)),
-        }
+            Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape)),
+        };
+
+        // The source goes on the OUTPUT, so it survives even the Err arm above - where there is no
+        // Self to ask through Sourced. See ID(extracted/source-when-absent).
+        Extracted::new(extraction, node)
     }
 }
 

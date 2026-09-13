@@ -133,3 +133,82 @@ impl Stage for Raw {
 impl Stage for Parsed {
     type Item<'ast, T> = Resolved<'ast, T>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quote::quote;
+    use syn::Type;
+
+    // A container exercising the Stage GAT exactly as a real grammar node would: one parameter,
+    // several deferred fields, projected in field position.
+    struct Node<'ast, S: Stage> {
+        shape: S::Item<'ast, Type>,
+        alias: S::Item<'ast, syn::Ident>,
+    }
+
+    // Generic over the stage: only compiles because Stage::Item is bounded by Deferred + ToTokens.
+    fn spliced<S: Stage>(node: &Node<'_, S>) -> String {
+        let (shape, alias) = (&node.shape, &node.alias);
+        quote!(#shape #alias).to_string()
+    }
+
+    #[test]
+    fn resolve_transitions_and_keeps_the_tokens() {
+        let tokens = quote!(AttributeKind::MetaList);
+        let unresolved = Unresolved::<Type>::new(&tokens);
+
+        assert_eq!(unresolved.tokens().to_string(), tokens.to_string());
+
+        let resolved = unresolved.resolve().expect("a path is a type");
+
+        // The source survives the transition - this is what keeps a resolved item spliceable and
+        // still able to point at what the user wrote.
+        assert_eq!(resolved.tokens().to_string(), tokens.to_string());
+        assert!(matches!(resolved.value(), Type::Path(_)));
+    }
+
+    #[test]
+    fn splicing_is_identical_either_side_of_the_transition() {
+        let shape = quote!(AttributeKind::MetaList);
+        let alias = quote!(label);
+
+        let raw = Node::<Raw> {
+            shape: Unresolved::new(&shape),
+            alias: Unresolved::new(&alias),
+        };
+        let before = spliced(&raw);
+
+        let parsed = Node::<Parsed> {
+            shape: raw.shape.resolve().unwrap(),
+            alias: raw.alias.resolve().unwrap(),
+        };
+
+        // A generator never has to ask which state it is holding.
+        assert_eq!(before, spliced(&parsed));
+    }
+
+    #[test]
+    fn resolving_garbage_is_an_error_that_can_be_emitted() {
+        let tokens = quote!(!!);
+        let error = Unresolved::<Type>::new(&tokens)
+            .resolve()
+            .err()
+            .expect("`!!` is not a type");
+
+        assert!(!error.to_compile_error().is_empty());
+    }
+
+    #[test]
+    fn resolve_with_does_not_require_parse() {
+        // The escape hatch for grammar types, which are read by their shape trait rather than by
+        // syn::Parse. `u8` has no Parse impl, so this only compiles via resolve_with.
+        let tokens = quote!(anything);
+        let resolved = Unresolved::<u8>::new(&tokens)
+            .resolve_with(|_| Ok::<_, ()>(7u8))
+            .expect("the supplied reader succeeds");
+
+        assert_eq!(*resolved.value(), 7);
+        assert_eq!(resolved.tokens().to_string(), tokens.to_string());
+    }
+}

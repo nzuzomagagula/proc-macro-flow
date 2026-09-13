@@ -39,9 +39,13 @@ pub fn extractor(input: TokenStream) -> TokenStream {
     // which also has to sort by span and emit a stub impl ALONGSIDE the errors so a missing impl
     // does not cascade into 'does not implement' at every use site and bury the real diagnostic"
     let errors = extraction
-        .reasons
+        .reasons()
         .iter()
-        .map(|reason| reason.to_error("could not extract").to_compile_error());
+        .map(|reason| {
+            reason
+                .to_error(extraction.source(), "could not extract")
+                .to_compile_error()
+        });
 
     quote! { #(#errors)* }.into()
 }
