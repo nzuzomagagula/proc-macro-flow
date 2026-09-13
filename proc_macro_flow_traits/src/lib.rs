@@ -2,6 +2,8 @@
 pub mod extractor;
 pub mod generator;
 pub mod processor;
+pub mod resolution;
+pub mod source;
 
 /* @group(#syntax)
  *
@@ -13,7 +15,7 @@ pub mod processor;
  *
  * NOTE(#placement): V[root.has(N(syntax))] && V[ID(pipeline/relocate-traits) ==? this], "Step zero, and the same problem #pipeline/relocate-traits already names. VERIFIED: rustc refuses a proc-macro crate that declares ANY pub non-macro item, so the shape traits, Reason, Extraction and Node cannot live in the derive crate - this is a language constraint, not a preference. A PRIVATE grammar type does parse fine there, so expansion-time resolution would work either way; pub in this crate is what puts the grammar in cargo doc and what lets a re-emitted path resolve downstream. Everything below is blocked on this"
  *
- * TODO[ ](#deps): C[root.has(T(syn))] && C[root.has(T(proc_macro2))], "This crate has NO dependencies today, so it cannot name syn::Meta, syn::Expr, syn::Error or proc_macro2::Span - and every item below is defined in terms of those. Add syn (parsing + printing, and `full` to match the derive crate) and proc-macro2 before anything else here is written, or each task silently becomes unimplementable in place"
+ * TODO[x](#deps): C[root.has(T(syn))] && C[root.has(T(proc_macro2))], "This crate has NO dependencies today, so it cannot name syn::Meta, syn::Expr, syn::Error or proc_macro2::Span - and every item below is defined in terms of those. Add syn (parsing + printing, and `full` to match the derive crate) and proc-macro2 before anything else here is written, or each task silently becomes unimplementable in place"
  *
  * TODO[ ](#home): C[N(syntax)], "One module for the whole surface, so `mod syntax;` sits beside extractor/processor/generator rather than the items scattering through lib.rs. Every task in this block currently names the crate root only because that module does not exist yet - move them into it as it lands"
  *
