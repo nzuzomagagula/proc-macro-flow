@@ -12,8 +12,8 @@ package syn <<Frame>> {
   }
   note bottom of Meta
     **This is the attribute AST.**
-    Nothing here invents a node layer beside
-    it — Meta already IS the set of shapes an
+    Nothing here invents a node layer beside it
+    — Meta already IS the set of shapes an
     attribute can be written in, and
     ""Punctuated<Meta, Comma>"" is its spine.
   end note
@@ -26,7 +26,7 @@ package "proc_macro_flow_traits::meta" <<Frame>> {
     List(ListBody<'ast>)
     Value(ValueExpr<'ast>)
     --
-    +shape_name() -> &'static str
+    +kind() -> ShapeKind
   }
 
   class "PathOnly<'ast>" as PathOnly {
@@ -48,6 +48,8 @@ package "proc_macro_flow_traits::meta" <<Frame>> {
 
     ""bounds(0, 64)"" is impossible without it:
     a bare literal is not valid Meta at all.
+    These two methods ARE the Meta-spine /
+    Expr-leaf rule, made into an API.
     (#meta-vs-expr)
   end note
 
@@ -59,16 +61,39 @@ package "proc_macro_flow_traits::meta" <<Frame>> {
     ""MetaNameValue::value"" is already an Expr.
   end note
 
+  enum ShapeKind {
+    Path = "path"
+    List = "list"
+    NameValue = "name-value"
+  }
+  note bottom of ShapeKind
+    Declared with ""names!"", NOT ""vocabulary!"" —
+    a shape is SELECTED by a type path rustc
+    resolves, never by an ident we compare, so
+    a ""TryFrom<&Ident>"" here would be a matching
+    path that must never be used.
+    (#vocabulary/only-what-we-own, one level up)
+  end note
+
   interface Shape {
     +type Input<'ast>
+    +const KIND: ShapeKind
   }
   note left of Shape
     A shape is not a tag we attach — it is
     WHICH OPENING the payload arrives through.
-    That collapses two concepts into one, and
-    is what makes ""#[shape(..)]"" checkable by
-    rustc rather than by us.
-    (#shape-is-the-opening)
+
+    ""KIND"" is the bridge. Without it the
+    type-level markers and the runtime Opening
+    were parallel structures with nothing
+    joining them, and a WrongShape diagnostic
+    had to hand-write both halves with no
+    compiler check that they agreed.
+
+    The check is now direct, with no string on
+    either side:
+      ""opening.kind() == S::KIND""
+    (#shape/bridge)
   end note
 
   package "AttributeKind" <<Node>> {
@@ -86,6 +111,8 @@ package "proc_macro_flow_traits::meta" <<Frame>> {
 }
 
 Meta --> Opening : From<&'ast Meta>
+Meta --> ShapeKind : From<&Meta>
+Opening --> ShapeKind : kind()
 Opening *-- PathOnly
 Opening *-- ListBody
 Opening *-- ValueExpr
@@ -99,20 +126,20 @@ NamedValue ..> ValueExpr : Input
 PathMarker ..> PathOnly : Input
 
 note as Recursion
-  Each element of a ""ListBody::metas()"" is
-  itself a ""Meta"", hence itself an ""Opening"".
-  That is the whole recursion — the spine
-  goes as deep as there are named nodes,
-  and ""exprs()"" is where it stops.
+  Each element of ""ListBody::metas()"" is itself
+  a ""Meta"", hence itself an ""Opening"". That is
+  the whole recursion — the spine goes as deep
+  as there are named nodes, and ""exprs()"" is
+  where it stops.
 end note
 
 Recursion .. ListBody
 
 note as Emit
   Every opening implements ""ToTokens"" and
-  re-emits what it came from unchanged.
-  The compiler-checked selector depends on
-  that holding: ""#[shape(AttributeKind::MetaList)]""
+  re-emits what it came from unchanged. The
+  compiler-checked selector depends on that:
+  ""#[shape(AttributeKind::MetaList)]""
   round-trips verbatim into a type position.
 end note
 

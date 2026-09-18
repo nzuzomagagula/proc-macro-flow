@@ -10,9 +10,8 @@ package proc_macro_flow_traits <<Frame>> {
     +value: Option<T>
     +reasons: Vec<Reason>
     --
-    +value(T) -> Self
-    +failed(Reason) -> Self
-    +with_reason(Reason) -> Self
+    +value(T) / +failed(Reason)
+    +with_reason(Reason)
     +is_failure() -> bool
     +absorb<U>(Extraction<U>) -> Option<U>
   }
@@ -24,54 +23,64 @@ package proc_macro_flow_traits <<Frame>> {
     input while the value stays good.
     Two states could not say that.
     (#cleanup)
+
+    No lifetime: see Reason below.
   end note
 
   class "Extracted<T, I>" as Extracted {
     -extraction: Extraction<T>
     -source: I
     --
-    +new(Extraction<T>, I) -> Self
+    +new(Extraction<T>, I)
     +source() -> &I
-    +extraction() -> &Extraction<T>
-    +into_extraction() -> Extraction<T>
     +value() -> Option<&T>
     +reasons() -> &[Reason]
+    +into_extraction() -> Extraction<T>
     +to_error(msg) -> syn::Error
   }
   note right of Extracted
-    The extractor's OUTPUT and the
-    processor's INPUT. Source lives here,
-    not behind ""T: Sourced"", because a
-    FAILED extraction has no T to ask —
-    which is the case a diagnostic needs
-    most. (#extracted/source-when-absent)
+    The extractor's OUTPUT and the processor's
+    INPUT — handed over WHOLE, never unwrapped
+    between stages.
 
-    ""new"" is public and must be: the
-    stage impls live in the other crate.
-    Not a capability token.
+    Source lives here, not behind ""T: Sourced"",
+    because a FAILED extraction has no T to ask
+    — the case a diagnostic needs most.
+    (#extracted/source-when-absent)
+
+    No lifetime parameter: ""I"" is always a
+    borrowed node or a Copy wrapper over one,
+    so it already carries 'ast.
   end note
 
   class Reason {
     +kind: ReasonKind
     -span: Option<Span>
     --
-    +new(ReasonKind) -> Self
-    +at(ReasonKind, &impl Spanned) -> Self
+    +new(ReasonKind)
+    +at(ReasonKind, &impl Spanned)
     +span() -> Option<Span>
     +to_error(&impl ToTokens, msg) -> syn::Error
   }
   note left of Reason
-    Stores a **Span**, while ""Extracted""
-    stores a **node**. Deliberate asymmetry:
-    a node is multi-token, so ""new_spanned""
-    is needed for its full range; a reason
-    points at ONE token, which needs no
-    ""Span::join"" and is therefore exact.
+    Stores a **Span**; ""Extracted"" stores a
+    **node**. Deliberate asymmetry:
 
-    ""to_error"" takes the fallback node as an
-    ARGUMENT — position belongs to where a
-    reason sits in the tree, not to the
-    reason. (#reason/span-not-node)
+    · a node is multi-token → needs
+      ""new_spanned"" for its full range
+    · a reason points at ONE token → needs
+      no ""Span::join"", so it is exact
+
+    ""None"" means "nothing finer than the node
+    I sit on" and the renderer falls back to
+    the chain. ""to_error"" takes that node as an
+    ARGUMENT — a reason cannot render itself,
+    because position belongs to where it SITS.
+    (#reason/span-not-node)
+
+    Span is Copy and owns nothing, which is
+    why neither Reason nor Extraction has a
+    lifetime. (#no-owned-nodes)
   end note
 
   enum ReasonKind {
@@ -84,9 +93,13 @@ package proc_macro_flow_traits <<Frame>> {
   }
   note bottom of ReasonKind
     CLOSED reasons, open rendering.
-    Closed so the framework can interpret
-    what it caught; ""Custom"" so an exotic
-    grammar is never blocked outright.
+    Closed so the framework can interpret what
+    it caught; ""Custom"" so an exotic grammar is
+    never blocked.
+
+    Three of these are now ALSO obtainable from
+    rustc by re-emitting keys as a struct
+    literal — see 09-diagnostics.
   end note
 
   interface "Sourced<'ast>" as Sourced {
@@ -98,18 +111,28 @@ package proc_macro_flow_traits <<Frame>> {
 
 package proc_macro_flow_derive <<Frame>> {
 
-  interface "Extractor<'ast, I>" as Extractor {
+  interface "Extractor<'ast, I: Visitable>" as Extractor {
     +type Output
     +extract_from(I) -> Self::Output
   }
   note right of Extractor
-    Supertraits are the two questions:
-    ""Sourced"" = what is the source,
-    ""I: Visitable"" = how do we get there.
-    No third question about PARSING.
+    Supertraits are the TWO QUESTIONS this
+    stage exists to answer:
+      ""Sourced""  = what is the source
+      ""I: Visitable"" = how do we get there
+    There is deliberately no third question
+    about how to PARSE the node.
 
     ""Output"" is unbounded on purpose until
-    Processor exists (#extractor/output-bound).
+    Processor exists — the honest bound is
+    "something the processor can consume".
+    (#extractor/output-bound)
+
+    Grammar types do NOT implement this.
+    Reading a Meta into a ColourSetting is
+    PROCESSING; putting it here was the
+    stage-boundary violation that made
+    Sourced look impossible to satisfy.
   end note
 
   interface "Validate<'ast, I>" as Validate {
@@ -118,9 +141,14 @@ package proc_macro_flow_derive <<Frame>> {
     +validate(I) -> Result<Valid, ValidityError>
   }
   note bottom of Validate
-    SURFACE-LEVEL ONLY: does this exist
-    where required, is this within a bound.
-    Never parsing, never grammar.
+    SURFACE-LEVEL ONLY: does this exist where
+    required, is this within a bound. Never
+    parsing, never grammar.
+
+    Not vestigial — it was UNDEFINED, which is
+    why every impl was ""Ok(input)"". The syntax
+    stage now uses it for a real narrowing:
+    ""Valid = (&Attribute, SyntaxHelper)"".
     (#pipeline/validity-scope)
   end note
 
@@ -130,28 +158,29 @@ package proc_macro_flow_derive <<Frame>> {
   note bottom of Visitable
     Implemented for the REFERENCE types
     (""&'ast syn::Attribute""), so ""self"" is
-    already the ""&'ast T"" every ""visit_*""
-    wants. Implementing it for the owned
-    type made the receiver unconstructible
-    for value-passed wrappers.
+    already the ""&'ast T"" every ""visit_*"" wants.
+
+    Implementing it for the OWNED type made the
+    receiver unconstructible for value-passed
+    wrappers — it needed a ""&'ast Self"" pointing
+    at something built on the stack.
     (#visitable/by-value)
   end note
 
-  ' --- free functions: what #[from] lowers to ---
   class "extract / extract_each / extract_maybe" as FromHelpers <<(F,#FFCC88)>> {
     extract<T, I>(I) -> T::Output
     extract_each<T, I, N>(N) -> Vec<T::Output>
     extract_maybe<T, I>(Option<I>) -> Option<T::Output>
   }
   note bottom of FromHelpers
-    The lowering target of ""#[from = ..]"".
-    Which one a field uses is read off its
-    TYPE, never off the attribute
-    (#from/arity-from-type).
+    What ""#[from = ..]"" lowers to. Which one a
+    field uses is read off its TYPE, never off
+    the attribute (#from/arity-from-type).
 
-    Call sites must name T: ""T::Output"" is
-    an associated type and so not
-    injective (#from/names-its-target).
+    Call sites must name T: ""T::Output"" is an
+    associated type and so not injective.
+    Generated code always knows it.
+    (#from/names-its-target)
   end note
 }
 

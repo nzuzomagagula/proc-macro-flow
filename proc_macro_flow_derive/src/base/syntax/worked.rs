@@ -33,9 +33,11 @@
 //! ```
 //!
 //! An extractor answers exactly two questions - *what is the source of this extraction* and *how do
-//! we get there* - which are its two supertraits, `Sourced` and `Visitable`. It never answers "how
-//! should this node be parsed". So it may hand on a raw `TokenStream`, and understanding that stream
-//! is the processor's job; `resolution::Unresolved` is the carrier for precisely that.
+//! we get there*. The second is its `Visitable` bound. The first is answered STRUCTURALLY, by
+//! `Extracted` carrying the node, rather than by a trait each extractor had to store a copy for -
+//! `Sourced` was deleted once that duplication was visible. It never answers "how should this node
+//! be parsed": it may hand on a raw `TokenStream`, and understanding that stream is the processor's
+//! job, with `resolution::Unresolved` as the carrier.
 //!
 //! **Consequence for the grammar work.** Reading `colour(ColourSetting::Red)` into a real
 //! `ColourSetting` is PROCESSING, not extraction, so grammar types do not implement `Extractor`.
@@ -44,8 +46,9 @@
 //! (ID(pipeline/base-processor)), which is still a comment-only stub. It is deliberately not forced
 //! into this stage to get it into the repo sooner.
 //!
-//! `TransformationExtraction` is therefore still `todo!()` for a reason that has changed: not
-//! "blocked on a rival reader", but "waiting for the stage that owns the job".
+//! `TransformationExtraction` is GONE. It was never a node: it held the author's transformation
+//! expression - a field path, a closure, a function pointer - which is `#[from]` on the field that
+//! needs it. See DEPRECATED(#attribute/generic-grammar) in base/extractor/extractor/field.rs.
 
 // ---------------------------------------------------------------------------
 // LAYER 1 - what the grammar author declares
@@ -118,7 +121,6 @@ mod walkthrough {
     use proc_macro_flow_traits::{
         extractor::ReasonKind,
         resolution::{Deferred, Raw},
-        source::Sourced,
     };
     use quote::ToTokens;
     use syn::{Field, ItemStruct, parse_str};
@@ -158,10 +160,16 @@ mod walkthrough {
         assert!(extractions.iter().all(|e| e.value().is_some()));
         assert!(extractions.iter().all(|e| e.reasons().is_empty()));
 
-        // Every node can point at what the user wrote - Sourced::source is required, so this is
-        // not something an extractor could have forgotten.
-        let shape = extractions[0].value().unwrap();
-        assert!(shape.source().to_token_stream().to_string().contains("shape"));
+        // Every node can point at what the user wrote - and the source is on the OUTPUT, not on
+        // the value, so this works even when extraction produced nothing. That is what made
+        // Tr(Sourced) redundant: it asked every extractor to store and return the same node.
+        assert!(
+            extractions[0]
+                .source()
+                .to_token_stream()
+                .to_string()
+                .contains("shape")
+        );
     }
 
     #[test]

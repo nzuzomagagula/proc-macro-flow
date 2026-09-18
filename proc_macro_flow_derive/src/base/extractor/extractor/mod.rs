@@ -5,10 +5,7 @@
 use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
-use proc_macro_flow_traits::{
-    extractor::{Reason, ReasonKind},
-    source::Sourced,
-};
+use proc_macro_flow_traits::extractor::{Reason, ReasonKind};
 use crate::{
     base::extractor::extractor::field::FieldExtraction,
     traits::{
@@ -16,29 +13,17 @@ use crate::{
         extractor::{Extractor, extract_each},
     },
 };
-pub mod attribute;
 pub mod field;
 
 //Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"
 
 pub(crate) struct StructExtraction<'ast> {
-    // Held so the node can say where it came from - see NOTE(#source-not-span) in
-    // proc_macro_flow_traits::source for why this is the DeriveInput and not a Span.
-    pub(crate) derive_input: &'ast DeriveInput,
     // UNWIRED(#extraction/unconsumed): V[this.built && !this.read], "The children are
     // extracted and then nobody looks at them - the processor that would is ID(pipeline/base-processor),
     // still a stub. This is the single most load-bearing warning in the crate, so it is
     // suppressed HERE and named rather than left to blend into the noise."
     #[allow(dead_code)]
     pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
-}
-
-impl<'ast> Sourced<'ast> for StructExtraction<'ast> {
-    type Source = DeriveInput;
-
-    fn source(&self) -> &'ast DeriveInput {
-        self.derive_input
-    }
 }
 
 impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
@@ -53,14 +38,14 @@ impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
             // the children are, the Vec in the field's type picks `extract_each`, and the walk is
             // not written out. See @group(#from).
             Ok(data) => Extraction::value(Self {
-                derive_input: node,
                 fields: extract_each::<FieldExtraction, _, _>(data.fields.iter()),
             }),
             Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape)),
         };
 
-        // The source goes on the OUTPUT, so it survives even the Err arm above - where there is no
-        // Self to ask through Sourced. See ID(extracted/source-when-absent).
+        // The source rides on the OUTPUT and is stored nowhere else. It survives the Err arm
+        // above, where there is no Self to ask at all - which is why Tr(Sourced) was redundant.
+        // See ID(extracted/source-when-absent).
         Extracted::new(extraction, node)
     }
 }

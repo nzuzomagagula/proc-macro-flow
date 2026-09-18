@@ -1,6 +1,4 @@
 // @review [ ]
-use proc_macro_flow_traits::source::Sourced;
-
 use crate::traits::{Validate, visitable::Visitable};
 
 // TODO[x](#cleanup):R[E(ExtractionState) -> S(Extraction)], "RESOLVED, and now LANDED in
@@ -14,17 +12,18 @@ use crate::traits::{Validate, visitable::Visitable};
 // longer a Result, so there is no `?`, no early return, and no way to drop a sibling on the way
 // out. The per-type ExtractionError associated types went with it - a proc macro only ever EMITS
 // an error, so a taxonomy of error structs bought nothing and actively fought accumulation"
-// NOTE(#extractor/two-questions): V[Tr(Extractor).sup(Sourced) && Tr(Extractor).sup(Visitable)], "The
-// two supertraits are not incidental - they ARE the two questions this stage exists to answer: what
-// is the source of this extraction (Sourced), and how do we get there (Visitable, on I). There is
-// deliberately no third question about how to PARSE the node. An extractor may hand on a raw
-// TokenStream and leave understanding it to the processor, which is why Ty(Output) below is
-// unconstrained. Grammar types do NOT implement this trait - reading a Meta into a ColourSetting is
-// processing, not extraction, and putting it here was a stage-boundary violation that made Sourced
-// look impossible to satisfy"
-pub(crate) trait Extractor<'ast, I: Visitable<'ast>>:
-    Sized + Sourced<'ast> + Validate<'ast, I>
-{
+// NOTE(#extractor/two-questions): V[Tr(Extractor).sup(Visitable) && S(Extracted).P(source)], "The
+// stage still answers exactly two questions - what is the SOURCE of this extraction, and how do we
+// GET THERE - but only one of them is a supertrait now. `I: Visitable` answers the second. The
+// first is answered STRUCTURALLY by Extracted, which cannot be built without a source, rather than
+// by Tr(Sourced), which required every implementor to store one and hand it back honestly.
+// VERIFIED that the trait earned nothing: it had a single real caller, in a test, while
+// Extracted::source covered every other site AND survived a failed extraction, where there is no
+// Self to ask. Storing the node as well was a second answer to one question.
+// There is still deliberately no third question about how to PARSE the node - an extractor may hand
+// on a raw TokenStream and leave understanding it to the processor, which is why Ty(Output) below
+// is unconstrained"
+pub(crate) trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     /// What the processor receives.
     ///
     /// TODO[ ](#extractor/output-bound):C[Ty(Output).bound], "Unbounded ON PURPOSE. The honest bound

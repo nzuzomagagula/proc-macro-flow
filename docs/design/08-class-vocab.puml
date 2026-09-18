@@ -1,0 +1,185 @@
+@startuml class-vocab
+title The vocabulary suite — declared names, generated conversions
+
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+note as Problem
+  **What this exists to remove**
+
+  Hand-written comparisons against spellings,
+  scattered across sites that drift apart:
+  ""path.is_ident(..)"" against a literal, and a
+  ""match ident.to_string().as_str()"" beside it
+  listing candidates that no longer matched.
+
+  A declaration generates BOTH the comparison
+  and the candidate list, so they cannot
+  disagree. And the match becomes exhaustive:
+  VERIFIED that adding a name breaks the build
+  at every site (E0004) — where an ""is_ident""
+  string silently did nothing.
+end note
+
+package "proc_macro_flow_traits::vocab" <<Frame>> {
+
+  package "names.rs" <<Rectangle>> {
+    class "names!" as Names <<(M,#CFE8CF) macro>> {
+      enum + ALL + spelling()
+      spellings() + candidates()
+      from_spelling() + Display
+      From<Self> for &'static str
+    }
+    class "vocabulary!" as Vocab <<(M,#CFE8CF) macro>> {
+      names! + TryFrom<&Ident>
+             + TryFrom<&Path>
+    }
+  }
+
+  package "flags.rs" <<Rectangle>> {
+    class "flag!" as Flag <<(M,#CFE8CF) macro>> {
+      ZST + TryFrom<&Path>
+          + TryFrom<&Meta>
+          + FromMeta + ToTokens
+    }
+  }
+
+  package "values.rs" <<Rectangle>> {
+    class "name_value!" as NameValue <<(M,#CFE8CF) macro>> {
+      newtype + FromExpr + FromMeta
+              + TryFrom<&Expr>
+              + TryFrom<&MetaNameValue>
+              + Deref + ToTokens
+    }
+  }
+
+  package "lists.rs" <<Rectangle>> {
+    class "meta_list!" as MetaList <<(M,#CFE8CF) macro>> {
+      struct + KEYS + FromMeta
+             + TryFrom<&Meta>
+             + TryFrom<ListBody>
+    }
+  }
+
+  package "variants.rs" <<Rectangle>> {
+    class "variants!" as Variants <<(M,#CFE8CF) macro>> {
+      enum + NAMES + FromMeta
+           + FromExpr
+           + TryFrom<&Meta>
+    }
+  }
+
+  package "leaves.rs" <<Rectangle>> {
+    interface FromExpr {
+      +from_expr(&Expr) -> Result<Self>
+    }
+    interface FromMeta {
+      +from_meta(&Meta) -> Result<Self>
+    }
+    class "leaf!" as Leaf <<(M,#CFE8CF) macro>> {
+      FromExpr + FromMeta
+      for the Lit family
+    }
+  }
+
+  package "walk.rs" <<Rectangle>> {
+    class Errors {
+      -Option<syn::Error>
+      --
+      +push(Error)
+      +absorb<T>(Result<T>) -> Option<T>
+      +finish() -> Result<()>
+    }
+    class "walk_keys / positional" as Walk <<(F,#FFCC88)>> {
+      walk_keys(body, candidates, accept)
+      positional(body, arity, what)
+      last_segment(&Path)
+    }
+  }
+}
+
+Vocab ..> Names : delegates to
+Flag ..> FromMeta
+NameValue ..> FromExpr
+NameValue ..> FromMeta
+Leaf ..> FromExpr
+Leaf ..> FromMeta
+MetaList ..> FromMeta
+MetaList ..> Walk : emits a call to
+Variants ..> FromMeta
+Variants ..> FromExpr
+Variants ..> Walk : emits a call to
+Walk *-- Errors
+
+note right of FromMeta
+  **The uniform field read.**
+  ""meta_list!"" reads every field the same way —
+  ""<FieldTy as FromMeta>::from_meta(meta)"" —
+  whatever shape it is. A flag reads a
+  Meta::Path, a leaf the right-hand side of
+  ""="", a nested list its own body, and the
+  macro neither knows nor cares.
+
+  There is deliberately NO blanket
+  ""impl<T: FromExpr> FromMeta for T"": it would
+  collide with the specific impls flag! and
+  meta_list! generate. Each macro emits its
+  own one-liner instead.
+  (#leaves/uniform-field-read)
+end note
+
+note bottom of FromExpr
+  A local trait and not ""TryFrom"", because
+  VERIFIED E0117:
+  ""impl TryFrom<&Expr> for syn::LitStr"" is a
+  foreign trait on a foreign type.
+
+  Newtyping the leaves to get TryFrom back was
+  considered and REJECTED — an author's grammar
+  names syn's terminals directly, so
+  ""Retry { times: LitInt }"" would have become
+  ""times: vocab::Int"". FromExpr is what lets
+  LitInt stay LitInt.
+  (#vocab/orphan-shapes-the-api)
+end note
+
+note bottom of Errors
+  **Why the walk does not use ""?""**
+  VERIFIED: a syn Parse impl using ""?"" over
+  three bad elements reports ONE and silently
+  drops two. ""syn::Error::combine"" keeps each
+  error's own span, so accumulating costs
+  nothing and loses nothing.
+
+  The only thing that aborts is a body that
+  will not parse as a meta list at all —
+  there are no siblings to lose when there
+  are no siblings. (#walk/accumulates)
+end note
+
+note as Boundary
+  **Which macro, and why it matters**
+
+  ""vocabulary!"" — names WE own AND read back out
+  of the user's tokens (helper heads, keys).
+  Spelling IS identity there.
+
+  ""names!"" — a set that needs a canonical
+  spelling for diagnostics but is never matched
+  from tokens. ShapeKind is the case.
+
+  ""variants!"" — the ONE place a VALUE is matched
+  by name, because the caller needs a value and
+  rustc can only check one, never hand one over.
+  Documented cost: a renamed import is invisible.
+
+  Never for a selector like
+  ""#[shape(AttributeKind::MetaList)]"" — no value
+  is needed there, so it is spliced and rustc
+  resolves it, import renames and all.
+  (#vocab/match-or-splice)
+end note
+
+Boundary .. Vocab
+
+@enduml

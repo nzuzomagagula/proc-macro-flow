@@ -10,7 +10,6 @@
 use proc_macro_flow_traits::{
     extractor::{Extracted, Extraction, Reason, ReasonKind},
     resolution::{Deferred, Parsed, Raw, Stage, Unresolved},
-    source::Sourced,
 };
 use proc_macro2::Ident;
 use syn::{Attribute, Type};
@@ -37,6 +36,26 @@ use crate::traits::{Validate, extractor::Extractor};
 // const ATTRIBUTE_KIND went with it: canonical paths are rustc's business now, not a table's"
 
 // DEPRECATED(#syntax/parent-nodes):D[S(SyntaxExtraction)] && D[S(SyntaxAttributeExtraction)] && D[S(SyntaxFieldExtraction)], "Deleted as stale scaffolding, not because the stage does not need parent nodes. Three things were wrong with them and none was superficial: they held Vec<Extraction<..>> where every other extractor now yields Extracted<.., &'ast Node>, so they predate the source-on-the-output decision; SyntaxAttributeExtraction held `alias: &'ast Ident`, which is the exact bug already fixed on the FIELD alias - an ident parsed out of attribute tokens is not in the AST and cannot be borrowed from it, so it has to be deferred as S::Item<'ast, Ident>; and none had an Extractor impl, so nothing constrained them to stay honest. Re-declare them when the stage is actually wired, from the working SyntaxFieldAttributeExtraction below outwards, rather than carrying a wrong shape forward"
+
+proc_macro_flow_traits::vocabulary! {
+    /// The helper attributes this stage registers, and the only heads it owns.
+    ///
+    /// Answer(#attribute/helpers):A[ID(attribute) ==? M(vocabulary)], "The query was right that a
+    /// string comparison has to happen SOMEWHERE - tokens are text, and a head is matched by its
+    /// spelling because we invented that spelling. What was wrong was that it had to happen HERE,
+    /// by hand, at every site. A vocabulary confines it to one generated From/TryFrom and makes
+    /// everything downstream typed. The property that pays for it: the match in extract_from is now
+    /// EXHAUSTIVE over this enum, so adding a helper is a compile error at every site that handles
+    /// one. With `is_ident(\"..\")` strings, adding a helper silently did nothing anywhere"
+    ///
+    /// Note what this is NOT for: a value path like `ColourSetting::Red`. See
+    /// ID(vocabulary/only-what-we-own) - values are rustc's to resolve, and matching them by
+    /// spelling cannot see through a qualified path or a renamed import.
+    pub enum SyntaxHelper {
+        Shape = "shape",
+        Alias = "alias",
+    }
+}
 
 /// One helper attribute on a grammar field.
 ///
@@ -74,14 +93,6 @@ impl<'ast, S: Stage> SyntaxFieldAttributeExtraction<'ast, S> {
     }
 }
 
-impl<'ast, S: Stage> Sourced<'ast> for SyntaxFieldAttributeExtraction<'ast, S> {
-    type Source = Attribute;
-
-    fn source(&self) -> &'ast Attribute {
-        self.attribute
-    }
-}
-
 /// Extraction always lands in `Raw`, never in a generic `S`.
 ///
 /// That is forced rather than chosen: only `Raw` can build an item out of loose tokens, so a
@@ -95,33 +106,32 @@ impl<'ast> Extractor<'ast, &'ast Attribute> for SyntaxFieldAttributeExtraction<'
             node: &'ast Attribute,
         ) -> Extraction<SyntaxFieldAttributeExtraction<'ast, Raw>> {
             // Not ours: no value, and no complaint either. See ID(heads-are-rustcs).
-            let Ok(attribute) = SyntaxFieldAttributeExtraction::<Raw>::validate(node) else {
+            let Ok((attribute, helper)) = SyntaxFieldAttributeExtraction::<Raw>::validate(node)
+            else {
                 return Extraction::default();
             };
 
-            // Both arms only CARRY the argument tokens - neither reads them. What `shape` names is
-            // resolved by rustc at the splice site; what `alias` names is read later, by whichever
-            // stage asks. See NOTE(#no-parse). The two arms cannot share a constructor even though
-            // they look alike: Shape defers a Type and Alias defers an Ident, so the variants have
-            // genuinely different payload types.
-            // The head is already known to be ours - `validate` is what decided that.
             let Ok(list) = attribute.meta.require_list() else {
                 return Extraction::failed(Reason::new(ReasonKind::WrongShape));
             };
 
-            //NOTE(#attribute):Q[this, "Yeah doesnt seem like there is a way around this particular means of Matching attribute unforch"]
-            //TODO[ ](#attribute/helpers): C[MacDef(Syntax), "This is the kind of thing the crate needs to abstract so "Shape" can be anything. I would have loved to avoid string parsing but this seems to be the price of the game]
-            if attribute.path().is_ident("shape") {
-                return Extraction::value(SyntaxFieldAttributeExtraction {
-                    attribute,
-                    kind: SyntaxFieldAttributeKind::Shape(Unresolved::new(&list.tokens)),
-                });
-            }
+            // Both arms only CARRY the argument tokens - neither reads them. What `shape` names is
+            // resolved by rustc at the splice site; what `alias` names is read later, by whichever
+            // stage asks. See NOTE(#no-parse). They cannot share a constructor despite looking
+            // alike: Shape defers a Type and Alias an Ident, so the payloads differ in type.
+            //
+            // Exhaustive over SyntaxHelper, and deliberately so - a new helper stops compiling here
+            // rather than silently doing nothing.
+            let kind = match helper {
+                SyntaxHelper::Shape => {
+                    SyntaxFieldAttributeKind::Shape(Unresolved::new(&list.tokens))
+                }
+                SyntaxHelper::Alias => {
+                    SyntaxFieldAttributeKind::Alias(Unresolved::new(&list.tokens))
+                }
+            };
 
-            Extraction::value(SyntaxFieldAttributeExtraction {
-                attribute,
-                kind: SyntaxFieldAttributeKind::Alias(Unresolved::new(&list.tokens)),
-            })
+            Extraction::value(SyntaxFieldAttributeExtraction { attribute, kind })
         }
 
         Extracted::new(read(node), node)
@@ -168,17 +178,16 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
 impl<'ast, S: Stage> Validate<'ast, &'ast Attribute> for SyntaxFieldAttributeExtraction<'ast, S> {
     type ValidityError = SyntaxFieldAttributeError;
 
-    type Valid = &'ast Attribute;
+    /// A genuine narrowing, not the input handed back: the head is now RESOLVED to the vocabulary
+    /// entry it names, so no later stage repeats the comparison. This is what `Valid` is for.
+    type Valid = (&'ast Attribute, SyntaxHelper);
 
     // Surface-level and nothing more, which is exactly ID(pipeline/validity-scope)'s remit: is
     // this attribute one of ours? No token is interpreted to answer it.
-    // TODO[ ](#attribute/helpers): C[MacDef(Validation), "Another thing worth abstracting"]
     fn validate(input: &'ast Attribute) -> Result<Self::Valid, Self::ValidityError> {
-        if input.path().is_ident("shape") || input.path().is_ident("alias") {
-            Ok(input)
-        } else {
-            Err(SyntaxFieldAttributeError)
-        }
+        SyntaxHelper::try_from(input.path())
+            .map(|helper| (input, helper))
+            .map_err(|_| SyntaxFieldAttributeError)
     }
 }
 

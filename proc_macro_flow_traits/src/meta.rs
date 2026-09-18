@@ -74,14 +74,36 @@ impl<'ast> From<&'ast Meta> for Opening<'ast> {
     }
 }
 
+crate::names! {
+    /// The runtime identity of a shape - what a `Meta` turned out to be written as.
+    ///
+    /// `names!` and not `vocabulary!`, deliberately: a shape is SELECTED by a type path that rustc
+    /// resolves (`#[shape(AttributeKind::MetaList)]`), never by an ident this crate compares. A
+    /// `TryFrom<&Ident> for ShapeKind` would be a matching path that must never be used, which is
+    /// ID(vocabulary/only-what-we-own) one level up. What it does need is a canonical spelling, so
+    /// a WrongShape diagnostic reads "expected a `list`, found a `name-value`" from one declaration
+    /// rather than from strings written out at each site.
+    pub enum ShapeKind {
+        Path = "path",
+        List = "list",
+        NameValue = "name-value",
+    }
+}
+
 impl<'ast> Opening<'ast> {
-    /// The written shape's name, for a diagnostic that has to say what it found.
-    pub fn shape_name(self) -> &'static str {
+    /// What the user actually wrote.
+    pub fn kind(self) -> ShapeKind {
         match self {
-            Opening::Path(_) => "path",
-            Opening::List(_) => "list",
-            Opening::Value(_) => "name-value",
+            Opening::Path(_) => ShapeKind::Path,
+            Opening::List(_) => ShapeKind::List,
+            Opening::Value(_) => ShapeKind::NameValue,
         }
+    }
+}
+
+impl From<&Meta> for ShapeKind {
+    fn from(meta: &Meta) -> Self {
+        Opening::from(meta).kind()
     }
 }
 
@@ -96,6 +118,15 @@ mod sealed {
 /// drift as the language grows.
 pub trait Shape: sealed::Sealed {
     type Input<'ast>;
+
+    /// The runtime identity this marker selects.
+    ///
+    /// NOTE(#shape/bridge): V[Tr(Shape).C(KIND)], "Without this, the type-level markers and the
+    /// runtime Opening were parallel structures with nothing joining them, and a WrongShape
+    /// diagnostic had to hand-write both halves - the expected shape from the marker, the found
+    /// shape from the Meta, with no compiler check that the two vocabularies agreed. Now a field's
+    /// selected shape and what was written compare directly: `opening.kind() == S::KIND`"
+    const KIND: ShapeKind;
 }
 
 /// The selector vocabulary, as a module of unit structs so `AttributeKind::MetaList` resolves as a
@@ -116,14 +147,17 @@ impl sealed::Sealed for AttributeKind::Path {}
 
 impl Shape for AttributeKind::MetaList {
     type Input<'ast> = ListBody<'ast>;
+    const KIND: ShapeKind = ShapeKind::List;
 }
 
 impl Shape for AttributeKind::NamedValue {
     type Input<'ast> = ValueExpr<'ast>;
+    const KIND: ShapeKind = ShapeKind::NameValue;
 }
 
 impl Shape for AttributeKind::Path {
     type Input<'ast> = PathOnly<'ast>;
+    const KIND: ShapeKind = ShapeKind::Path;
 }
 
 // Every opening re-emits what it came from, which is what lets a selector be spliced verbatim and
@@ -180,8 +214,11 @@ mod tests {
         assert_eq!(metas.len(), 3);
 
         // and each element is itself an opening - this is the recursion
-        let shapes: Vec<_> = metas.iter().map(|m| Opening::from(m).shape_name()).collect();
-        assert_eq!(shapes, ["list", "name-value", "path"]);
+        let shapes: Vec<_> = metas.iter().map(ShapeKind::from).collect();
+        assert_eq!(
+            shapes,
+            [ShapeKind::List, ShapeKind::NameValue, ShapeKind::Path]
+        );
     }
 
     #[test]
@@ -215,6 +252,24 @@ mod tests {
             panic!("a list");
         };
         assert_eq!(body.to_token_stream().to_string(), "AttributeKind :: MetaList");
+    }
+
+    #[test]
+    fn a_selected_shape_and_a_written_one_compare_directly() {
+        // THE WrongShape check, and there is no string on either side of it: the expected shape
+        // comes off the marker type through Shape::KIND, the found shape off the written Meta.
+        let written = attribute("#[colour(ColourSetting::Red)]");
+        let found = ShapeKind::from(&written.meta);
+
+        assert_eq!(found, <AttributeKind::MetaList as Shape>::KIND);
+        assert_ne!(found, <AttributeKind::NamedValue as Shape>::KIND);
+
+        // and the diagnostic reads its words from the same single declaration
+        let expected = <AttributeKind::NamedValue as Shape>::KIND;
+        assert_eq!(
+            format!("expected a `{expected}`, found a `{found}`"),
+            "expected a `name-value`, found a `list`"
+        );
     }
 
     #[test]

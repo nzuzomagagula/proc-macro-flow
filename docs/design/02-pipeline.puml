@@ -1,92 +1,216 @@
 @startuml pipeline
-title The three stages — what each one is allowed to know
+title The three stages — every step, with what goes in and what comes out
 
 skinparam shadowing false
 skinparam ArrowColor #333333
+skinparam ActivityBackgroundColor #FCFCFC
 
-|#F5F5F5|EXTRACTION|
+legend top
+  Worked example, carried the whole way through:
+
+  ""#[derive(SomeDerive)]""
+  #[configuration(colour(ColourSetting::Red, Other(Blue)), name = "thing")]
+  ""pub struct Thing;""
+
+  |<#E8F4EA>| real and tested |
+  |<#FFF4E5>| built, not wired |
+  |<#FFD9D9>| todo!() |
+  |<#EEEEEE>| aspirational |
+endlegend
+
+|#F5F5F5|EXTRACTION — walk and carry|
+
 start
-:downstream user writes
-""#[configuration(colour(Red), name = "thing")]"" ;
+
+:**parse_macro_input!**
+----
+in   ""proc_macro::TokenStream""
+out  ""syn::DeriveInput""; <<#E8F4EA>>
+
+:**StructExtraction::extract_from**
+----
+in   ""&'ast DeriveInput""
+out  ""Extracted<StructExtraction, &'ast DeriveInput>""
+----
+via  ""validate"" -> ""&'ast DataStruct""
+then ""extract_each(data.fields.iter())""; <<#E8F4EA>>
 note right
-  arrives as ""syn::DeriveInput""
+  ""#[from = source.data.fields]"" will
+  generate this line. The ""Vec"" in the
+  field's type picks ""extract_each"";
+  the walk is never written out.
 end note
 
-:**walk** to the nodes;
-note right
-  Answers exactly two questions:
-  * what is the SOURCE of this extraction? → ""Sourced""
-  * how do we GET THERE? → ""Visitable""
+:**FieldExtraction::extract_from**
+----
+in   ""&'ast syn::Field""
+out  ""Extracted<FieldExtraction, &'ast Field>""
+----
+then ""extract_each(field.attrs.iter())""; <<#E8F4EA>>
 
-  Never answers "how should this be parsed".
+split
+
+  #FFD9D9:**TransformationExtraction::extract_from**
+  ----
+  in   ""&'ast syn::Attribute""
+  out  ""Extracted<TransformationExtraction, &'ast Attribute>""
+  ----
+  body ""todo!()"" — would panic;
+  note right
+    The seam. Its job is now "read grammar
+    type G from an opening", which is
+    PROCESSOR work — so it waits for the
+    stage that owns it.
+    (#attribute/generic-grammar)
+  end note
+
+split again
+
+  #FFF4E5:**SyntaxFieldAttributeExtraction::<Raw>::extract_from**
+  ----
+  in   ""&'ast Attribute""   e.g. ""#[shape(AttributeKind::MetaList)]""
+  out  ""Extracted<SyntaxFieldAttributeExtraction<'ast, Raw>, &'ast Attribute>""
+  ----
+  carries ""Unresolved<'ast, syn::Type>""
+  holding ""&'ast TokenStream"" = ""AttributeKind :: MetaList"";
+  note right
+    ""validate"" narrows to
+    ""(&Attribute, SyntaxHelper)"" — the head is
+    RESOLVED here, so no later stage repeats
+    the comparison.
+
+    The tokens are CARRIED, never read.
+  end note
+
+  #FFF4E5:**.resolve()**  (optional, typestate transition)
+  ----
+  in   ""SyntaxFieldAttributeExtraction<'ast, Raw>""  (consumed)
+  out  ""Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>>""
+  ----
+  ""Unresolved<Type>"" -> ""Resolved<Type>""
+  tokens kept either side;
+  note right
+    On the compiler-checked path this is
+    NEVER called — the selector is spliced
+    and rustc resolves it. Resolving stays
+    available for a stage that must inspect.
+  end note
+
+end split
+
+|#FFF4E5|PROCESSING — understand|
+
+:**receive ""Extracted<T, I>"" whole**
+----
+in   ""Extracted<StructExtraction, &DeriveInput>""
+out  same value, not unwrapped; <<#EEEEEE>>
+note right
+  Unwrapping would strip the source off
+  exactly the value that needs it: a FAILED
+  extraction has no ""T"" to ask through
+  ""Sourced"".
 end note
 
-:**carry** what it finds;
+:**Opening::from(&Meta)**
+----
+in   ""&'ast syn::Meta""      ""configuration(..)""
+out  ""Opening::List(ListBody(&'ast TokenStream))""; <<#E8F4EA>>
 note right
-  May hand on raw tokens.
-  ""Unresolved<'ast, T>"" is the carrier.
+  ""syn::Meta"" IS the attribute AST. Nothing
+  invents a node layer beside it.
 end note
 
-:surface-level ""Validate"" only;
+:**ListBody::metas()**
+----
+in   ""ListBody<'ast>""       raw tokens
+out  ""Punctuated<Meta, Token![,]>""
+----
+[ colour(..), name = "thing" ]; <<#E8F4EA>>
 note right
-  does this exist where required?
-  is this value within a bound?
-  — NOT parsing, NOT grammar
-  (#pipeline/validity-scope)
+  ""exprs()"" is the other reading, for bare
+  literals — ""bounds(0, 64)"" is impossible
+  without it, since a literal is not valid
+  ""Meta"" at all.
 end note
 
-:emit ""Extracted<T, I>"";
+:**walk_keys(body, KEYS, accept)**
+----
+in   ""ListBody"" + ""&[&str]"" candidates
+out  ""Result<()>"", errors COMBINED not aborted
+----
+owns UnknownKey / Duplicate / candidates; <<#E8F4EA>>
+
+:**per field: ""<FieldTy as FromMeta>::from_meta""**
+----
+""colour"" : ""&Meta"" -> ""Vec<ColourSetting>""
+""name""   : ""&Meta"" -> ""ConfigName(LitStr)""
+----
+uniform: the macro does not know the shape; <<#E8F4EA>>
 note right
-  Output is UNBOUNDED on the trait.
-  Source rides on the OUTPUT so it
-  survives a failed extraction, where
-  there is no T to ask.
+  ""Vec<T>"" is SHAPE-CHANGING — one ListBody in,
+  many value positions out. ""Option<T>"" is
+  shape-preserving. That asymmetry is where
+  "arity lives in the type" is paid for.
 end note
 
-|#FFF4E5|PROCESSING|
-:receive ""Extracted<T, I>"" **whole**;
+:**variants!: ""ColourSetting::try_from(&Meta)""**
+----
+""ColourSetting::Red"" -> ""ColourSetting::Red""    (unit, suffix-matched)
+""Other(Blue)""        -> ""ColourSetting::Other(Ident)""  (tuple)
+""Rgb(r = 12, ..)""    -> ""ColourSetting::Rgb { .. }""    (struct); <<#E8F4EA>>
 note right
-  The pipeline does NOT unwrap between
-  stages — unwrapping would strip the
-  source off exactly the value that
-  needs it.
+  THE place a value is matched by name,
+  because the caller needs a VALUE and rustc
+  can only check one, never hand one over.
+  Cost: a renamed import is invisible.
+  (#vocab/match-or-splice)
 end note
 
-:**understand** the tokens;
+:**assemble**
+----
+out  ""Configuration {""
+     ""  colour: vec![Red, Other(Blue)],""
+       name:   Some(ConfigName("thing")),
+     ""}""
+plus ""Vec<Reason>"" — value AND complaints; <<#EEEEEE>>
+
+|#E8F4EA|GENERATION — hand it to rustc|
+
+:**splice the selector verbatim**
+----
+in   ""Unresolved<Type>"" tokens, unread
+out  ""type Selected = AttributeKind::MetaList;""
+----
+rustc resolves it, with the user's spans; <<#EEEEEE>>
 note right
-  ""Meta"" → openings → grammar types.
-  THIS is where a ""ColourSetting"" is
-  read out of a ""Meta"". It is NOT
-  extraction — putting it there was a
-  stage-boundary violation.
+  Buys did-you-mean WITH a machine-applicable
+  fix, and "but trait FromMeta<MetaList> is
+  implemented for it" — neither writable by us.
 end note
 
-:accumulate ""Reason""s — never abort;
+:**re-emit keys as a struct literal**
+----
+in   the key -> field mapping
+out  ""Configuration { colur: .., name: .. }""
+----
+rustc gives UnknownKey / Missing / Duplicate; <<#EEEEEE>>
 note right
-  no ""?"", no early return, so no way
-  to drop a sibling (#no-result)
+  Three of the five ""ReasonKind"" variants,
+  with did-you-mean, for free. ""WrongShape""
+  and ""Ambiguous"" stay ours.
 end note
 
-|#E8F4EA|GENERATION|
-:**splice** selectors verbatim;
+:**emit stub impl ALONGSIDE errors**
+----
+out  ""impl .. for Thing { }"" + N ""compile_error!""
+----
+sorted by span; <<#EEEEEE>>
 note right
-  ""#[shape(AttributeKind::MetaList)]""
-  goes into a TYPE position and rustc
-  resolves it. Never parsed by us.
+  Without the stub, the missing impl cascades
+  into "does not implement" at every use site
+  and buries the real diagnostic.
 end note
 
-:re-emit keys as a struct literal;
-note right
-  hands UnknownKey / Missing / Duplicate
-  to rustc, with did-you-mean
-end note
-
-:emit stub impl **alongside** errors;
-note right
-  or the missing impl cascades into
-  "does not implement" at every use
-  site and buries the real diagnostic
-end note
 stop
 
 @enduml

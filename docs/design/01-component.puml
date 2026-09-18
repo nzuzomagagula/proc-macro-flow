@@ -18,8 +18,16 @@ package "proc_macro_flow_traits\n(ordinary lib)" as traits {
   [resolution] as T_Resolution
   [source] as T_Source
   [meta] as T_Meta
+  [vocab] as T_Vocab
   [processor] as T_Processor
   [generator] as T_Generator
+
+  note right of T_Vocab
+    names! vocabulary! flag!
+    name_value! leaf! meta_list!
+    variants! + walk
+    see 08-class-vocab
+  end note
 
   note bottom of T_Processor
     comment-only stub

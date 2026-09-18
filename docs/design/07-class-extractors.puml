@@ -56,10 +56,29 @@ Field *-- "0..*" Transform : extract_each
 Syntax *-- Kind
 
 note right of Struct
-  ""fields"" is the shape ""#[from = source.data.fields]""
-  will generate. The designer names WHERE the
-  children are; the ""Vec"" in the type picks
-  ""extract_each""; the walk is not written out.
+  ""fields"" is already written in the shape
+  ""#[from = source.data.fields]"" will generate:
+  ""extract_each::<FieldExtraction, _, _>(..)"".
+  The designer names WHERE the children are;
+  the ""Vec"" in the type picks the helper; the
+  walk is not written out.
+
+  The turbofish is not noise — ""T::Output"" is an
+  associated type and so not injective, so the
+  extractor cannot be inferred from the field.
+  Generated code always knows it.
+end note
+
+note as Deleted
+  **Deleted as stale scaffolding**
+  SyntaxExtraction, SyntaxAttributeExtraction,
+  SyntaxFieldExtraction — they held
+  ""Vec<Extraction<..>>"" where every extractor
+  now yields ""Extracted<.., &'ast Node>"", and
+  SyntaxAttributeExtraction held an
+  ""alias: &'ast Ident"" that cannot exist (an
+  ident parsed out of tokens is not in the AST).
+  None had an Extractor impl to keep it honest.
 end note
 
 note bottom of Transform
@@ -80,10 +99,19 @@ note bottom of Syntax
   payload. Moving to ""Parsed"" is ""resolve""'s job.
 
   ""Validate"" here answers "is this attribute
-  MINE?" — an unrecognised head belongs to
-  another macro and is passed over in silence,
-  because rustc already rejects a head nobody
-  registered. (#heads-are-rustcs)
+  MINE?", narrowing to
+  ""(&Attribute, SyntaxHelper)"" — a real
+  narrowing, so no later stage repeats the
+  comparison. The head match comes from a
+  ""vocabulary!"", so adding a helper breaks the
+  build at every site (E0004).
+
+  An unrecognised head is passed over in
+  SILENCE: rustc already rejects a head nobody
+  registered, so one that reaches us belongs to
+  another macro. A doc comment is an attribute,
+  and the earlier UnknownKey here fired on every
+  documented field. (#heads-are-rustcs)
 end note
 
 note as Foreign

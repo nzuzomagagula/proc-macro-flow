@@ -1,46 +1,35 @@
 // @review [ ]
-use proc_macro_flow_traits::{
-    extractor::{Extracted, Extraction},
-    source::Sourced,
-};
-use syn::{Attribute, Field};
+use proc_macro_flow_traits::extractor::{Extracted, Extraction};
+use syn::Field;
 
-use crate::base::extractor::extractor::attribute::TransformationExtraction;
 use crate::traits::Validate;
-use crate::traits::extractor::{Extractor, extract_each};
+use crate::traits::extractor::Extractor;
 
+// DEPRECATED(#attribute/generic-grammar):D[S(TransformationExtraction)], "Deleted, and the
+// annotations that went with it were wrong in a way worth not rediscovering. They called it 'parse
+// this attribute against grammar type G' - a bespoke Meta matcher waiting on the syntax stage. It
+// is not that. It held the AUTHOR'S TRANSFORMATION EXPRESSION: how to reach a value from their
+// source, as a field path, a closure or a function pointer. That is Attr(from), it belongs on the
+// field it describes, and a separate extraction node for it was a category error. The `expression:
+// &'ast Expr` placeholder was the tell - it could hold a value but could not say what produced it,
+// because nothing was supposed to produce it here at all"
 pub(crate) struct FieldExtraction<'ast> {
-    pub(crate) field: &'ast Field,
-    // UNWIRED(#extraction/unconsumed): V[this.built && !this.read], "The children are
-    // extracted and then nobody looks at them - the processor that would is ID(pipeline/base-processor),
-    // still a stub. This is the single most load-bearing warning in the crate, so it is
-    // suppressed HERE and named rather than left to blend into the noise."
-    #[allow(dead_code)]
-    pub(crate) transformation: Vec<Extracted<TransformationExtraction<'ast>, &'ast Attribute>>,
+    // TODO[ ](#field/children):C[S(FieldExtraction).P], "Empty until the derive gives it fields
+    // declared with Attr(from). What used to sit here - a Vec of TransformationExtraction - was the
+    // transformation EXPRESSION mistaken for a child node"
+    _marker: ::core::marker::PhantomData<&'ast ()>,
 }
 
 pub struct FieldExtractionError;
-
-impl<'ast> Sourced<'ast> for FieldExtraction<'ast> {
-    type Source = Field;
-
-    fn source(&self) -> &'ast Field {
-        self.field
-    }
-}
 
 impl<'ast> Extractor<'ast, &'ast Field> for FieldExtraction<'ast> {
     type Output = Extracted<Self, &'ast Field>;
 
     fn extract_from(node: &'ast Field) -> Self::Output {
-        // `validate` is infallible today, so this cannot currently produce a Reason of its own -
-        // every complaint comes from a child. That changes with ID(syntax/extraction).
+        // `validate` is infallible today, so this cannot currently produce a Reason of its own.
         let extraction = match Self::validate(node) {
-            // Same shape, same reason - `#[from = source.attrs]`. Arity comes off the Vec,
-            // never off the attribute.
-            Ok(field) => Extraction::value(Self {
-                field,
-                transformation: extract_each::<TransformationExtraction, _, _>(field.attrs.iter()),
+            Ok(_) => Extraction::value(Self {
+                _marker: ::core::marker::PhantomData,
             }),
             Err(_) => Extraction::default(),
         };
