@@ -314,11 +314,13 @@ pub trait Validate<'ast, I: Visitable<'ast>> {
 pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     /// What the processor receives.
     ///
-    /// TODO[ ](#extractor/output-bound):C[Ty(Output).bound], "Unbounded ON PURPOSE. The honest bound
-    /// is 'something the processor can consume', and Tr(Processor) is a comment-only stub in both
-    /// crates - a bound written now would encode a guess about its needs that nothing could falsify.
-    /// Callers pin Output themselves in the meantime, which is still a compile error when wrong.
-    /// Lands with ID(pipeline/base-processor)"
+    /// TODO[x](#extractor/output-bound):C[Ty(Output).bound], "RESOLVED, and the answer is that no
+    /// bound belongs here. It was left open waiting for Tr(Processor) to exist so the honest bound
+    /// - 'something a processor can consume' - could be written. Processor now exists, and writing
+    /// it would be wrong: an extractor does not know which processor will consume it, and nothing
+    /// makes the relation one-to-one. The agreement is declared from the OTHER side, where a
+    /// Processor names its Input. A bound here would assert a coupling that does not exist.
+    /// See NOTE(#processor/output-needs-no-bound)"
     type Output;
 
     // `node: I`, not `&'ast I`. `I` is the BORROWED node type (`&'ast DeriveInput`, not
