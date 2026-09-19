@@ -48,67 +48,68 @@ out  ""Extracted<FieldExtraction, &'ast Field>""
 ----
 then ""extract_each(field.attrs.iter())""; <<#E8F4EA>>
 
-split
 
-  #FFD9D9:**TransformationExtraction::extract_from**
-  ----
-  in   ""&'ast syn::Attribute""
-  out  ""Extracted<TransformationExtraction, &'ast Attribute>""
-  ----
-  body ""todo!()"" — would panic;
-  note right
-    The seam. Its job is now "read grammar
-    type G from an opening", which is
-    PROCESSOR work — so it waits for the
-    stage that owns it.
-    (#attribute/generic-grammar)
-  end note
+:**SyntaxFieldAttributeExtraction::<Raw>::extract_from**
+----
+in   ""&'ast Attribute""   e.g. ""#[shape(AttributeKind::MetaList)]""
+out  ""Extracted<SyntaxFieldAttributeExtraction<'ast, Raw>, &'ast Attribute>""
+----
+carries ""Unresolved<'ast, syn::Type>""
+holding ""&'ast TokenStream"" = ""AttributeKind :: MetaList""; <<#FFF4E5>>
+note right
+  ""validate"" narrows to
+  ""(&Attribute, SyntaxHelper)"" — the head is
+  RESOLVED here, so no later stage repeats
+  the comparison.
 
-split again
+  The tokens are CARRIED, never read.
+end note
 
-  #FFF4E5:**SyntaxFieldAttributeExtraction::<Raw>::extract_from**
-  ----
-  in   ""&'ast Attribute""   e.g. ""#[shape(AttributeKind::MetaList)]""
-  out  ""Extracted<SyntaxFieldAttributeExtraction<'ast, Raw>, &'ast Attribute>""
-  ----
-  carries ""Unresolved<'ast, syn::Type>""
-  holding ""&'ast TokenStream"" = ""AttributeKind :: MetaList"";
-  note right
-    ""validate"" narrows to
-    ""(&Attribute, SyntaxHelper)"" — the head is
-    RESOLVED here, so no later stage repeats
-    the comparison.
+:**.resolve()**  (optional, typestate transition)
+----
+in   ""SyntaxFieldAttributeExtraction<'ast, Raw>""  (consumed)
+out  ""Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>>""
+----
+""Unresolved<Type>"" -> ""Resolved<Type>""
+tokens kept either side; <<#FFF4E5>>
+note right
+  On the compiler-checked path this is
+  NEVER called — the selector is spliced
+  and rustc resolves it. Resolving stays
+  available for a stage that must inspect.
+end note
 
-    The tokens are CARRIED, never read.
-  end note
-
-  #FFF4E5:**.resolve()**  (optional, typestate transition)
-  ----
-  in   ""SyntaxFieldAttributeExtraction<'ast, Raw>""  (consumed)
-  out  ""Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>>""
-  ----
-  ""Unresolved<Type>"" -> ""Resolved<Type>""
-  tokens kept either side;
-  note right
-    On the compiler-checked path this is
-    NEVER called — the selector is spliced
-    and rustc resolves it. Resolving stays
-    available for a stage that must inspect.
-  end note
-
-end split
+note right
+  **TransformationExtraction is gone.**
+  It used to sit beside this as a rival reader
+  of the same ""&Attribute"". It was never a node:
+  it held the author's transformation expression
+  — a field path, a closure, a fn pointer —
+  which is ""#[from]"" on the field that needs it.
+  (#attribute/generic-grammar)
+end note
 
 |#FFF4E5|PROCESSING — understand|
 
-:**receive ""Extracted<T, I>"" whole**
+:**Processor::process**
 ----
-in   ""Extracted<StructExtraction, &DeriveInput>""
-out  same value, not unwrapped; <<#EEEEEE>>
+in   ""Self::Input"" = an extractor's ""Output"", whole
+out  ""Extraction<Self::Output>""
+----
+children first, via ""process_each""; <<#E8F4EA>>
 note right
-  Unwrapping would strip the source off
-  exactly the value that needs it: a FAILED
-  extraction has no ""T"" to ask through
-  ""Sourced"".
+  Handed over WHOLE — unwrapping would strip
+  the source off exactly the value that needs
+  it, since a failed extraction has no ""T"" to
+  ask at all.
+
+  **Optional stage.** ""#[derive(Processor)]""
+  emits the identity, so downstream sees one
+  shape and never an either-or.
+
+  Bottom-up: ""process_each"" mirrors
+  ""extract_each"", so a parent collects its
+  children's OUTPUTS before combining.
 end note
 
 :**Opening::from(&Meta)**
@@ -200,15 +201,26 @@ note right
   and ""Ambiguous"" stay ours.
 end note
 
-:**emit stub impl ALONGSIDE errors**
+:**Generator::generate**, then ""emit""
 ----
-out  ""impl .. for Thing { }"" + N ""compile_error!""
+in   a processor's ""Output""
+out  ""TokenStream"" — stub FIRST, then N ""compile_error!""
 ----
-sorted by span; <<#EEEEEE>>
+the stub always goes out; <<#E8F4EA>>
 note right
   Without the stub, the missing impl cascades
   into "does not implement" at every use site
-  and buries the real diagnostic.
+  and buries the real diagnostic. ""emit"" makes
+  that mechanical rather than remembered.
+
+  TODO(#typed-output/generate): this should
+  return a TYPED syn item, not a raw stream.
+  We BUILD this content and know its shape;
+  handing it back untyped means nothing checks
+  it until rustc parses it again — and it makes
+  precise spans impossible.
+  Carrier vs product: ""Unresolved"" and
+  ""ListBody"" stay raw, deliberately.
 end note
 
 stop

@@ -1,5 +1,5 @@
 @startuml class-core
-title Core types and the extraction contract
+title Core types and the three stage contracts
 
 skinparam shadowing false
 skinparam classAttributeIconSize 0
@@ -102,11 +102,49 @@ package proc_macro_flow_traits <<Frame>> {
     literal — see 09-diagnostics.
   end note
 
-  interface "Sourced<'ast>" as Sourced {
-    +type Source: ToTokens
-    +source() -> &'ast Source
-    +additional() -> &[&'ast Source]
+  interface Processor {
+    +type Input
+    +type Output
+    +process(Input) -> Extraction<Output>
   }
+  note right of Processor
+    OPTIONAL stage. ""#[derive(Processor)]"" emits
+    the identity, so downstream sees ONE shape
+    and never an either-or.
+
+    Takes the extractor's ""Output"" WHOLE — the
+    pipeline does not unwrap between stages,
+    because unwrapping strips the source off
+    the value that most needs it.
+
+    Cascade is bottom-up via ""process_each"",
+    a helper rather than a signature: pre-
+    processing children would require the
+    parent's Input to be its own extraction
+    with every child field swapped for that
+    child's Output, which Rust cannot express.
+  end note
+
+  interface Generator {
+    +type Input
+    +generate(Input) -> TokenStream
+  }
+  note right of Generator
+    Consumes a processor's ""Output"" and nothing
+    else — one shape, because processing is
+    never skipped.
+
+    ""emit(stub, reasons, node, msg)"" puts the
+    stub out FIRST and appends one
+    ""compile_error!"" per reason, so the
+    stub-always rule is mechanical.
+
+    TODO(#typed-output/generate): should return
+    a TYPED syn item. We build this content and
+    know its shape; untyped means nothing checks
+    it until rustc re-parses, and precise spans
+    are impossible.
+  end note
 }
 
 package proc_macro_flow_derive <<Frame>> {
@@ -116,23 +154,28 @@ package proc_macro_flow_derive <<Frame>> {
     +extract_from(I) -> Self::Output
   }
   note right of Extractor
-    Supertraits are the TWO QUESTIONS this
-    stage exists to answer:
-      ""Sourced""  = what is the source
-      ""I: Visitable"" = how do we get there
-    There is deliberately no third question
-    about how to PARSE the node.
+    Still the TWO QUESTIONS — what is the
+    source, and how do we get there — but only
+    one is a supertrait. ""I: Visitable"" answers
+    the second; ""Extracted"" answers the first
+    STRUCTURALLY, by a type that cannot be
+    built without a source.
 
-    ""Output"" is unbounded on purpose until
-    Processor exists — the honest bound is
-    "something the processor can consume".
-    (#extractor/output-bound)
+    **""Sourced"" was deleted.** It had one real
+    caller, in a test, while ""Extracted::source""
+    covered every other site AND survived a
+    failed extraction. Asking each extractor to
+    store and hand back the same node was a
+    second answer to one question.
+
+    ""Output"" stays UNBOUNDED, and that is now
+    the settled answer rather than a deferral:
+    an extractor does not know which processor
+    consumes it, so the agreement is declared
+    from the Processor side.
+    (#processor/output-needs-no-bound)
 
     Grammar types do NOT implement this.
-    Reading a Meta into a ColourSetting is
-    PROCESSING; putting it here was the
-    stage-boundary violation that made
-    Sourced look impossible to satisfy.
   end note
 
   interface "Validate<'ast, I>" as Validate {
@@ -187,8 +230,9 @@ package proc_macro_flow_derive <<Frame>> {
 Extracted *-- Extraction
 Extraction *-- "0..*" Reason
 Reason *-- ReasonKind
-Extractor --|> Sourced
 Extractor --|> Validate
+Extractor ..> Processor : Output feeds
+Processor ..> Generator : Output feeds
 Extractor ..> Extracted : Output is\ntypically
 FromHelpers ..> Extractor : drives
 

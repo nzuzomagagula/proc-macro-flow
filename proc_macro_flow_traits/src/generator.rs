@@ -20,11 +20,42 @@ use quote::ToTokens;
 
 use crate::extractor::Reason;
 
+/* @group(#typed-output)
+ *
+ * TODO[ ](#typed-output/generate): U[Tr(Generator).F(generate).R(TokenStream) -> R(syn::Item)],
+ * "generate returns a raw TokenStream, and should return a TYPED syn item - ItemImpl for the usual
+ * case, Item where a generator emits more than one kind. The distinction that matters is CARRIER vs
+ * PRODUCT: raw tokens are correct wherever the content is deliberately un-interpreted, which is
+ * Unresolved and ListBody and must NOT change - the whole point there is that nobody has read them.
+ * A generator is the opposite end: WE produce the content, we know its shape, and handing it back
+ * as an untyped stream throws that away. What it costs today is (1) nothing checks that what we
+ * emitted is even well-formed until rustc parses it back, and (2) it makes ID(typed-output/spans)
+ * below impossible"
+ *
+ * TODO[ ](#typed-output/spans): U[F(emit).A(node)], "Errors are currently spanned against whatever
+ * node the CALLER passes, which for generated code means pointing at the whole stream and saying
+ * 'something in here is wrong'. With a typed item the generator can point at the PART that is
+ * wrong - the associated type that could not be filled, the field whose value never arrived - by
+ * spanning the specific ImplItem or Field rather than the item entire. Note this is the same
+ * argument ID(reason/span-not-node) already makes one level down: a reason that points at one token
+ * is exact, and one that points at everything is a shrug. syn 3 also has Error::new_range
+ * (error.rs:267) for spanning a cursor range, which is the precise tool for 'this part of what we
+ * built', and nothing here uses it yet"
+ *
+ * NOTE(#typed-output/not-the-carriers): V[S(Unresolved).T(TokenStream) && S(ListBody).T(TokenStream)],
+ * "Recorded so the TODOs above are not read as 'replace every TokenStream'. Unresolved and ListBody
+ * hold raw tokens BECAUSE they are unparsed - ID(no-parse) and ID(openings) exist to keep them that
+ * way, and typing them would defeat the deferral the whole design rests on. The rule is: type what
+ * WE build, leave what the USER wrote alone until someone asks it a question"
+ */
+
 /// Emit code from a processed value.
 pub trait Generator: Sized {
     /// A processor's `Output`.
     type Input;
 
+    // TODO[ ](#typed-output/generate): see @group(#typed-output) above - this should be a typed
+    // syn item, not a raw stream.
     fn generate(input: Self::Input) -> TokenStream;
 }
 

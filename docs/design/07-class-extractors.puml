@@ -7,31 +7,21 @@ skinparam classAttributeIconSize 0
 package "base/extractor" <<Frame>> {
 
   class "StructExtraction<'ast>" as Struct {
-    +derive_input: &'ast DeriveInput
     +fields: Vec<Extracted<FieldExtraction, &'ast Field>>
     --
     Extractor<&'ast DeriveInput>
     Output = Extracted<Self, &'ast DeriveInput>
-    Sourced::Source = DeriveInput
     Validate::Valid = &'ast DataStruct
   }
 
   class "FieldExtraction<'ast>" as Field {
-    +field: &'ast Field
-    +transformation: Vec<Extracted<TransformationExtraction, &'ast Attribute>>
+    (no fields)
     --
     Extractor<&'ast Field>
     Output = Extracted<Self, &'ast Field>
-    Sourced::Source = Field
     Validate::Valid = &'ast Field
   }
 
-  class "TransformationExtraction<'ast>" as Transform #FFD9D9 {
-    +attribute: &'ast Attribute
-    +expression: &'ast Expr
-    --
-    extract_from = **todo!()**
-  }
 }
 
 package "base/syntax" <<Frame>> {
@@ -52,8 +42,19 @@ package "base/syntax" <<Frame>> {
 }
 
 Struct *-- "0..*" Field : extract_each
-Field *-- "0..*" Transform : extract_each
 Syntax *-- Kind
+
+note as Deleted2
+  **No stored source on either.**
+  Both held one only to satisfy ""Sourced"",
+  which is deleted — the node rides on
+  ""Extracted"" instead. FieldExtraction turned
+  out to use the LOCAL binding from validate,
+  never the stored field, so the duplication
+  was total.
+end note
+
+Deleted2 .. Field
 
 note right of Struct
   ""fields"" is already written in the shape
@@ -79,16 +80,6 @@ note as Deleted
   ""alias: &'ast Ident"" that cannot exist (an
   ident parsed out of tokens is not in the AST).
   None had an Extractor impl to keep it honest.
-end note
-
-note bottom of Transform
-  Signature is correct, body is not written.
-  It will PANIC if reached — nothing reaches
-  it today. Under the corrected boundary it
-  stops being a bespoke Meta matcher and
-  becomes "read grammar type G from an
-  opening", which is processor work.
-  (#attribute/generic-grammar)
 end note
 
 note bottom of Syntax

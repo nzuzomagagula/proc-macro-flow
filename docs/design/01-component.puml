@@ -19,6 +19,7 @@ package "proc_macro_flow_traits\n(ordinary lib)" as traits {
   [source] as T_Source
   [meta] as T_Meta
   [vocab] as T_Vocab
+  [visitable] as T_Visitable
   [processor] as T_Processor
   [generator] as T_Generator
 
@@ -30,25 +31,19 @@ package "proc_macro_flow_traits\n(ordinary lib)" as traits {
   end note
 
   note bottom of T_Processor
-    comment-only stub
-    (#pipeline/base-processor)
+    Processor + process_each / process_maybe
+    optional stage; identity is derived
   end note
   note bottom of T_Generator
-    comment-only stub
-    (#pipeline/base-generator)
+    Generator + emit
+    stub ALWAYS goes out beside the errors
   end note
 }
 
 package "proc_macro_flow_derive\n(proc-macro = true)" as derive {
-  package "traits" as traits_mod {
-    [Extractor] as D_Extractor
-    [Validate] as D_Validate
-    [Visitable] as D_Visitable
-  }
   package "base/extractor" as base_extractor {
     [StructExtraction] as D_Struct
     [FieldExtraction] as D_Field
-    [TransformationExtraction] as D_Transform
   }
   package "base/syntax" as base_syntax {
     [SyntaxFieldAttributeExtraction] as D_Syntax
@@ -90,14 +85,21 @@ end note
 Constraint .. derive
 
 note as TraitHome
-  Extractor / Validate / Visitable are still
-  pub(crate) HERE, not in the traits crate.
-  That was going to move, but the urgency
-  dropped when the stage boundary was fixed:
-  author grammar types do NOT implement them,
-  so nothing outside needs to name them.
+  **#pipeline/relocate-traits is CLOSED.**
+
+  Extractor, Validate and Visitable have moved
+  into the traits crate. The urgency had lapsed
+  when grammar types stopped implementing them,
+  then came back for a different reason:
+  ""#[derive(Extractor)]"" on a USER's type means
+  the trait has to be nameable from outside.
+
+  ""Sourced"" did not move — it was DELETED. The
+  source rides on ""Extracted"", so a trait asking
+  every extractor to store and return the same
+  node was a second answer to one question.
 end note
 
-TraitHome .. traits_mod
+TraitHome .. traits
 
 @enduml

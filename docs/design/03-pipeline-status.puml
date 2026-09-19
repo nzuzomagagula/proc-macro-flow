@@ -7,78 +7,95 @@ skinparam legendBackgroundColor #FFFFFF
 rectangle "lib.rs::extractor\n#[proc_macro_derive(Extractor)]" as Entry #E8F4EA
 
 rectangle "StructExtraction\n<&'ast DeriveInput>" as S #E8F4EA
-rectangle "FieldExtraction\n<&'ast Field>" as F #E8F4EA
-rectangle "TransformationExtraction\n<&'ast Attribute>" as T #FFD9D9
+rectangle "FieldExtraction\n<&'ast Field>" as F #FFF4E5
 rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
 
-rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary!" as V #E8F4EA
+rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #E8F4EA
 
-rectangle "Processor" as P #EEEEEE
-rectangle "Generator" as G #EEEEEE
+rectangle "Processor\n+ process_each / process_maybe" as P #E8F4EA
+rectangle "Generator\n+ emit" as G #E8F4EA
+
+rectangle "#[derive(Extractor)]\n#[source] #[from] #[with]" as DE #EEEEEE
+rectangle "#[derive(Processor)]\nidentity" as DP #EEEEEE
 
 Entry --> S : extract_from
 S --> F : extract_each(data.fields.iter())
-F --> T : extract_each(field.attrs.iter())
 
 S ..> P : Extracted<..>, whole
-P ..> G
+P ..> G : Processor::Output
 
 V ..> P : the primitives it\nwill be written against
-Y ..> V : uses SyntaxHelper\n(vocabulary!)
+Y ..> V : SyntaxHelper (vocabulary!)
 
-note bottom of T
-  **todo!()** — would panic if reached.
-  Nothing reaches it. Its job has changed:
-  no longer a bespoke Meta matcher, but
-  "read grammar type G from an opening",
-  which is PROCESSOR work.
-  (#attribute/generic-grammar)
+DE ..> S : will generate
+DP ..> P : will generate
+
+note bottom of F
+  Has **no fields left**. Its children were
+  ""Vec<Extracted<TransformationExtraction, ..>>"",
+  and that type is deleted — it was never a
+  node, it held the author's transformation
+  expression, which is ""#[from]"".
+
+  Refilled by the derive (#field/children).
 end note
 
 note bottom of Y
   Works and is tested, but driven ONLY by
   base/syntax/worked.rs — never by the macro
   path. The module carries an explicit
-  ""#![allow(dead_code)]"" saying so, which comes
-  off when the stages connect.
+  ""#![allow(dead_code)]"" saying so.
   (#syntax/not-driven)
 end note
 
-note bottom of V
-  **Complete and green.** 78 tests. Reads a real
-  attribute into a real value, every rejection
-  case in SCRATCH.md's table covered.
-  Depends on nothing downstream — which is why
-  it could land before Processor exists.
+note bottom of P
+  **Exists now.** Optional: the identity is
+  derived, so downstream sees one shape.
+  Cascade is bottom-up and asserted — a test
+  records order and sees ["child","child",
+  "parent"] with the children's OUTPUTS.
 end note
 
-note bottom of P
-  Comment-only stub in both crates.
-  ""Extractor::Output"" is deliberately unbounded
-  until this exists, because the honest bound
-  is "whatever the processor can consume".
+note bottom of G
+  **Exists now.** ""emit"" puts the stub out first
+  and appends one ""compile_error!"" per reason,
+  so the stub-always rule cannot be forgotten.
 end note
 
 legend right
   |<#E8F4EA>| live and tested |
   |<#FFF4E5>| works, tested, not wired |
-  |<#FFD9D9>| todo!() — would panic |
-  |<#EEEEEE>| does not exist yet |
+  |<#EEEEEE>| next: the two derives |
 endlegend
 
 note as Gap
-  **The load-bearing gap**
+  **The gap has moved.**
 
-  The extraction tree is BUILT and then nobody
-  reads it. ""StructExtraction.fields"" and
-  ""FieldExtraction.transformation"" each carry
-  an ""#[allow(dead_code)]"" naming this as the
-  reason.
+  It used to be "nothing consumes the
+  extraction tree" — Processor and Generator
+  now exist to consume it. What is missing is
+  the WIRING: lib.rs still renders top-level
+  reasons and emits nothing else, and no
+  concrete Processor or Generator is
+  implemented for StructExtraction.
 
-  lib.rs renders top-level reasons and emits a
-  stub; the recursive walk is #syntax/render.
+  The two derives are what close it, and
+  Step 6 — rewriting the existing extractors
+  onto ""#[derive(Extractor)]"" — is the test
+  that the derive earns its place.
 end note
 
-Gap .. P
+Gap .. DE
+
+note as Closed
+  **#pipeline/relocate-traits is closed.**
+  Extractor, Validate and Visitable now live
+  in proc_macro_flow_traits, because
+  ""#[derive(Extractor)]"" on a user's type means
+  they must be nameable from outside.
+  ""Sourced"" was deleted rather than moved.
+end note
+
+Closed .. Entry
 
 @enduml
