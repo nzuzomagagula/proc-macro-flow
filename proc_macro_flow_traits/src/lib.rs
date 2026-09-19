@@ -4,6 +4,7 @@ pub mod generator;
 pub mod meta;
 pub mod processor;
 pub mod resolution;
+pub mod visitable;
 pub mod vocab;
 
 /* @group(#syntax)

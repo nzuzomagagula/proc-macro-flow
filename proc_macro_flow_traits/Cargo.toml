@@ -7,6 +7,6 @@ edition = "2024"
 # syn 3: `quote` is explicit because ToTokens is quote's trait and syn re-exports none of it.
 # Closes #deps - until these land, nothing here can name syn::Meta, syn::Error or
 # proc_macro2::Span, and every task in lib.rs is unimplementable in place.
-syn = { version = "3", features = ["full"] }
+syn = { version = "3", features = ["full", "visit"] }
 quote = "1"
 proc-macro2 = "1"

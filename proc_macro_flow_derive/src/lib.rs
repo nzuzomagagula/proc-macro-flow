@@ -7,7 +7,6 @@ use crate::base::extractor::StructExtraction;
 use crate::traits::extractor::Extractor;
 
 mod base;
-mod traits;
 
 
 #[proc_macro_derive(HelloMacro)]

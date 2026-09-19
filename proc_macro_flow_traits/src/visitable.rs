@@ -16,7 +16,7 @@ use syn::visit::Visit;
 /// long. Taking `self` and implementing for the REFERENCE types fixes it, and
 /// `self` is then already the `&'ast T` every visit_* wants. Nothing caught
 /// this because accept has been dead code since it was written"
-pub(crate) trait Visitable<'ast> {
+pub trait Visitable<'ast> {
     // Exercised by base/syntax/worked.rs and by nothing else yet: no stage drives a visitor
     // over its input. It was accept's being dead that hid the uncallable-receiver bug fixed
     // at ID(visitable/by-value), so the allow is deliberately narrow.

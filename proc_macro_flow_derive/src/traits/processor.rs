@@ -1,2 +1,0 @@
-// @review [ ]
-// DEPRECATED(#pipeline/processor-trait):D[this] && V[ID(pipeline/base-processor) ==? this], "Do NOT define Processor here. This duplicated ID(pipeline/base-processor), which asks for the same trait in proc_macro_flow_traits - and that is the only crate that can export it, so two definitions would mean the pub one is unreachable and this one unusable by anyone else. This module keeps only the IMPLS once the trait lands, per ID(pipeline/relocate-traits)"
