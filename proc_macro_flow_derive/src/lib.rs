@@ -3,10 +3,18 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
+use proc_macro_flow_traits::{
+    extractor::Extractor,
+    generator::{Generator, emit_errors},
+    processor::Processor,
+    render::render,
+};
+
 use crate::base::extractor::StructExtraction;
-use proc_macro_flow_traits::extractor::Extractor;
+use crate::base::extractor::processor::ProcessedStruct;
 
 mod base;
+mod derive;
 
 
 #[proc_macro_derive(HelloMacro)]
@@ -25,26 +33,82 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-#[proc_macro_derive(Extractor)]
-pub fn extractor(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(FieldNames)]
+pub fn field_names(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
-    let extraction = StructExtraction::extract_from(&derive_input);
 
-    // The extraction is READ now rather than built and thrown away. What is emitted is still a
-    // stub, but the reasons are no longer silently dropped on the floor.
-    // TODO[~](#extractor/macro):U[F(extractor)], "Two halves left. (1) The expansion itself is a
-    // stub until ExtractorPipeline::expand exists. (2) Only this node's OWN reasons are rendered -
-    // children hold theirs, so the recursive descent is ID(syntax/render)'s single final walk,
-    // which also has to sort by span and emit a stub impl ALONGSIDE the errors so a missing impl
-    // does not cascade into 'does not implement' at every use site and bury the real diagnostic"
-    let errors = extraction
-        .reasons()
-        .iter()
-        .map(|reason| {
-            reason
-                .to_error(extraction.source(), "could not extract")
-                .to_compile_error()
-        });
+    // RENAMED(#extractor/macro):R[F(extractor) -> F(field_names)], "This derive RUNS the pipeline;
+    // it does not generate extraction logic. The `Extractor` name now belongs to the derive that
+    // does, and two different things sharing it was going to mislead. What this emits -
+    // `const FIELDS` - is what it has always emitted, so the name finally says so"
+    // TODO[x](#extractor/macro):U[F(field_names)], "The pipeline runs end to end - extract,
+    // render, process, generate. ID(syntax/render)'s walk is in: every reason in the tree is
+    // emitted, not just the root's. Its 'sorted by span' clause was dropped rather than done -
+    // see NOTE(#render/traversal-is-source-order) for why a sort is impossible on stable AND
+    // unnecessary given a depth-first walk over a source-ordered tree"
+    let extracted = StructExtraction::extract_from(&derive_input);
 
-    quote! { #(#errors)* }.into()
+    // The whole tree, before processing consumes it. Children's reasons were recorded faithfully
+    // and never read until this walk existed - which made #no-result's guarantee half a promise.
+    let mut errors = render(&extracted);
+
+    let processed = StructExtraction::process(extracted);
+    errors.extend(
+        processed
+            .reasons
+            .iter()
+            .map(|reason| reason.to_error(&derive_input, reason.message())),
+    );
+
+    // The stub goes out whether or not there is a value - see
+    // NOTE(#generator/stub-alongside-errors).
+    let body = match processed.value {
+        Some(value) => ProcessedStruct::generate(value),
+        None => ProcessedStruct::stub(&derive_input),
+    };
+
+    emit_errors(body, errors).into()
+}
+
+// ===========================================================================
+// THE DERIVES - generating extraction logic instead of writing it out
+// ===========================================================================
+//
+// See @group in derive/mod.rs for why these are three and not one, and for why this crate can
+// never use them on its own types.
+
+/// Generate `extract_from` from `#[source(Ty)]` and each field's `#[from]` / `#[with]`.
+#[proc_macro_derive(Extractor, attributes(source, from, with))]
+pub fn extractor(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_extractor)
+}
+
+/// Generate the trivial pass-through `Validate`. Omit it when there is a real narrowing to do.
+#[proc_macro_derive(Validate, attributes(source))]
+pub fn validate(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_validate)
+}
+
+/// Generate the identity `Processor`. Omit it when the stage does real work.
+#[proc_macro_derive(Processor, attributes(source))]
+pub fn processor(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_processor)
+}
+
+/// Shared entry: parse, run, and turn any error into a `compile_error!` at the author's span.
+///
+/// A derive that returns nothing on failure leaves the impl missing and every use site reporting
+/// "does not implement", which is the cascade NOTE(#generator/stub-alongside-errors) exists to
+/// prevent. Here there is no meaningful stub - the impl we failed to write IS the product - so the
+/// error is all that goes out, and it is spanned where the author can act on it.
+fn expand(
+    input: TokenStream,
+    f: fn(DeriveInput) -> syn::Result<proc_macro2::TokenStream>,
+) -> TokenStream {
+    let parsed = parse_macro_input!(input as DeriveInput);
+
+    match f(parsed) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
 }

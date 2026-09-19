@@ -74,6 +74,16 @@ pub fn emit(stub: TokenStream, reasons: &[Reason], node: &impl ToTokens, message
     out
 }
 
+/// Combine a stub with errors a render walk produced.
+///
+/// The `Reason`-based [`emit`] is the single-node convenience; this is the whole-tree form, and it
+/// is what an entry point should use - a node's own reasons are only ever part of the story.
+pub fn emit_errors(stub: TokenStream, errors: Vec<syn::Error>) -> TokenStream {
+    let mut out = stub;
+    out.extend(errors.into_iter().map(|error| error.to_compile_error()));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,17 @@ pub mod extractor;
 pub mod generator;
 pub mod meta;
 pub mod processor;
+pub mod render;
+
+/// Re-exported so generated code can name `syn` types without the AUTHOR'S crate having to depend
+/// on syn under that exact name.
+///
+/// NOTE(#traits/reexport-syn): V[N(proc_macro_flow_traits)::syn], "Generated code already writes
+/// `::proc_macro_flow_traits::..` paths rather than importing, which is the ordinary hygiene
+/// bargain: a macro must not depend on what is in scope at the call site. `::syn::Error` in the
+/// Tr(Diagnose) body broke that bargain - it compiled only because every crate testing this
+/// happens to depend on syn. One re-export closes it for the one syn type generated code names"
+pub use syn;
 pub mod resolution;
 pub mod visitable;
 pub mod vocab;
@@ -45,7 +56,9 @@ pub mod vocab;
  *
  * TODO[ ](#resolve): C[F(resolve).R(Extraction<Self>)], "Type-directed: gather the expected type's candidates, match exactly, accept any SUFFIX of a canonical path, allow a ZST field to be written as key OR value, then zero matches -> 'not accepted here, expected one of ..' and several -> 'ambiguous, qualify'. Suffix matching is free for every node and needs nothing declared, and mirroring rustc's own import semantics means the rule is one users already hold. Keys are idents and values are paths, exactly the asymmetry Rust has in `Foo { bar: Baz::Qux }` - fields are not items, so there is no `configuration::colour` to resolve and the qualified key form is dropped"
  *
- * TODO[ ](#render): C[F(render).R(TokenStream)] && V[F(render).contains(compile_error)], "One walk over the finished tree emitting N spanned compile_error!s, sorted by span. VERIFIED: syn::Error::combine keeps each error's own span and to_compile_error emits one compile_error! per error, so all-at-once reporting needs no nightly diagnostics. A single final pass because traversal order is not source order - written keys are visited before missing-required is discovered - and only one pass can sort, dedupe and cap. Emit a stub expansion ALONGSIDE the errors: without it the missing impl cascades into 'does not implement' at every use site and buries the real diagnostic. Answers half of ID(generator/base-scope)"
+ * TODO[x](#render): C[F(render).R(Vec<syn::Error>)] && V[F(render).contains(compile_error)], "DONE, in proc_macro_flow_traits::render, and the signature landed as Vec<syn::Error> rather than TokenStream: the walk COLLECTS, and F(emit_errors) turns the collection into a stream. Splitting them is what lets the entry point interleave the walk's errors with the processor's before anything is emitted. VERIFIED as specified: syn::Error::combine keeps each error's own span and to_compile_error emits one compile_error! per error, so all-at-once reporting needs no nightly diagnostics. The stub goes out ALONGSIDE the errors, which was the other half - see ID(generator/stub-is-not-empty). TWO CLAUSES DID NOT SURVIVE CONTACT, both recorded rather than quietly dropped: SORTED BY SPAN is impossible AND unnecessary (ID(render/traversal-is-source-order)), and DEDUPE AND CAP are simply not done (ID(render/dedupe-and-cap)). The premise behind both - 'traversal order is not source order' - was wrong for the tree as built: depth-first over a syn tree assembled in source order IS source order. It will stop being wrong the moment ID(resolve) reports a missing-required key discovered after the written ones, which is exactly when ID(render/dedupe-and-cap) becomes due"
+ *
+ * TODO[ ](#render/dedupe-and-cap): C[F(render).dedupes] && C[F(render).caps], "ID(render) asked the single final pass to sort, dedupe and cap. It sorts by construction and does NEITHER of the other two. Not done rather than deemed unnecessary: a grammar that rejects one malformed node N ways produces N errors today, and nothing bounds the count, so one bad attribute can bury a screen. Deferred because both need a key to compare on that does not exist yet - dedupe needs reason-plus-span equality, which needs ID(reason) to settle what a rendered message IS, and a cap needs an ordering to decide what to drop first, which is the one thing spans cannot give on stable. Do it when ID(reason)'s reflection table lands, not before: capping on an arbitrary order would hide errors at random"
  *
  * TODO[ ](#testing): C[F(parse_grammar).A(\1).T(&str)], "Parse a &str into an Attribute and run a grammar against it, so grammar tests need no macro invocation at all - which is only possible because this crate is an ordinary lib. Plus trybuild snapshots of the messages: they are GENERATED from Reason x Node rather than written by hand, which makes them exactly the output worth pinning, since a regression there is otherwise silent"
  */

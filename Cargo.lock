@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "proc_macro_flow_derive",
  "proc_macro_flow_traits",
+ "syn",
 ]
 
 [[package]]

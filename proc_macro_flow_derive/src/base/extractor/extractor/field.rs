@@ -1,5 +1,6 @@
 // @review [ ]
 use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Validate};
+use proc_macro_flow_traits::render::Diagnose;
 use syn::Field;
 
 // DEPRECATED(#attribute/generic-grammar):D[S(TransformationExtraction)], "Deleted, and the
@@ -47,4 +48,10 @@ impl<'ast> Validate<'ast, &'ast Field> for FieldExtraction<'ast> {
     fn validate(input: &'ast Field) -> Result<Self::Valid, Self::ValidityError> {
         Ok(input)
     }
+}
+
+impl<'ast> Diagnose for FieldExtraction<'ast> {
+    /// A leaf for now - it has no children until the derive gives it `#[from]` fields
+    /// (#field/children).
+    fn diagnose(&self, _: &mut Vec<syn::Error>) {}
 }

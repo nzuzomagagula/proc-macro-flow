@@ -12,23 +12,29 @@ rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
 
 rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #E8F4EA
 
-rectangle "Processor\n+ process_each / process_maybe" as P #E8F4EA
-rectangle "Generator\n+ emit" as G #E8F4EA
+rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
+rectangle "Generator\nProcessedStruct -> impl { FIELDS }\n+ stub() + emit_errors()" as G #E8F4EA
 
-rectangle "#[derive(Extractor)]\n#[source] #[from] #[with]" as DE #EEEEEE
-rectangle "#[derive(Processor)]\nidentity" as DP #EEEEEE
+rectangle "render()\nDiagnose walk over the tree\nVec<syn::Error>" as R #E8F4EA
+
+rectangle "#[derive(Extractor)]\n#[source] #[from] #[with]\n+ Diagnose" as DE #E8F4EA
+rectangle "#[derive(Processor)]\nidentity" as DP #E8F4EA
+rectangle "#[derive(Validate)]\npass-through" as DV #E8F4EA
 
 Entry --> S : extract_from
 S --> F : extract_each(data.fields.iter())
 
-S ..> P : Extracted<..>, whole
-P ..> G : Processor::Output
+S --> R : Extracted<..>, borrowed
+R --> G : Vec<syn::Error>
+S --> P : Extracted<..>, whole
+P --> G : ProcessedStruct
 
 V ..> P : the primitives it\nwill be written against
 Y ..> V : SyntaxHelper (vocabulary!)
 
-DE ..> S : will generate
-DP ..> P : will generate
+DE ..> S : generates (proved\nin the facade)
+DP ..> P : generates
+DV ..> S : generates
 
 note bottom of F
   Has **no fields left**. Its children were
@@ -49,43 +55,79 @@ note bottom of Y
 end note
 
 note bottom of P
-  **Exists now.** Optional: the identity is
-  derived, so downstream sees one shape.
-  Cascade is bottom-up and asserted — a test
-  records order and sees ["child","child",
-  "parent"] with the children's OUTPUTS.
+  **Wired.** Concrete impls for both
+  extractions, driven from lib.rs.
+
+  Sharpest demonstration of why the source
+  rides on the OUTPUT: FieldExtraction's value
+  carries NOTHING, so everything ProcessedField
+  knows comes from ""input.source()"". Unwrap
+  between stages and there is nothing to
+  process. (#processor/needs-the-source)
 end note
 
 note bottom of G
-  **Exists now.** ""emit"" puts the stub out first
-  and appends one ""compile_error!"" per reason,
-  so the stub-always rule cannot be forgotten.
+  **Wired.** An enum fails extraction and the
+  impl is STILL emitted — same associated items,
+  vacant. Not an empty stream: that would leave
+  every use site reporting "no associated item
+  named FIELDS" on top of the real error.
+  (#generator/stub-is-not-empty)
 end note
 
 legend right
   |<#E8F4EA>| live and tested |
   |<#FFF4E5>| works, tested, not wired |
-  |<#EEEEEE>| next: the two derives |
+  |<#EEEEEE>| next: the syntax stage |
 endlegend
 
 note as Gap
-  **The gap has moved.**
+  **The pipeline runs end to end, and every
+  reason in the tree reaches the user.**
 
-  It used to be "nothing consumes the
-  extraction tree" — Processor and Generator
-  now exist to consume it. What is missing is
-  the WIRING: lib.rs still renders top-level
-  reasons and emits nothing else, and no
-  concrete Processor or Generator is
-  implemented for StructExtraction.
+  Both earlier gaps are closed:
 
-  The two derives are what close it, and
-  Step 6 — rewriting the existing extractors
-  onto ""#[derive(Extractor)]"" — is the test
-  that the derive earns its place.
+  1. The derives generate extraction logic.
+     StructExtraction and FieldExtraction stay
+     hand-written where they sit — a proc-macro
+     crate cannot use its own derives — so the
+     proof lives in the facade instead
+     (#derive/cannot-self-host).
+
+  2. ID(syntax/render) descends. ""Diagnose""
+     says where a node's children are; the
+     ""Extracted"" around each one renders its
+     reasons, because it holds the node they
+     span against (#render/who-renders).
+
+  The 'sorted by span' clause was DROPPED, not
+  done: ""Span::start"" is gated and returns
+  line 0 inside a real macro, so a sort would
+  be a no-op that looked like a guarantee.
+  Depth-first over a source-ordered syn tree
+  already IS source order.
+  (#render/traversal-is-source-order)
+
+  What remains: the syntax stage is still not
+  on the path at all.
 end note
 
-Gap .. DE
+Gap .. R
+
+note bottom of R
+  A node renders its OWN reasons via its
+  ""Extracted""; a VALUE implements ""Diagnose""
+  only to say where its children are. So a
+  grammar type never learns how a reason
+  becomes an error, and the node-span fallback
+  cannot be forgotten.
+
+  ""#[derive(Extractor)]"" emits this impl
+  alongside — a leaf is the one case it cannot
+  state, and omitting it is a compile error,
+  never a silent gap.
+  (#derive/diagnose-rides-along)
+end note
 
 note as Closed
   **#pipeline/relocate-traits is closed.**

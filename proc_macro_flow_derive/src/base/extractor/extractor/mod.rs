@@ -6,6 +6,7 @@ use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
 use proc_macro_flow_traits::extractor::{Extractor, Reason, ReasonKind, Validate, extract_each};
+use proc_macro_flow_traits::render::Diagnose;
 
 use crate::base::extractor::extractor::field::FieldExtraction;
 
@@ -14,11 +15,11 @@ pub mod field;
 //Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"
 
 pub(crate) struct StructExtraction<'ast> {
-    // UNWIRED(#extraction/unconsumed): V[this.built && !this.read], "The children are
-    // extracted and then nobody looks at them - the processor that would is ID(pipeline/base-processor),
-    // still a stub. This is the single most load-bearing warning in the crate, so it is
-    // suppressed HERE and named rather than left to blend into the noise."
-    #[allow(dead_code)]
+    // Fix[x](#extraction/unconsumed):D[Attr(allow(dead_code))], "RESOLVED. The children used to be
+    // extracted and then never looked at, which is why this field carried a suppression and a
+    // warning named after it. Two readers arrived: ID(pipeline/base-processor) narrows them for
+    // generation, and ID(syntax/render) walks them for their reasons. The allow comes off - if
+    // either reader is ever removed the warning should come back rather than stay silenced"
     pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
 }
 
@@ -60,5 +61,97 @@ impl<'ast> Validate<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
             syn::Data::Struct(data_struct) => Ok(data_struct),
             syn::Data::Enum(_) | syn::Data::Union(_) => Err(StructExtractionValidityError),
         }
+    }
+}
+
+impl<'ast> Diagnose for StructExtraction<'ast> {
+    /// Only where the children are - the `Extracted` around each one renders its reasons, because
+    /// it is the only thing that knows the node they span against. See NOTE(#render/who-renders).
+    fn diagnose(&self, out: &mut Vec<syn::Error>) {
+        self.fields.diagnose(out);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proc_macro_flow_traits::render::render;
+    use syn::parse_str;
+
+    fn item(source: &str) -> DeriveInput {
+        parse_str(source).expect("the item parses")
+    }
+
+    /// Stand in for a reason a field records once ID(field/children) gives it something to
+    /// complain about. The walk has to reach it today, or it will not reach the real one either.
+    fn with_a_complaining_field<'ast>(
+        node: &'ast DeriveInput,
+        field: &'ast Field,
+    ) -> Extracted<StructExtraction<'ast>, &'ast DeriveInput> {
+        let child = Extracted::new(
+            FieldExtraction::extract_from(field)
+                .into_extraction()
+                .with_reason(Reason::new(ReasonKind::UnknownKey)),
+            field,
+        );
+
+        Extracted::new(
+            Extraction::value(StructExtraction {
+                fields: vec![child],
+            }),
+            node,
+        )
+    }
+
+    #[test]
+    fn a_clean_struct_renders_nothing() {
+        let input = item("pub struct Thing { a: u8, b: String }");
+        assert!(render(&StructExtraction::extract_from(&input)).is_empty());
+    }
+
+    #[test]
+    fn a_failed_validate_renders_the_roots_own_reason() {
+        let input = item("pub enum Thing { A }");
+        let errors = render(&StructExtraction::extract_from(&input));
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].to_string(), "written in the wrong shape");
+    }
+
+    #[test]
+    fn a_fields_reason_reaches_the_walk() {
+        // THE wiring this file owed. StructExtraction::diagnose says where its children are and
+        // the Extracted around each one renders it - neither half works alone.
+        let input = item("pub struct Thing { a: u8 }");
+        let data = match &input.data {
+            syn::Data::Struct(data) => data,
+            _ => unreachable!(),
+        };
+        let field = data.fields.iter().next().expect("one field");
+
+        let errors = render(&with_a_complaining_field(&input, field));
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].to_string(), "not a key this node accepts");
+    }
+
+    #[test]
+    fn the_reason_is_spanned_against_the_field_not_the_item() {
+        // ID(reason/span-not-node): the reason had no span of its own, so it fell back to the node
+        // its Extracted holds - the FIELD. Falling back to the DeriveInput would underline the
+        // whole struct for a one-field complaint.
+        let input = item("pub struct Thing { a: u8 }");
+        let syn::Data::Struct(data) = &input.data else {
+            unreachable!()
+        };
+        let field = data.fields.iter().next().expect("one field");
+
+        let errors = render(&with_a_complaining_field(&input, field));
+        let rendered = errors[0].to_compile_error().to_string();
+
+        // spanned output is not inspectable on stable (ID(render/traversal-is-source-order) covers
+        // the same limit), so assert what IS observable: one error, carrying the child's wording
+        assert!(rendered.contains("compile_error"), "{rendered}");
+        assert!(rendered.contains("not a key"), "{rendered}");
     }
 }

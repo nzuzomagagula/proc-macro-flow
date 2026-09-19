@@ -1,0 +1,55 @@
+// @review [ ]
+//! `#[derive(Processor)]` — the identity.
+//!
+//! Most extractions copy their fields through and generate from them with no transformation, so
+//! the default has to cost nothing. Deriving this IS the opt-in: a type needing real processing
+//! omits the derive and writes `impl Processor` by hand, which is ordinary Rust and needs no
+//! opt-out attribute.
+
+use proc_macro2::TokenStream;
+use quote::quote;
+use syn::{DeriveInput, Error, Result, Type};
+
+use super::find_one;
+
+pub(crate) fn derive_processor(input: DeriveInput) -> Result<TokenStream> {
+    let name = &input.ident;
+
+    let attr = find_one(&input.attrs, "source")?.ok_or_else(|| {
+        Error::new_spanned(
+            &input.ident,
+            "`#[derive(Processor)]` needs `#[source(Ty)]` - the identity processor's Input is the \
+             matching extractor's Output, which names that type",
+        )
+    })?;
+    let source: Type = attr.parse_args()?;
+
+    let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
+    let lifetime = input
+        .generics
+        .lifetimes()
+        .next()
+        .map(|def| &def.lifetime)
+        .ok_or_else(|| Error::new_spanned(&input.ident, "expected a lifetime parameter"))?;
+
+    Ok(quote! {
+        impl #impl_generics ::proc_macro_flow_traits::processor::Processor
+            for #name #type_generics #where_clause
+        {
+            type Input = ::proc_macro_flow_traits::extractor::Extracted<
+                Self,
+                & #lifetime #source,
+            >;
+            type Output = Self;
+
+            /// Identity: the extraction IS the processed value. Children are already `Extracted`
+            /// inside it, so there is nothing to cascade at this level - a processor that needs to
+            /// reach them is doing real work and writes itself.
+            fn process(
+                input: Self::Input,
+            ) -> ::proc_macro_flow_traits::extractor::Extraction<Self::Output> {
+                input.into_extraction()
+            }
+        }
+    })
+}
