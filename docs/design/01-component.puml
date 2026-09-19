@@ -10,18 +10,21 @@ package "proc_macro_flow\n(facade)" as facade {
     pub use of both crates.
     Re-exports only MACROS from the
     derive crate — see the constraint below.
+
+    Also HOSTS THE DERIVE PROOF, because
+    it is the nearest crate that can.
   end note
 }
 
 package "proc_macro_flow_traits\n(ordinary lib)" as traits {
   [extractor] as T_Extractor
   [resolution] as T_Resolution
-  [source] as T_Source
   [meta] as T_Meta
   [vocab] as T_Vocab
   [visitable] as T_Visitable
   [processor] as T_Processor
   [generator] as T_Generator
+  [render] as T_Render
 
   note right of T_Vocab
     names! vocabulary! flag!
@@ -35,12 +38,30 @@ package "proc_macro_flow_traits\n(ordinary lib)" as traits {
     optional stage; identity is derived
   end note
   note bottom of T_Generator
-    Generator + emit
+    Generator + emit / emit_errors
     stub ALWAYS goes out beside the errors
+  end note
+  note bottom of T_Render
+    Diagnose + render + combined
+    one walk, every reason in the tree
+    see 03-pipeline-status
+  end note
+
+  note left of T_Meta
+    ""pub use syn"" lives here too, so
+    generated code can name ""syn::Error""
+    without the AUTHOR'S crate depending
+    on syn under that exact name.
+    (#traits/reexport-syn)
   end note
 }
 
 package "proc_macro_flow_derive\n(proc-macro = true)" as derive {
+  package "derive/" as derive_mod {
+    [derive_extractor] as D_DE
+    [derive_validate] as D_DV
+    [derive_processor] as D_DP
+  }
   package "base/extractor" as base_extractor {
     [StructExtraction] as D_Struct
     [FieldExtraction] as D_Field
@@ -72,7 +93,7 @@ note as Constraint
   item in a proc-macro crate outright —
   "proc-macro crate types cannot export any
   items other than functions tagged with
-  #[proc_macro*]".
+  ""#[proc_macro*]"".
 
   So every type that must be NAMEABLE from
   outside lives in proc_macro_flow_traits.
@@ -83,6 +104,28 @@ note as Constraint
 end note
 
 Constraint .. derive
+
+note as CannotSelfHost
+  **A derive crate cannot use its own derives.**
+
+  VERIFIED, quoting rustc:
+  ""can't use a procedural macro from the same crate that defines it""
+  So
+  StructExtraction and FieldExtraction — which
+  sit in ""base/extractor"" — can NEVER carry
+  ""#[derive(Extractor)]"" where they live.
+
+  They stay hand-written as the bootstrap, and
+  the FACADE hosts the proof instead: it depends
+  on both crates, so it declares the equivalent
+  extraction with the derives and asserts the
+  generated tree matches.
+
+  That is also the facade's only real job.
+  (#derive/cannot-self-host, #facade/hosts-the-proof)
+end note
+
+CannotSelfHost .. derive_mod
 
 note as TraitHome
   **#pipeline/relocate-traits is CLOSED.**

@@ -4,7 +4,7 @@ title Core types and the three stage contracts
 skinparam shadowing false
 skinparam classAttributeIconSize 0
 
-package proc_macro_flow_traits <<Frame>> {
+package "proc_macro_flow_traits\ndata + stages" as traits_data <<Frame>> {
 
   class "Extraction<T>" as Extraction {
     +value: Option<T>
@@ -125,6 +125,51 @@ package proc_macro_flow_traits <<Frame>> {
     child's Output, which Rust cannot express.
   end note
 
+  interface Diagnose {
+    +diagnose(&self, out: &mut Vec<syn::Error>)
+  }
+  note right of Diagnose
+    Says WHERE A NODE'S CHILDREN ARE, and
+    nothing else. It does NOT render its own
+    reasons — the ""Extracted"" around it does,
+    because that is the only thing holding the
+    node they span against.
+
+    So a grammar type never learns how a reason
+    becomes an error, and the node-span
+    fallback cannot be forgotten.
+    (#render/who-renders)
+
+    ""#[derive(Extractor)]"" emits this impl
+    alongside. A LEAF is the one case it cannot
+    state — and omitting it is a compile error,
+    never a silent gap.
+  end note
+
+  class "render / combined" as RenderFns <<(F,#FFCC88)>> {
+    render(&impl Diagnose) -> Vec<syn::Error>
+    combined(Vec<Error>) -> Option<Error>
+  }
+  note right of RenderFns
+    ONE walk, depth-first, every reason in the
+    tree. Returns a COLLECTION rather than a
+    stream so the entry point can interleave
+    the walk's errors with the processor's
+    before anything is emitted.
+
+    It does NOT sort by span, which #render
+    asked for. VERIFIED impossible AND
+    unnecessary: ""Span::start"" is gated and
+    returns line 0 inside a real macro, so a
+    sort would be a no-op that looked like a
+    guarantee — and depth-first over a
+    source-ordered syn tree already IS source
+    order. (#render/traversal-is-source-order)
+
+    Still owed: dedupe and cap
+    (#render/dedupe-and-cap).
+  end note
+
   interface Generator {
     +type Input
     +generate(Input) -> TokenStream
@@ -134,10 +179,13 @@ package proc_macro_flow_traits <<Frame>> {
     else — one shape, because processing is
     never skipped.
 
-    ""emit(stub, reasons, node, msg)"" puts the
-    stub out FIRST and appends one
-    ""compile_error!"" per reason, so the
-    stub-always rule is mechanical.
+    ""emit_errors(stub, errors)"" puts the stub
+    out FIRST and appends one ""compile_error!""
+    per error, so the stub-always rule is
+    mechanical. ""emit"" is the single-node
+    convenience; an ENTRY POINT should never
+    use it, because a node's own reasons are
+    only ever part of the story.
 
     TODO(#typed-output/generate): should return
     a TYPED syn item. We build this content and
@@ -147,7 +195,24 @@ package proc_macro_flow_traits <<Frame>> {
   end note
 }
 
-package proc_macro_flow_derive <<Frame>> {
+package "proc_macro_flow_traits\nthe extraction contract" as traits_contract <<Frame>> {
+
+  note as Moved
+    **This half is NOT the derive crate.**
+    It used to be drawn as one, and has not
+    been since #pipeline/relocate-traits closed.
+
+    ""#[derive(Extractor)]"" on a USER's type
+    means Extractor, Validate and Visitable
+    have to be NAMEABLE from outside, and a
+    proc-macro crate can export nothing but
+    its macros. So they moved.
+
+    The diagram is one crate. The derive crate
+    holds macro entry points and stage impls
+    only.
+  end note
+
 
   interface "Extractor<'ast, I: Visitable>" as Extractor {
     +type Output
@@ -216,7 +281,7 @@ package proc_macro_flow_derive <<Frame>> {
     extract_maybe<T, I>(Option<I>) -> Option<T::Output>
   }
   note bottom of FromHelpers
-    What ""#[from = ..]"" lowers to. Which one a
+    What ""#[from(..)]"" lowers to. Which one a
     field uses is read off its TYPE, never off
     the attribute (#from/arity-from-type).
 
@@ -235,5 +300,7 @@ Extractor ..> Processor : Output feeds
 Processor ..> Generator : Output feeds
 Extractor ..> Extracted : Output is\ntypically
 FromHelpers ..> Extractor : drives
+RenderFns ..> Diagnose : walks
+Extracted ..> Diagnose : renders its\nown reasons
 
 @enduml

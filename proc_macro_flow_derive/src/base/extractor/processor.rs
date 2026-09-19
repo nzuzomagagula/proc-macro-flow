@@ -29,7 +29,7 @@ use syn::{DeriveInput, Field};
 use crate::base::extractor::extractor::{StructExtraction, field::FieldExtraction};
 
 // DEPRECATED(#processor/bare-source):D[S(ExtractorProcessor)] && D[S(FieldProcessor)] && D[S(TransformationProcessor)], "Deleted. Each held `source: XExtraction` - the bare extraction, unwrapped - and that is settled the other way: a processor receives Ty(Extractor::Output) WHOLE. Unwrapping would strip the source node off exactly the value a processor needs it for. Replaced by the impls below, which take Extracted and narrow it"
-// TODO(#processor/macro):C[F(processor)], "Proc-macro entry point for the processor stage, alongside lib.rs::extractor"
+// TODO(#processor/macro):C[F(processor)], "Proc-macro entry point for the processor stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
 
 /// What the generator consumes for a whole struct.
 pub(crate) struct ProcessedStruct<'ast> {

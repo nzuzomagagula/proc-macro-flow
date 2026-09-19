@@ -56,9 +56,29 @@ end note
 
 Deleted2 .. Field
 
+note as Diagnosed
+  **Both implement ""Diagnose"".**
+  Not to render their own reasons — the
+  ""Extracted"" around them does that, since it
+  holds the node those reasons span against.
+  A VALUE only says WHERE ITS CHILDREN ARE.
+
+  So StructExtraction delegates to ""fields"",
+  and FieldExtraction is a leaf until
+  ""#field/children"" refills it.
+
+  ""#[derive(Extractor)]"" emits this impl too:
+  the field list already IS the answer, so
+  making it opt-in would only be a way to
+  forget it. (#derive/diagnose-rides-along)
+end note
+
+Diagnosed .. Struct
+
 note right of Struct
-  ""fields"" is already written in the shape
-  ""#[from = source.data.fields]"" will generate:
+  ""fields"" is written in the shape
+  ""#[from(source.fields.iter())]"" GENERATES —
+  the derive exists now:
   ""extract_each::<FieldExtraction, _, _>(..)"".
   The designer names WHERE the children are;
   the ""Vec"" in the type picks the helper; the

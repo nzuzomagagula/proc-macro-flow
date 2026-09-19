@@ -4,22 +4,22 @@ title What is actually wired, and where the gap is
 skinparam shadowing false
 skinparam legendBackgroundColor #FFFFFF
 
-rectangle "lib.rs::extractor\n#[proc_macro_derive(Extractor)]" as Entry #E8F4EA
+rectangle "lib.rs::field_names\n""#[proc_macro_derive(FieldNames)]""" as Entry #E8F4EA
 
 rectangle "StructExtraction\n<&'ast DeriveInput>" as S #E8F4EA
-rectangle "FieldExtraction\n<&'ast Field>" as F #FFF4E5
+rectangle "FieldExtraction\n<&'ast Field>" as F #E8F4EA
 rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
 
-rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #E8F4EA
+rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #FFF4E5
 
 rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
 rectangle "Generator\nProcessedStruct -> impl { FIELDS }\n+ stub() + emit_errors()" as G #E8F4EA
 
 rectangle "render()\nDiagnose walk over the tree\nVec<syn::Error>" as R #E8F4EA
 
-rectangle "#[derive(Extractor)]\n#[source] #[from] #[with]\n+ Diagnose" as DE #E8F4EA
-rectangle "#[derive(Processor)]\nidentity" as DP #E8F4EA
-rectangle "#[derive(Validate)]\npass-through" as DV #E8F4EA
+rectangle """#[derive(Extractor)]""\n""#[source] #[from] #[with]""\n+ Diagnose" as DE #E8F4EA
+rectangle """#[derive(Processor)]""\nidentity" as DP #E8F4EA
+rectangle """#[derive(Validate)]""\npass-through" as DV #E8F4EA
 
 Entry --> S : extract_from
 S --> F : extract_each(data.fields.iter())
@@ -37,6 +37,11 @@ DP ..> P : generates
 DV ..> S : generates
 
 note bottom of F
+  **Now wired**, on two counts: the processor
+  narrows it to ProcessedField, and render
+  walks it for reasons. It was amber here
+  while neither reader existed.
+
   Has **no fields left**. Its children were
   ""Vec<Extracted<TransformationExtraction, ..>>"",
   and that type is deleted — it was never a
@@ -78,12 +83,12 @@ end note
 legend right
   |<#E8F4EA>| live and tested |
   |<#FFF4E5>| works, tested, not wired |
-  |<#EEEEEE>| next: the syntax stage |
+  |<#FFD9D9>| an OPEN QUESTION, not a status |
 endlegend
 
 note as Gap
-  **The pipeline runs end to end, and every
-  reason in the tree reaches the user.**
+  **The pipeline runs end to end.**
+  Every reason in the tree reaches the user.
 
   Both earlier gaps are closed:
 
@@ -139,5 +144,41 @@ note as Closed
 end note
 
 Closed .. Entry
+
+note as Naming #FFD9D9
+  **OPEN QUESTION — a naming fork, not a status.**
+  This box was called ""lib.rs::extractor"" until the
+  derives landed.
+
+  It had to change: two ""#[proc_macro_derive(Extractor)]""
+  in one crate is, VERIFIED:
+  ""error[E0428]: the name `Extractor` is defined multiple times""
+  The new derive took
+  the name; this one was renamed after what it emits.
+
+  But the old ""extractor"" was NOT merely a pipeline
+  runner. Its own TODO said its expansion was
+  ""a stub until ExtractorPipeline::expand exists"" — it was the
+  PLACEHOLDER for generating extraction logic, which is
+  what ""#[derive(Extractor)]"" now does by another route.
+
+  So the open question is whether those are ONE feature
+  or TWO:
+
+  • ONE — the architecture moved from a pipeline struct
+    expanded at macro time to declarative attributes on
+    the extraction type. Then #extractor/pipeline,
+    ""#extractor/expansion"" and ""#extractor/macro-wiring"" 
+    should be CLOSED with an answer, not left dangling.
+
+  • TWO — the derive took a reserved name, and the
+    derive is what should be renamed instead.
+
+  Four annotations still say ""lib.rs::extractor"" meaning
+  the OLD one. They resolve cleanly and mean the wrong
+  thing, which is worse than a broken link.
+end note
+
+Naming .. DE
 
 @enduml

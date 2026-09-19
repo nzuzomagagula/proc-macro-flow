@@ -19,7 +19,7 @@ use syn::DeriveInput;
 
 use crate::base::extractor::processor::ProcessedStruct;
 
-// TODO(#generator/macro):C[F(generator)], "Proc-macro entry point for the generator stage, alongside lib.rs::extractor"
+// TODO(#generator/macro):C[F(generator)], "Proc-macro entry point for the generator stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
 // TODO[ ](#typed-output/generate):U[F(generate).R(TokenStream) -> R(syn::ItemImpl)], "Both functions
 // here build an impl block and hand it back as a raw stream, which is exactly the case
 // @group(#typed-output) in proc_macro_flow_traits::generator names: we KNOW the shape, so returning

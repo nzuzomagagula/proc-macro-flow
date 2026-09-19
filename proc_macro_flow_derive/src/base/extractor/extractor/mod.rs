@@ -1,7 +1,28 @@
 // @review [ ]
-// TODO(#extractor/pipeline):C[S(ExtractorPipeline)], "Bare struct holding its own extractor/processor/generator triple, mirroring the StructExtraction pipeline this file already builds - the extractor stage becomes self-hosting"
-// TODO(#extractor/expansion):C[F(expand)], "expand(&ExtractorPipeline) -> TokenStream first, concretely; only then wire the outer expansion (ExtractionState<StructExtraction>::visit_derive_input over DeriveInput/ItemStruct). Two separate passes - don't conflate the inner macro-of-a-macro with the outer traversal already in processor.rs"
-// TODO[~](#extractor/macro-wiring):U[F(extractor)], "Wire ExtractorPipeline::expand into lib.rs::extractor once it exists. Split from #extractor/macro so the two comments stop sharing one identity - nuts keys by identity, so a snapshot was only ever seeing one of them"
+// Answer(#extractor/self-hosting):A[S(ExtractorPipeline) == Attr(derive(Extractor))], "THE SAME
+// FEATURE, ARRIVED AT BY ANOTHER ROUTE. @group(#extractor/self-hosting) asked for a bare
+// ExtractorPipeline struct holding its own extractor/processor/generator triple, an expand() over
+// it, and that expansion wired into the macro entry point - 'the extractor stage becomes
+// self-hosting'. What shipped answers the same question declaratively: Attr(source) names the syn
+// node, Attr(from)/Attr(with) name where each child comes from, and Attr(derive(Extractor)) reads
+// them off the extraction type itself. Nothing holds a triple, because nothing needs to: the field
+// TYPE already carries the arity (ID(from/arity-from-type)) and Ty(Extracted) already carries the
+// source, so a struct assembled to describe a pipeline would only be restating what the extraction
+// struct says. The three below are closed against this answer, not abandoned"
+//
+// TODO[x](#extractor/pipeline):C[S(ExtractorPipeline)], "CLOSED by ID(extractor/self-hosting) - and
+// the type is deliberately NOT built. Its job was to be the thing a macro expands; the derive
+// expands the extraction struct instead, which is one fewer type declaring the same shape twice"
+// TODO[x](#extractor/expansion):C[F(expand)], "CLOSED by ID(extractor/self-hosting). The split it
+// insisted on - inner macro-of-a-macro first, outer traversal second - stopped applying when the
+// outer traversal went away: ID(extractor/recursive-source) deleted the Visit walk, so extract_from
+// descends from its own source and there is no second pass to conflate with"
+// TODO[x](#extractor/macro-wiring):U[F(field_names)], "CLOSED by ID(extractor/self-hosting). There
+// is no expand() to wire, and the target it named moved: lib.rs::extractor is now F(field_names),
+// while F(extractor) is the DERIVE. VERIFIED that the rename was forced rather than chosen - two
+// Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]: the name Extractor is defined
+// multiple times`. Recorded because this annotation resolved cleanly to the wrong function for a
+// while, which is worse than dangling"
 use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};

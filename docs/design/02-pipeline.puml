@@ -9,7 +9,7 @@ legend top
   Worked example, carried the whole way through:
 
   ""#[derive(SomeDerive)]""
-  #[configuration(colour(ColourSetting::Red, Other(Blue)), name = "thing")]
+  ""#[configuration(colour(ColourSetting::Red, Other(Blue)), name = "thing")]"" 
   ""pub struct Thing;""
 
   |<#E8F4EA>| real and tested |
@@ -35,10 +35,18 @@ out  ""Extracted<StructExtraction, &'ast DeriveInput>""
 via  ""validate"" -> ""&'ast DataStruct""
 then ""extract_each(data.fields.iter())""; <<#E8F4EA>>
 note right
-  ""#[from = source.data.fields]"" will
-  generate this line. The ""Vec"" in the
-  field's type picks ""extract_each"";
-  the walk is never written out.
+  ""#[from(source.fields.iter())]"" generates
+  this line — it is not a plan any more. The
+  ""Vec"" in the field's type picks
+  ""extract_each""; the walk is never written out.
+
+  The LIST form, not ""#[from = ..]"". VERIFIED:
+  rustc rejects the name-value form with
+  ""attribute value must be a literal"", so an
+  expression never reaches the macro at all.
+  The list form takes arbitrary tokens — the
+  same property the whole design rests on.
+  (#derive/list-not-name-value)
 end note
 
 :**FieldExtraction::extract_from**
@@ -89,6 +97,35 @@ note right
   (#attribute/generic-grammar)
 end note
 
+:**render(&extracted)**
+----
+in   ""&Extracted<StructExtraction, ..>""  BORROWED
+out  ""Vec<syn::Error>"" — every reason in the tree
+----
+depth-first; parent's reasons before its children's; <<#E8F4EA>>
+note right
+  **Runs HERE, not at the end.** On the
+  BORROWED tree, because ""process"" consumes
+  it — so the walk has to happen before the
+  stage boundary, and its output is carried
+  to emission.
+
+  ""Diagnose"" says where a node's CHILDREN are;
+  the ""Extracted"" around each one renders that
+  node's OWN reasons, because it holds the node
+  they span against. (#render/who-renders)
+
+  It is what makes a CHILD's reason reachable
+  at all — before it existed, only the root's
+  were emitted, and every sibling's complaint
+  was recorded and then read by nobody.
+
+  Does NOT sort by span: impossible on stable
+  AND unnecessary, since depth-first over a
+  source-ordered tree already IS source order.
+  (#render/traversal-is-source-order)
+end note
+
 |#FFF4E5|PROCESSING — understand|
 
 :**Processor::process**
@@ -115,8 +152,18 @@ end note
 :**Opening::from(&Meta)**
 ----
 in   ""&'ast syn::Meta""      ""configuration(..)""
-out  ""Opening::List(ListBody(&'ast TokenStream))""; <<#E8F4EA>>
+out  ""Opening::List(ListBody(&'ast TokenStream))""; <<#FFF4E5>>
 note right
+  **Below here, nothing is on the macro path.**
+  VERIFIED: ""lib.rs"" imports ""base::extractor""
+  and nothing else, and ""base/syntax"" carries
+  an explicit ""#![allow(dead_code)]"" saying so.
+
+  These steps are built and unit-tested, driven
+  ONLY by ""base/syntax/worked.rs"" — never by a
+  real macro invocation. Amber, not green.
+  (#syntax/not-driven)
+
   ""syn::Meta"" IS the attribute AST. Nothing
   invents a node layer beside it.
 end note
@@ -126,7 +173,7 @@ end note
 in   ""ListBody<'ast>""       raw tokens
 out  ""Punctuated<Meta, Token![,]>""
 ----
-[ colour(..), name = "thing" ]; <<#E8F4EA>>
+[ colour(..), name = "thing" ]; <<#FFF4E5>>
 note right
   ""exprs()"" is the other reading, for bare
   literals — ""bounds(0, 64)"" is impossible
@@ -139,14 +186,14 @@ end note
 in   ""ListBody"" + ""&[&str]"" candidates
 out  ""Result<()>"", errors COMBINED not aborted
 ----
-owns UnknownKey / Duplicate / candidates; <<#E8F4EA>>
+owns UnknownKey / Duplicate / candidates; <<#FFF4E5>>
 
 :**per field: ""<FieldTy as FromMeta>::from_meta""**
 ----
 ""colour"" : ""&Meta"" -> ""Vec<ColourSetting>""
 ""name""   : ""&Meta"" -> ""ConfigName(LitStr)""
 ----
-uniform: the macro does not know the shape; <<#E8F4EA>>
+uniform: the macro does not know the shape; <<#FFF4E5>>
 note right
   ""Vec<T>"" is SHAPE-CHANGING — one ListBody in,
   many value positions out. ""Option<T>"" is
@@ -158,7 +205,7 @@ end note
 ----
 ""ColourSetting::Red"" -> ""ColourSetting::Red""    (unit, suffix-matched)
 ""Other(Blue)""        -> ""ColourSetting::Other(Ident)""  (tuple)
-""Rgb(r = 12, ..)""    -> ""ColourSetting::Rgb { .. }""    (struct); <<#E8F4EA>>
+""Rgb(r = 12, ..)""    -> ""ColourSetting::Rgb { .. }""    (struct); <<#FFF4E5>>
 note right
   THE place a value is matched by name,
   because the caller needs a VALUE and rustc
@@ -201,17 +248,22 @@ note right
   and ""Ambiguous"" stay ours.
 end note
 
-:**Generator::generate**, then ""emit""
+:**Generator::generate**, then ""emit_errors(stub, errors)""
 ----
-in   a processor's ""Output""
+in   a processor's ""Output"" + the errors rendered earlier
 out  ""TokenStream"" — stub FIRST, then N ""compile_error!""
 ----
 the stub always goes out; <<#E8F4EA>>
 note right
   Without the stub, the missing impl cascades
-  into "does not implement" at every use site
-  and buries the real diagnostic. ""emit"" makes
-  that mechanical rather than remembered.
+  into ""does not implement"" at every use site
+  and buries the real diagnostic. ""emit_errors""
+  makes that mechanical rather than remembered.
+
+  The errors it appends were collected back in
+  EXTRACTION, not here — see the render step.
+  Emission is the only thing left to do with
+  them.
 
   TODO(#typed-output/generate): this should
   return a TYPED syn item, not a raw stream.

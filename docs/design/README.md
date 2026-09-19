@@ -32,11 +32,14 @@ docker run -d --rm -p 8080:8080 --name plantuml plantuml/plantuml-server:jetty
 
 Give it a few seconds, then render everything:
 
+The `charset=utf-8` is not optional — without it the server reads the files as latin-1 and every
+em-dash renders as `â€"`.
+
 ```sh
 cd docs/design
 for f in *.puml; do
   curl -sf --data-binary @"$f" -X POST \
-    -H 'Content-Type: text/plain' \
+    -H 'Content-Type: text/plain; charset=utf-8' \
     http://localhost:8080/svg -o "${f%.puml}.svg" \
     && echo "ok   $f" || echo "FAIL $f"
 done
