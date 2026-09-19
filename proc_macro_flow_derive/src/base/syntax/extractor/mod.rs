@@ -14,7 +14,7 @@ use proc_macro_flow_traits::{
 use proc_macro2::Ident;
 use syn::{Attribute, Type};
 
-use crate::traits::{Validate, extractor::Extractor};
+use proc_macro_flow_traits::extractor::{Extractor, Validate};
 
 // NOTE(#heads-are-rustcs):V[F(extract_from).!emits(E(ReasonKind).V(UnknownKey))], "An attribute
 // HEAD we do not recognise is never our complaint, and this stage must stay silent about one.

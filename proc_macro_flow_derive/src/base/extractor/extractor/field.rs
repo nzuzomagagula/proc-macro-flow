@@ -1,9 +1,6 @@
 // @review [ ]
-use proc_macro_flow_traits::extractor::{Extracted, Extraction};
+use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Validate};
 use syn::Field;
-
-use crate::traits::Validate;
-use crate::traits::extractor::Extractor;
 
 // DEPRECATED(#attribute/generic-grammar):D[S(TransformationExtraction)], "Deleted, and the
 // annotations that went with it were wrong in a way worth not rediscovering. They called it 'parse

@@ -4,7 +4,7 @@ use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
 use crate::base::extractor::StructExtraction;
-use crate::traits::extractor::Extractor;
+use proc_macro_flow_traits::extractor::Extractor;
 
 mod base;
 

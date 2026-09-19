@@ -5,14 +5,10 @@
 use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
-use proc_macro_flow_traits::extractor::{Reason, ReasonKind};
-use crate::{
-    base::extractor::extractor::field::FieldExtraction,
-    traits::{
-        Validate,
-        extractor::{Extractor, extract_each},
-    },
-};
+use proc_macro_flow_traits::extractor::{Extractor, Reason, ReasonKind, Validate, extract_each};
+
+use crate::base::extractor::extractor::field::FieldExtraction;
+
 pub mod field;
 
 //Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"

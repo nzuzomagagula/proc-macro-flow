@@ -128,8 +128,8 @@ mod walkthrough {
     use crate::base::syntax::extractor::{
         SyntaxFieldAttributeExtraction, SyntaxFieldAttributeKind,
     };
-    use crate::traits::extractor::Extractor;
-    use crate::traits::visitable::Visitable;
+    use proc_macro_flow_traits::extractor::Extractor;
+    use proc_macro_flow_traits::visitable::Visitable;
 
     /// The author's grammar type as the compiler sees it - a plain struct whose FIELDS carry the
     /// helper attributes. This is what `FieldExtraction` walks.
