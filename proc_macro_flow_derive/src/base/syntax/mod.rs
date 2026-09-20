@@ -158,9 +158,28 @@
  *
  * TODO[ ](#scratch): V[N(scratch).has(S(Configuration))] && V[N(scratch).has(E(ColourSetting))], "The maximal grammar at the foot of this file - every shape, arity rule and resolution rule in one pair of items, and the thing to check any behaviour change against. It is GATED behind #[cfg(any())] and does not compile, deliberately: Syntax, SomeDerive and the proc_macro_flow_traits::syntax support types are all still unwritten, so the errors it raises are a live checklist of what ID(syntax/traits), ID(syntax/forwarding) and ID(syntax/derive) still owe it. The attribute BODIES are verified to parse as Meta spine plus Expr leaves, so any parse failure here is a regression and not a missing feature. Mapping table and rejection cases in SCRATCH.md. NOTE that a second, SMALLER worked example now lives beside it in worked.rs, whose layer 3 does compile and is asserted - scratch remains the maximal grammar to check behaviour against, worked.rs is the minimal one that actually runs"
  *
+ * Answer(#separator):A[T(Punctuated<T, Sep>) == viable], "VERIFIED, and the answer is YES - the
+ * separator knob is real and not decoration. The doubt was whether rustc accepts #[attr(a; b)] as
+ * an inert derive helper at all. It does. A probe registering `sep` as a helper and reading
+ * Meta::List::tokens got all three of these back VERBATIM:
+ *     #[sep(a; b)]            -> `a ; b`
+ *     #[sep(1, 2, 3)]         -> `1 , 2 , 3`
+ *     #[sep(a => b, c => d)]  -> `a => b , c => d`
+ * All three also parsed as Meta::LIST, so require_list() works and nothing needs a special case.
+ * Inside the delimiters rustc resolves nothing and checks nothing beyond token-tree balance, which
+ * is the same property ID(no-path-head) already relies on for the selector.
+ *
+ * CONSEQUENCE, and it is a design obligation rather than a free win. S(ListBody) currently offers
+ * exactly two readings - metas() as Punctuated<Meta, Comma> and exprs() for bare literals - and
+ * `a; b` parses as NEITHER. A custom separator needs its own reading, so Sep either becomes a
+ * parameter of the reading or ListBody grows a third method. That is a vocabulary question, not a
+ * carrier question: ID(openings) still says the tokens are raw until someone asks, and this only
+ * changes WHO may ask and with what.
+ *
+ * So Sep STAYS in ID(forwarding) rather than being dropped"
+ *
  * --- STILL OPEN ------------------------------------------------------------
  *
- * Query(#separator): Q[T(Punctuated<T, Sep>) ??], "Meta::List::tokens is raw, so Punctuated<T, Token![;]> should let a grammar pick its own separator - but does rustc accept #[attr(a; b)] as an inert derive helper in the first place? Unverified. If it does not, the separator knob is decoration and Sep should be dropped from the forwarding impls in ID(syntax/forwarding)"
  *
  * Query(#custom-reason): Q[E(Reason).V(Custom).T(String) != T(Error)], "Should the escape hatch carry a String or a fully-formed syn::Error? String keeps the framework in charge of span and position, which is the property ID(syntax/diagnostics) exists to protect; syn::Error lets an author report something genuinely structural we have no reason for. Leaning String - decide before ID(syntax/reason) is written"
  */
