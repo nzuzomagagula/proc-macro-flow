@@ -84,10 +84,32 @@ macro_rules! meta_list {
             $( $vis $field: $crate::meta_list!(@ty $req $ty), )*
         }
 
-        #[allow(dead_code)]
-        impl $name {
-            /// Every key this node accepts, in declaration order.
-            pub const KEYS: &'static [&'static str] = &[ $($key),* ];
+        impl $crate::node::Described for $name {
+            /// The reflection table, built from the SAME declaration the key enum is.
+            ///
+            /// Replaces the `const KEYS: &[&str]` this macro used to emit. That const was a
+            /// second list of the same names with nothing holding the two in step; a Ty(Node) is
+            /// the shape ID(diagnostics) and the Node half of ID(reason) actually need, and it
+            /// carries arity, which a bare key list could not. See NOTE(#keys/one-table).
+            const NODE: $crate::node::Node = $crate::node::Node {
+                name: ::std::stringify!($name),
+                children: &[
+                    $(
+                        $crate::node::Child {
+                            key: $key,
+                            // TODO[ ](#meta-list/aliases): M(meta_list) has no alias syntax yet -
+                            // ID(alias-attr) is the author-facing surface and lands with the
+                            // derive. The field is here so Ty(Node) does not change shape when it
+                            // does.
+                            aliases: &[],
+                            arity: $crate::meta_list!(@arity $req),
+                            // Shapes are the FIELD TYPE's business and this macro cannot see
+                            // them - ID(shape-attr) supplies them from the derive.
+                            shapes: &[],
+                        },
+                    )*
+                ],
+            };
         }
 
         impl $crate::vocab::leaves::FromMeta for $name {
@@ -128,14 +150,27 @@ macro_rules! meta_list {
 
                 let mut errors = $crate::vocab::walk::Errors::new();
 
+                // The key set, as a LOCAL type. Declaring it in the function body sidesteps the
+                // one thing macro_rules cannot do - build an ident like `RetryKey` - and it is
+                // better than the workaround would have been: the enum is private to the reader
+                // that uses it, so there is no second public name to keep in step.
+                $crate::keys! {
+                    #[allow(non_camel_case_types)]
+                    enum Key { $( $field = $key ),* }
+                }
+
                 // The walk owns unknown-key and duplicate reporting; this closure only reads the
                 // element it was handed. Every field reads the same way whatever shape it is -
                 // see ID(meta-list/uniform-read).
-                errors.absorb(body.walk_keys($name::KEYS,
-                    |key, element| {
-                        match key {
+                errors.absorb(body.walk::<Key, _>(
+                    |written, element| {
+                        // EXHAUSTIVE. This match had a `_ => {}` arm when the walk dispatched on
+                        // &str, defended as unreachable because walk_keys only ever handed back a
+                        // key it had found in KEYS. True, but it meant the two lists agreeing was
+                        // a property nothing checked. Over a typed key there is no arm to write.
+                        match written.key() {
                             $(
-                                $key => {
+                                Key::$field => {
                                     $field = ::std::option::Option::Some(
                                         <$ty as $crate::vocab::leaves::FromMeta>::from_meta(
                                             element,
@@ -143,9 +178,6 @@ macro_rules! meta_list {
                                     );
                                 }
                             )*
-                            // walk_keys only dispatches keys it found in KEYS, so this is
-                            // unreachable rather than a case to handle.
-                            _ => {}
                         }
                         ::std::result::Result::Ok(())
                     },
@@ -171,6 +203,8 @@ macro_rules! meta_list {
     };
 
     // --- small helpers, so the arms above stay readable ---------------------
+    (@arity required) => { $crate::node::Arity::Required };
+    (@arity optional) => { $crate::node::Arity::Optional };
     (@ty required $ty:ty) => { $ty };
     (@ty optional $ty:ty) => { ::std::option::Option<$ty> };
 
@@ -277,8 +311,27 @@ mod tests {
     }
 
     #[test]
-    fn the_key_list_comes_from_the_declaration() {
-        assert_eq!(Retry::KEYS, &["times", "backoff"]);
+    fn the_node_table_comes_from_the_declaration() {
+        use crate::node::Described;
+        let node = <Retry as Described>::NODE;
+
+        assert_eq!(node.name, "Retry");
+        let keys: Vec<&str> = node.children.iter().map(|child| child.key).collect();
+        assert_eq!(keys, ["times", "backoff"]);
+    }
+
+    #[test]
+    fn the_node_table_carries_arity_a_key_list_could_not() {
+        // The gain over the `const KEYS: &[&str]` this replaced: requiredness is IN the table, so
+        // the framework can answer "what is missing" without the caller restating it.
+        use crate::node::{Arity, Described};
+        let node = <Retry as Described>::NODE;
+
+        assert_eq!(node.child("times").unwrap().arity, Arity::Required);
+        assert_eq!(node.child("backoff").unwrap().arity, Arity::Optional);
+
+        let missing: Vec<&str> = node.missing(&[]).map(|child| child.key).collect();
+        assert_eq!(missing, ["times"]);
     }
 
     #[test]

@@ -42,6 +42,25 @@ pub trait FromExpr: Sized {
 /// writes the same line for all three. There is deliberately no blanket
 /// `impl<T: FromExpr> FromMeta for T` - it would conflict with the specific impls flag! and
 /// meta_list! generate, so each macro emits its own one-liner instead"
+/// NOTE(#forwarding/no-option): V[!Impl(Option<T>).impl(FromMeta)], "There is DELIBERATELY no
+/// `impl<T: FromMeta> FromMeta for Option<T>`, and its absence is load-bearing rather than an
+/// oversight. ID(forwarding) asks for adapters over Option, Vec and Box; Vec and Box are fine and
+/// Option must never be written.
+///
+/// WHY. Arity is read off the field's TYPE (ID(from/arity-from-type)), and M(meta_list) reads it
+/// SYNTACTICALLY - it matches the tokens `Option < .. >` before it matches a bare type, because
+/// macro_rules cannot inspect a captured `$ty:ty`. So a field spelled `std::option::Option<LitStr>`
+/// is treated as REQUIRED, and the same is true of `type Maybe<T> = Option<T>;`.
+///
+/// VERIFIED that the mistake is currently LOUD: such a field fails to compile with
+/// `the trait bound Option<LitStr>: FromMeta is not satisfied`, because the macro then generates a
+/// required read of a type that has no reading. Adding the blanket impl would satisfy that bound
+/// and the field would silently become required instead - a wrong meaning rather than an error.
+///
+/// So the missing impl is what keeps a mis-read arity a compile error at the AUTHOR's site. When
+/// ID(syntax/derive) lands the derive will PARSE the type and get this right for real, because a
+/// proc macro can look at `segments.last()` - which is exactly what F(unwrap_generic) in the derive
+/// crate already does. Revisit then, not before"
 pub trait FromMeta: Sized {
     fn from_meta(meta: &syn::Meta) -> Result<Self>;
 }

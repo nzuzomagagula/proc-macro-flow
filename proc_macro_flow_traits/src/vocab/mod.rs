@@ -31,7 +31,13 @@
 //! name is, and the moment one exists every reader has to know it. Extra spellings are declared as
 //! explicit aliases, the same bargain STRICT MATCHING, LENIENT SUGGESTIONS already takes"
 //!
-//! TODO[ ](#vocabulary/derive-spelling):U[M(vocabulary).A(spelling)], "Writing `Shape = \"shape\"`
+//! TODO[~](#vocabulary/derive-spelling):U[M(vocabulary).A(spelling)], "HALF DONE, and the halves
+//! split exactly where predicted. ID(syntax/derive) now derives the canonical spelling with
+//! heck::ToSnakeCase at EXPANSION time and emits a literal, so a grammar author writes no spelling
+//! at all. M(vocabulary) still requires one, and always will: the blocker named below is real and
+//! unmovable - macro_rules substitutes token trees, `stringify!($variant)` yields \"Shape\" as a
+//! literal, and nothing declarative can lowercase it. The macro stays the hand-written escape
+//! hatch; the derive is the normal path. ORIGINAL: "Writing `Shape = \"shape\"`
 //! is redundant where the spelling is just the variant in snake_case, and that redundancy is NOT
 //! defended by ID(vocabulary/exact) - deriving the ONE canonical spelling at generation time is a
 //! convention, not a matching rule, and leaves matching exactly as strict. The reason it is written
@@ -42,7 +48,13 @@
 //! a proc macro can call heck::ToSnakeCase at expansion time and emit the literal, making the
 //! spelling optional here and explicit only where it differs"
 //!
-//! Query(#vocabulary/heck-scope): Q[T(heck) ??], "The larger case for heck is not this macro at all
+//! Answer(#vocabulary/heck-scope):A[T(heck) == derive_only], "ANSWERED by building it. heck is a
+//! dependency of proc_macro_flow_derive and of NOTHING ELSE - the traits crate never sees it,
+//! exactly as this query reasoned. It is spent on two translations, both at expansion time: a
+//! grammar type's name becomes its entry attribute head (`Configuration` -> `configuration`), and
+//! Attr(alias) with no arguments becomes the standard case set. Both emit LITERALS, so matching
+//! stays exact per ID(vocabulary/exact) - the conversion is a convention applied once at
+//! generation, never a normalisation rule applied at match time. ORIGINAL:
 //! - it is the derive's OWN translations, where a grammar type's name becomes its entry attribute
 //! head (`Configuration` -> `configuration`, UpperCamel -> snake). That conversion has no home yet
 //! because ID(syntax/derive) does not exist. Adding the dependency before something calls it would

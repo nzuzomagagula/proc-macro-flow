@@ -264,3 +264,118 @@ mod derives {
         assert!(derived.reasons().is_empty());
     }
 }
+
+/// The syntax stage, exercised where it can be: a grammar declared with the derive.
+///
+/// NOTE(#facade/hosts-the-grammar-proof): same reason as NOTE(#facade/hosts-the-proof) - the
+/// derive crate cannot use its own derives, so the only place a DERIVED grammar can be declared
+/// and then read is here.
+#[cfg(test)]
+mod grammar {
+    use proc_macro_flow_derive::Syntax;
+    use proc_macro_flow_traits::{
+        meta::AttributeKind,
+        node::{Arity, Described},
+        vocab::leaves::FromMeta,
+    };
+    use syn::{parse_str, LitInt, LitStr, Meta};
+
+    #[derive(Syntax)]
+    pub struct Retry {
+        times: LitInt,
+        #[alias]
+        back_off: Option<LitStr>,
+    }
+
+    /// The contrast with `meta_list!`, spelled out.
+    #[derive(Syntax)]
+    pub struct Qualified {
+        maybe: std::option::Option<LitStr>,
+    }
+
+    /// Exists to prove the selector reaches the table and the BOUND. Reading it is not the
+    /// point, so the field is never touched.
+    #[derive(Syntax)]
+    pub struct Narrowed {
+        #[shape(AttributeKind::MetaList)]
+        #[allow(dead_code)]
+        nested: Retry,
+    }
+
+    fn meta(source: &str) -> Meta {
+        parse_str(source).expect("the meta parses")
+    }
+
+    #[test]
+    fn a_derived_grammar_reads_its_fields() {
+        let value = Retry::from_meta(&meta(r#"retry(times = 3, back_off = "200ms")"#))
+            .expect("both keys are written");
+
+        assert_eq!(value.times.base10_digits(), "3");
+        assert_eq!(value.back_off.unwrap().value(), "200ms");
+    }
+
+    #[test]
+    fn an_optional_field_may_be_absent() {
+        let value = Retry::from_meta(&meta("retry(times = 3)")).expect("backoff is optional");
+        assert!(value.back_off.is_none());
+    }
+
+    #[test]
+    fn a_missing_required_field_is_reported() {
+        let error = Retry::from_meta(&meta(r#"retry(back_off = "200ms")"#))
+            .err()
+            .expect("times is required");
+        assert!(error.to_string().contains("times"), "{error}");
+    }
+
+    #[test]
+    fn the_node_table_is_emitted_with_arity() {
+        let node = <Retry as Described>::NODE;
+
+        assert_eq!(node.name, "retry", "the entry name is the type in snake_case");
+        assert_eq!(node.child("times").unwrap().arity, Arity::Required);
+        assert_eq!(node.child("back_off").unwrap().arity, Arity::Optional);
+    }
+
+    #[test]
+    fn alias_generates_the_standard_case_set() {
+        // `#[alias]` with no arguments, expanded by heck AT EXPANSION TIME into literals - so
+        // matching stays exact (#vocabulary/exact) and the spellings are visible in the table.
+        let node = <Retry as Described>::NODE;
+        let aliases = node.child("back_off").unwrap().aliases;
+
+        assert!(aliases.contains(&"backOff"), "{aliases:?}");
+        assert!(aliases.contains(&"back-off"), "{aliases:?}");
+        assert!(!aliases.contains(&"back_off"), "canonical is not repeated");
+    }
+
+    #[test]
+    fn a_field_with_no_alias_attribute_has_none() {
+        let node = <Retry as Described>::NODE;
+        assert!(node.child("times").unwrap().aliases.is_empty());
+    }
+
+    #[test]
+    fn a_qualified_option_is_still_optional() {
+        // NOTE(#syntax-derive/parses-the-type). `meta_list!` matches the TOKENS `Option < .. >`,
+        // so `std::option::Option<LitStr>` reads as REQUIRED there and fails to compile - which
+        // NOTE(#forwarding/no-option) keeps loud on purpose. The derive PARSES the type and looks
+        // at `segments.last()`, so it is simply correct.
+        let value = Qualified::from_meta(&meta("qualified()")).expect("the field is optional");
+        assert!(value.maybe.is_none());
+
+        assert_eq!(
+            <Qualified as Described>::NODE.child("maybe").unwrap().arity,
+            Arity::Optional,
+        );
+    }
+
+    #[test]
+    fn a_shape_selector_reaches_the_node_table() {
+        use proc_macro_flow_traits::meta::ShapeKind;
+        let node = <Narrowed as Described>::NODE;
+
+        assert_eq!(node.child("nested").unwrap().shapes, &[ShapeKind::List]);
+    }
+}

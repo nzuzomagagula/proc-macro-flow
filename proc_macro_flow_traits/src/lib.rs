@@ -2,9 +2,34 @@
 pub mod extractor;
 pub mod generator;
 pub mod meta;
+pub mod node;
 pub mod pipeline;
 pub mod processor;
 pub mod render;
+
+/* NOTE(#type-backed): V[design.prefers(compile_time)], "THE STANDING HEURISTIC, and it outranks
+ * local convenience. Wherever a behaviour can be bound by the TYPE SYSTEM instead of checked at
+ * runtime, it is - the point being predictability: a thing the types forbid cannot be got wrong,
+ * while a thing a check forbids can be got wrong by anyone who forgets the check.
+ *
+ * In the two forms it comes up in most:
+ *   RUNTIME vs COMPILE TIME -> compile time.
+ *   STRING vs ENUM          -> enum.
+ *
+ * It is already why several decisions went the way they did, which is the evidence it is a real
+ * rule and not a preference stated once: ID(pipeline/source-is-associated) made the source an
+ * associated type so a call site cannot guess; ID(from/arity-from-type) reads arity off the field
+ * TYPE so no attribute can contradict it; ID(generator/stub-is-a-contract) made a remembered rule a
+ * required method; ID(typed-output/generate) made generated code a typed item so a malformed one
+ * cannot leave the generator; M(names) and M(vocabulary) exist so a name is an ENUM VARIANT with
+ * generated conversions rather than a string someone compares.
+ *
+ * WHERE IT DOES NOT APPLY, and this is the part worth stating so the rule is usable rather than a
+ * slogan: user INPUT is runtime by definition. What the author wrote in an attribute is not known
+ * until the macro runs, so reading it is always a check. The rule does not ask for that check to be
+ * abolished - it asks that the check's RESULT be a type rather than a string, and that everything
+ * DOWNSTREAM of it be bound. See NOTE(#shape/two-facts) for the cleanest instance of the split"
+ */
 
 /* NOTE(#pipeline/no-free-functions): V[!N(traits).F(free)], "EVERY stage helper is an associated
  * item on the trait it belongs to, and none is a free function. What moved: F(extract)/
@@ -116,7 +141,7 @@ pub mod vocab;
  * could not combine with a sibling's. ID(syntax/custom-reason) is still unanswered and is overdue:
  * it said 'decide before ID(reason) is written', and ID(reason) is now mostly written"
  *
- * TODO[ ](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "The reflection const each derive emits. This one table pays for 'expected one of ..', 'did you mean ..' and 'colour is a list here, not a name-value'. It is what makes STRICT MATCHING, LENIENT SUGGESTIONS possible - resolution stays case-sensitive while the did-you-mean search is not, so leniency sits in diagnostics where a wrong guess is free rather than in resolution where it costs a canonical form"
+ * TODO[x](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "The reflection const each derive emits. This one table pays for 'expected one of ..', 'did you mean ..' and 'colour is a list here, not a name-value'. It is what makes STRICT MATCHING, LENIENT SUGGESTIONS possible - resolution stays case-sensitive while the did-you-mean search is not, so leniency sits in diagnostics where a wrong guess is free rather than in resolution where it costs a canonical form"
  *
  * TODO[ ](#diagnostics): C[Tr(Diagnostics).F(message).R(String)], "Author-overridable RENDERING, blanket default provided. Scoped to rephrasing and never to construction: the framework keeps the span and the tree position, so the worst an author can do is bad prose in the right place. The case that earns it is domain vocabulary - a DSL wants 'unknown column option', which the framework cannot know and which should not cost the author spans or did-you-mean to obtain"
  *

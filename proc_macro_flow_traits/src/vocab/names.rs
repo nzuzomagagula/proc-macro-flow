@@ -70,11 +70,17 @@ macro_rules! names {
             }
 
             /// Match a bare spelling. Exact - see ID(vocabulary/exact).
+            ///
+            /// Scans the spellings table rather than carrying its own `match` over the same
+            /// literals. That match was a THIRD copy of the name set, beside `spellings()` and
+            /// Tr(Keys)::resolve, and three copies of one fact is two too many -
+            /// NOTE(#keys/table-is-strings-the-rest-is-not) asks for exactly one place a spelling
+            /// is compared, and this is a `&str` entry point to it rather than a rival.
             pub fn from_spelling(text: &str) -> ::std::option::Option<$name> {
-                match text {
-                    $( $spelling $( | $alias )* => ::std::option::Option::Some($name::$variant), )+
-                    _ => ::std::option::Option::None,
-                }
+                $name::ALL
+                    .iter()
+                    .copied()
+                    .find(|entry| $name::spellings(*entry).contains(&text))
             }
         }
 
@@ -122,11 +128,43 @@ macro_rules! vocabulary {
             $vis enum $name { $($body)* }
         }
 
+        impl $crate::vocab::walk::Keys for $name {
+            /// A vocabulary name is written as a bare ident. See Ty(Keys)::Written.
+            type Written = ::syn::Ident;
+
+            const ALL: &'static [Self] = $name::ALL;
+
+            fn canonical(self) -> &'static str {
+                $name::spelling(self)
+            }
+
+            fn spellings(self) -> &'static [&'static str] {
+                $name::spellings(self)
+            }
+
+            /// THE comparison site, and it allocates NOTHING.
+            ///
+            /// `impl<T: AsRef<str>> PartialEq<T> for Ident` compares an ident against a `&str`
+            /// directly. F(from_spelling) below takes a `&str` and so forces its callers to build
+            /// one - `ident.to_string()` - which is a heap allocation per element per walk, to
+            /// answer a question that needed none. See NOTE(#keys/table-is-strings-the-rest-is-not).
+            fn resolve(written: &::syn::Ident) -> ::std::option::Option<Self> {
+                $name::ALL
+                    .iter()
+                    .copied()
+                    .find(|entry| {
+                        $crate::vocab::walk::Keys::spellings(*entry)
+                            .iter()
+                            .any(|spelling| written == *spelling)
+                    })
+            }
+        }
+
         impl ::std::convert::TryFrom<&::syn::Ident> for $name {
             type Error = ::syn::Error;
 
             fn try_from(ident: &::syn::Ident) -> ::std::result::Result<Self, Self::Error> {
-                match $name::from_spelling(&ident.to_string()) {
+                match <$name as $crate::vocab::walk::Keys>::resolve(ident) {
                     ::std::option::Option::Some(entry) => ::std::result::Result::Ok(entry),
                     ::std::option::Option::None => ::std::result::Result::Err(::syn::Error::new(
                         ::syn::spanned::Spanned::span(ident),

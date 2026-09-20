@@ -42,11 +42,36 @@ pub struct ValueExpr<'ast>(pub &'ast Expr);
 
 impl<'ast> ListBody<'ast> {
     /// Read the body as a spine: every element names something.
+    ///
+    /// The comma case, which is every grammar that has not asked for otherwise.
     pub fn metas(self) -> syn::Result<Punctuated<Meta, Token![,]>> {
-        Punctuated::<Meta, Token![,]>::parse_terminated.parse2(self.0.clone())
+        self.separated::<Token![,]>()
+    }
+
+    /// Read the body as a spine with a separator of the caller's choosing.
+    ///
+    /// NOTE(#list-body/separator-is-a-type): V[M(separated).P(S)], "The separator is a TYPE
+    /// PARAMETER, not an argument and not a third reading, which is ID(from/arity-from-type)'s rule
+    /// applied to punctuation: what the grammar accepts is written in the type, so nothing can
+    /// contradict it and no runtime value has to be threaded to the parse.
+    ///
+    /// VERIFIED that the knob is real before building it - see Answer(#separator). rustc accepts
+    /// `#[attr(a; b)]` as an inert derive helper, parses it as Meta::LIST, and hands the tokens
+    /// over verbatim; `a => b, c => d` survives too. Inside the delimiters rustc resolves nothing
+    /// and checks nothing past token-tree balance, which is the same property ID(no-path-head)
+    /// already rests on"
+    pub fn separated<S>(self) -> syn::Result<Punctuated<Meta, S>>
+    where
+        S: syn::parse::Parse,
+    {
+        Punctuated::<Meta, S>::parse_terminated.parse2(self.0.clone())
     }
 
     /// Read the body as leaves: bare values, which `Meta` cannot represent.
+    ///
+    /// Unchanged by the separator work: this is the LEAF reading, not a punctuation choice.
+    /// `bounds(0, 64)` cannot go through a spine at all, because a bare literal is not valid
+    /// `Meta` - which is the whole reason there are two readings and not one.
     pub fn exprs(self) -> syn::Result<Punctuated<Expr, Token![,]>> {
         Punctuated::<Expr, Token![,]>::parse_terminated.parse2(self.0.clone())
     }
@@ -111,6 +136,25 @@ mod sealed {
     pub trait Sealed {}
 }
 
+/// NOTE(#shape/two-facts): V[Ty(AttributeKind) != E(Opening)], "THE RULE the parallel vocabularies
+/// exist to express, written down because the obvious reading of two structures with the same three
+/// members is that one of them is redundant. They are not. They state DIFFERENT FACTS:
+///
+///   Ty(AttributeKind::MetaList)  - THIS TYPE DECLARES it can be read as a list. Compile time.
+///                                  Known from the grammar author's own types, before any user
+///                                  writes anything.
+///   E(Opening)::List             - THE USER ACTUALLY WROTE a list. Runtime, and unavoidably so:
+///                                  it is read off Ty(syn::Meta), which is input.
+///
+/// Collapsing them costs the diagnostic that matters most. 'expected a list, found a name-value'
+/// needs BOTH halves at once, and a framework holding only one of them can say what it wanted or
+/// what it got, never the pair. E(ReasonKind)::WrongShape is exactly that sentence.
+///
+/// This is the boundary NOTE(#type-backed) names: user input is runtime by definition, so the check
+/// stays. What the rule demands is that its RESULT be typed - which it is, because C(KIND) is the
+/// join and the comparison is over E(ShapeKind) rather than over spellings. Everything downstream
+/// of the check is bound; only the check itself is not"
+///
 /// A shape, named by the opening its payload arrives through.
 ///
 /// Sealed: there are three and exactly three, because `syn::Meta` has three variants. That is
@@ -288,5 +332,33 @@ mod tests {
         accepts::<AttributeKind::MetaList>(ListBody(&tokens));
         accepts::<AttributeKind::NamedValue>(ValueExpr(&expr));
         accepts::<AttributeKind::Path>(PathOnly(&path));
+    }
+
+    #[test]
+    fn a_body_can_be_read_with_a_custom_separator() {
+        // Answer(#separator), exercised end to end rather than only probed.
+        let item: syn::ItemStruct =
+            syn::parse_str("#[t(a; b; c)]\npub struct T;").expect("the attribute parses");
+        let attribute = item.attrs.first().expect("one attribute");
+        let list = attribute.meta.require_list().expect("a list");
+        let body = ListBody(&list.tokens);
+
+        let metas = body
+            .separated::<syn::Token![;]>()
+            .expect("semicolons are a valid separator");
+        assert_eq!(metas.len(), 3);
+
+        // and the comma reading correctly REFUSES it - the separator is not a suggestion
+        assert!(body.metas().is_err());
+    }
+
+    #[test]
+    fn metas_is_the_comma_case_of_separated() {
+        let item: syn::ItemStruct =
+            syn::parse_str("#[t(a, b)]\npub struct T;").expect("the attribute parses");
+        let list = item.attrs[0].meta.require_list().expect("a list");
+        let body = ListBody(&list.tokens);
+
+        assert_eq!(body.metas().unwrap().len(), body.separated::<syn::Token![,]>().unwrap().len());
     }
 }

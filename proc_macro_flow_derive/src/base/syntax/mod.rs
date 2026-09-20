@@ -150,11 +150,27 @@
  *
  * NOTE(#positional): V[S(ConfigName).T(LitStr)], "Tuple struct = all positional, named struct = all named, no mixing. Rust has no named function arguments, so a mixed form has no analogue to borrow intuition from - forbid it rather than invent a rule nobody can predict. ConfigName stands as the newtype case"
  *
- * TODO[ ](#derive): C[MacDef(Syntax)], "The derive itself: emit the shape impls plus the Node const. Bootstrap - v1 is hand-rolled, because Syntax is what lets the extractor read its own #[shape(..)] attributes and only then can it be re-expressed in itself. That self-hosting step is also the first real test of the design. Blocked on ID(syntax/traits) and ID(syntax/node-table) existing to implement against"
+ * TODO[x](#derive): C[MacDef(Syntax)], "DONE, in proc_macro_flow_derive::derive::syntax. It emits
+ * Tr(Described) (the Node const), Tr(FromMeta) dispatching through the typed walker, and the shape
+ * BOUND. The bootstrap worry was misplaced: the derive did NOT need to read its own Attr(shape) to
+ * exist - it needed a Node table to emit and a key set to dispatch on, and both came from the
+ * vocabulary work rather than from self-hosting. ORIGINAL: "The derive itself: emit the shape impls plus the Node const. Bootstrap - v1 is hand-rolled, because Syntax is what lets the extractor read its own #[shape(..)] attributes and only then can it be re-expressed in itself. That self-hosting step is also the first real test of the design. Blocked on ID(syntax/traits) and ID(syntax/node-table) existing to implement against"
  *
- * TODO[ ](#shape-attr): C[Attr(shape)], "The selector. Absent = accept every shape the type implements and let the written Meta variant choose; present = narrow to the listed ones. Purely additive, so it never restates what the type already says. Takes several variant paths, making it a MetaList over an enum - this framework's own grammar dogfooded at the first opportunity. See ID(syntax/no-path-head) for why the path is an argument and not the head. Must also be registered in the derive's attributes(..) list, which nothing auto-syncs - a missed name fails at the USER's site"
+ * TODO[~](#shape-attr): C[Attr(shape)], "REGISTERED and LOWERED TO A BOUND, which was the whole
+ * point - VERIFIED that `#[shape(AttributeKind::MetaList)] nope: u8` fails with
+ * `the trait bound u8: FromMeta is not satisfied` at the AUTHOR's field, not inside the macro. The
+ * selector also reaches Ty(Node) as a E(ShapeKind). STILL OPEN: narrowing is not yet ENFORCED at
+ * read time - a type implementing several shapes is not restricted to the listed ones, because
+ * that needs the runtime half (`opening.kind() == S::KIND`) wired into the generated reader. See
+ * NOTE(#shape/two-facts) for why both halves are needed. ORIGINAL: "The selector. Absent = accept every shape the type implements and let the written Meta variant choose; present = narrow to the listed ones. Purely additive, so it never restates what the type already says. Takes several variant paths, making it a MetaList over an enum - this framework's own grammar dogfooded at the first opportunity. See ID(syntax/no-path-head) for why the path is an argument and not the head. Must also be registered in the derive's attributes(..) list, which nothing auto-syncs - a missed name fails at the USER's site"
  *
- * TODO[ ](#alias-attr): C[Attr(alias)], "On a field it adds keys; on a type or variant it adds a SEGMENT that joins suffix matching, so #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single idents, since an alias substitutes for one segment. With exact matching chosen this is the only bridging mechanism, so watch for authors writing piles of case aliases - that, and not before, is the signal a normalisation policy is worth its opinion"
+ * TODO[~](#alias-attr): C[Attr(alias)], "ON A FIELD: done. Attr(alias) with no arguments emits the
+ * standard case set via heck, Attr(alias(\"x\")) emits exactly what it names, and both land in
+ * Ty(Node) as literals. STILL OPEN, and recorded because it is a real gap rather than polish: the
+ * aliases are visible to DIAGNOSTICS but not yet to Tr(Keys)::resolve, because M(keys) accepts one
+ * spelling per variant - so an alias is advertised and then rejected. See
+ * ID(syntax-derive/aliases-in-keys). On a TYPE or VARIANT (adding a segment for suffix matching)
+ * is untouched and deferred with suffix matching itself. ORIGINAL: "On a field it adds keys; on a type or variant it adds a SEGMENT that joins suffix matching, so #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single idents, since an alias substitutes for one segment. With exact matching chosen this is the only bridging mechanism, so watch for authors writing piles of case aliases - that, and not before, is the signal a normalisation policy is worth its opinion"
  *
  * TODO[ ](#scratch): V[N(scratch).has(S(Configuration))] && V[N(scratch).has(E(ColourSetting))], "The maximal grammar at the foot of this file - every shape, arity rule and resolution rule in one pair of items, and the thing to check any behaviour change against. It is GATED behind #[cfg(any())] and does not compile, deliberately: Syntax, SomeDerive and the proc_macro_flow_traits::syntax support types are all still unwritten, so the errors it raises are a live checklist of what ID(syntax/traits), ID(syntax/forwarding) and ID(syntax/derive) still owe it. The attribute BODIES are verified to parse as Meta spine plus Expr leaves, so any parse failure here is a regression and not a missing feature. Mapping table and rejection cases in SCRATCH.md. NOTE that a second, SMALLER worked example now lives beside it in worked.rs, whose layer 3 does compile and is asserted - scratch remains the maximal grammar to check behaviour against, worked.rs is the minimal one that actually runs"
  *

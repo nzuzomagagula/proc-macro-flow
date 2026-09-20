@@ -17,10 +17,12 @@
 //! attribute, which is the same reasoning ID(processor/optionality) already settled"
 
 mod extractor;
+mod syntax;
 mod processor;
 mod validate;
 
 pub(crate) use extractor::derive_extractor;
+pub(crate) use syntax::derive_syntax;
 pub(crate) use processor::derive_processor;
 pub(crate) use validate::derive_validate;
 
@@ -81,7 +83,13 @@ fn extractor_of(ty: &Type) -> Result<Type> {
 }
 
 /// The first generic argument of `Name<..>`, when the type's last segment is `Name`.
-fn unwrap_generic<'ty>(ty: &'ty Type, name: &str) -> Option<&'ty Type> {
+///
+/// `pub(crate)` because ID(syntax/derive) reads arity the same way and must not write a second
+/// reader. It cannot reuse F(Child::of), which is extraction-specific - that one requires
+/// `Extracted<T, I>` and a grammar field is not one - but the LEAF MATCH is the shared part, and
+/// it is the part that matters: `segments.last()` is what makes `std::option::Option<T>` work
+/// where M(meta_list)'s token matching cannot. See NOTE(#syntax-derive/parses-the-type).
+pub(crate) fn unwrap_generic<'ty>(ty: &'ty Type, name: &str) -> Option<&'ty Type> {
     let Type::Path(path) = ty else { return None };
     let segment = path.path.segments.last()?;
 

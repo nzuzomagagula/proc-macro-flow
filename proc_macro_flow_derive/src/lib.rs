@@ -67,6 +67,16 @@ pub fn validate(input: TokenStream) -> TokenStream {
     expand(input, derive::derive_validate)
 }
 
+/// Declare a grammar node: a struct of fields becomes something readable from a `syn::Meta`.
+///
+/// `#[shape(AttributeKind::MetaList)]` narrows which openings a field accepts and lowers to a
+/// trait BOUND (NOTE(#shape/bound-at-last)). `#[alias]` adds the standard case spellings;
+/// `#[alias("x")]` adds exactly what it names.
+#[proc_macro_derive(Syntax, attributes(shape, alias))]
+pub fn syntax(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_syntax)
+}
+
 /// Generate the identity `Processor`. Omit it when the stage does real work.
 #[proc_macro_derive(Processor, attributes(source))]
 pub fn processor(input: TokenStream) -> TokenStream {

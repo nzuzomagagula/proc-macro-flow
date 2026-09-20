@@ -11,3 +11,8 @@ syn = { version = "3", features = ["full", "visit"] }
 quote = "1"
 proc-macro2 = "1"
 proc_macro_flow_traits = { path = "../proc_macro_flow_traits" }
+# Answer(#vocabulary/heck-scope): the dependency lands HERE and nowhere else. A proc macro can
+# case-convert at EXPANSION time and emit a literal, which is what ID(vocabulary/derive-spelling)
+# was blocked on - macro_rules substitutes token trees and cannot lowercase an ident. Doing it at
+# runtime instead would have cost the const fn and an allocation to save some typing.
+heck = "0.5"

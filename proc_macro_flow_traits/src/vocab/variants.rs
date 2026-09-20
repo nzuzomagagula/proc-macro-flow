@@ -247,21 +247,26 @@ macro_rules! variants {
     (@from_list named $name:ident $key:literal $body:ident $span:ident
         { $($f:ident : $t:ty),+ } $v:ident { $($_d:tt)* }
     ) => {{
-        const KEYS: &[&str] = &[ $(::std::stringify!($f)),+ ];
+        // The struct variant's key set, local to this reader - same reasoning as meta_list!.
+        $crate::keys! {
+            #[allow(non_camel_case_types)]
+            enum Key { $( $f ),+ }
+        }
 
         $( let mut $f: ::std::option::Option<$t> = ::std::option::Option::None; )+
         let mut errors = $crate::vocab::walk::Errors::new();
 
-        errors.absorb($body.walk_keys(KEYS, |key, element| {
-            match key {
+        errors.absorb($body.walk::<Key, _>(|written, element| {
+            // Exhaustive; the `_ => {}` arm this replaced was the same silent fall-through
+            // meta_list! carried.
+            match written.key() {
                 $(
-                    ::std::stringify!($f) => {
+                    Key::$f => {
                         $f = ::std::option::Option::Some(
                             <$t as $crate::vocab::leaves::FromMeta>::from_meta(element)?,
                         );
                     }
                 )+
-                _ => {}
             }
             ::std::result::Result::Ok(())
         }));
