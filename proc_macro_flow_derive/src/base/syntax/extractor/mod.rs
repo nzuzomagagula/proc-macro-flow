@@ -78,14 +78,14 @@ proc_macro_flow_traits::vocabulary! {
 /// because `resolve` returns a bare Extraction with no Extracted wrapper to ask. Making resolution
 /// preserve the wrapper would remove the duplication ID(extractor/two-questions) removed
 /// everywhere else. That is the resolution stage's business, not this one's."
-pub struct SyntaxFieldAttributeExtraction<'ast, S: Stage> {
+pub(crate) struct SyntaxFieldAttributeExtraction<'ast, S: Stage> {
     #[allow(dead_code, reason = "read by resolve; see #syntax/resolution-is-deferred-not-dead")]
     attribute: &'ast Attribute,
     #[allow(dead_code, reason = "read by kind(); see #syntax/resolution-is-deferred-not-dead")]
     kind: SyntaxFieldAttributeKind<'ast, S>,
 }
 
-pub enum SyntaxFieldAttributeKind<'ast, S: Stage> {
+pub(crate) enum SyntaxFieldAttributeKind<'ast, S: Stage> {
     /// `#[shape(..)]`'s argument, deferred.
     ///
     /// The target is `syn::Type` because that is the POSITION the generator splices it into, not
@@ -107,7 +107,7 @@ pub enum SyntaxFieldAttributeKind<'ast, S: Stage> {
 
 impl<'ast, S: Stage> SyntaxFieldAttributeExtraction<'ast, S> {
     #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
-    pub fn kind(&self) -> &SyntaxFieldAttributeKind<'ast, S> {
+    pub(crate) fn kind(&self) -> &SyntaxFieldAttributeKind<'ast, S> {
         &self.kind
     }
 }
@@ -164,7 +164,7 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
     /// is a type error rather than a silent no-op, and nothing downstream has to check a flag to
     /// know which state it is holding.
     #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
-    pub fn resolve(self) -> Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>> {
+    pub(crate) fn resolve(self) -> Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>> {
         let attribute = self.attribute;
 
         // `resolve` hands back a bare Extraction with no Extracted around it, so there is no chain

@@ -208,13 +208,6 @@ mod tests {
         assert!(FieldExtraction::extract_each(::core::iter::empty()).is_empty());
     }
 
-    fn field_of(source: &DeriveInput) -> &syn::Field {
-        let syn::Data::Struct(data) = &source.data else {
-            unreachable!()
-        };
-        data.fields.iter().next().expect("one field")
-    }
-
     #[test]
     fn a_fields_attributes_are_its_children() {
         // ID(field/children). Before this the field was a leaf and its attributes were never

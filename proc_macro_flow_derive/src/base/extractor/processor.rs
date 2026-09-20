@@ -19,10 +19,19 @@
 //! nothing to work with the moment an extraction failed. It is available here precisely because it
 //! never depended on the value existing"
 
-use proc_macro_flow_traits::{extractor::Extracted, extractor::Extraction, processor::Processor};
-use syn::{DeriveInput, Field};
+use proc_macro2::TokenStream;
+use proc_macro_flow_traits::{
+    extractor::Extracted,
+    extractor::Extraction,
+    processor::Processor,
+    resolution::{Deferred, Raw},
+};
+use syn::{Attribute, DeriveInput, Field};
 
 use crate::base::extractor::extractor::{field::FieldExtraction, StructExtraction};
+use crate::base::syntax::extractor::{
+    SyntaxFieldAttributeExtraction, SyntaxFieldAttributeKind, SyntaxHelper,
+};
 
 // DEPRECATED(#processor/bare-source):D[S(ExtractorProcessor)] && D[S(FieldProcessor)] && D[S(TransformationProcessor)], "Deleted. Each held `source: XExtraction` - the bare extraction, unwrapped - and that is settled the other way: a processor receives Ty(Extractor::Output) WHOLE. Unwrapping would strip the source node off exactly the value a processor needs it for. Replaced by the impls below, which take Extracted and narrow it"
 // TODO(#processor/macro):C[F(processor)], "Proc-macro entry point for the processor stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
@@ -37,6 +46,60 @@ pub(crate) struct ProcessedStruct<'ast> {
 /// What the generator consumes per field.
 pub(crate) struct ProcessedField<'ast> {
     pub(crate) field: &'ast Field,
+    /// The field's grammar attributes, processed.
+    ///
+    /// Empty until ID(field/children) made a field's attributes its children; before that this
+    /// struct was the bottom of the pipeline and processing stopped a level short of extraction.
+    pub(crate) attrs: Vec<ProcessedAttribute<'ast>>,
+}
+
+/// What the generator consumes per helper attribute.
+///
+/// A genuine narrowing, which is what Answer(#processor/base-scope) says this stage is for. Three
+/// things are DROPPED here because generation cannot use them: the `Stage` typestate, the
+/// `Unresolved<T>` wrapper, and the distinction between which Rust type the payload will eventually
+/// resolve to. What survives is what generation can act on - which helper was written, and the
+/// tokens to splice.
+pub(crate) struct ProcessedAttribute<'ast> {
+    pub(crate) attribute: &'ast Attribute,
+    /// Which helper this is, resolved once at `validate` and never compared again.
+    pub(crate) helper: SyntaxHelper,
+    /// The argument tokens, still UNREAD. Carrying them is the whole point - ID(no-parse) - and
+    /// processing them here would be the stage boundary violation the design exists to prevent.
+    pub(crate) tokens: &'ast TokenStream,
+}
+
+/// The attribute stage's processor.
+///
+/// Lives here rather than beside the extraction in `base/syntax` because what it produces is
+/// consumed by THIS pipeline's generator - it is the extractor pipeline's third level, not a
+/// separate stage. The orphan rule permits either; cohesion picks this one.
+impl<'ast> Processor for SyntaxFieldAttributeExtraction<'ast, Raw> {
+    type Input = Extracted<Self, &'ast Attribute>;
+    type Output = ProcessedAttribute<'ast>;
+
+    fn process(input: Self::Input) -> Extraction<Self::Output> {
+        let attribute = *input.source();
+        let extraction = input.into_extraction();
+
+        Extraction {
+            value: extraction.value.map(|node| {
+                // Exhaustive over the kind, matching `extract_from`'s own rule: a new helper stops
+                // compiling here rather than silently producing nothing.
+                let (helper, tokens) = match node.kind() {
+                    SyntaxFieldAttributeKind::Shape(shape) => (SyntaxHelper::Shape, shape.tokens()),
+                    SyntaxFieldAttributeKind::Alias(alias) => (SyntaxHelper::Alias, alias.tokens()),
+                };
+
+                ProcessedAttribute {
+                    attribute,
+                    helper,
+                    tokens,
+                }
+            }),
+            reasons: extraction.reasons,
+        }
+    }
 }
 
 impl<'ast> Processor for FieldExtraction<'ast> {
@@ -49,10 +112,27 @@ impl<'ast> Processor for FieldExtraction<'ast> {
         let field = *input.source();
         let extraction = input.into_extraction();
 
-        Extraction {
-            value: extraction.value.map(|_| ProcessedField { field }),
+        let mut out: Extraction<ProcessedField<'ast>> = Extraction {
+            value: None,
             reasons: extraction.reasons,
+        };
+
+        let Some(value) = extraction.value else {
+            return out;
+        };
+
+        // CHILDREN FIRST, then combine - the same shape StructExtraction::process uses. This loop
+        // is what the pipeline was missing: the attributes were extracted and walked for reasons,
+        // then dropped on the way to generation by a `.map(|_| ..)` that ignored the value.
+        let mut attrs = Vec::new();
+        for child in SyntaxFieldAttributeExtraction::process_each(value.attrs) {
+            if let Some(attr) = out.absorb(child) {
+                attrs.push(attr);
+            }
         }
+
+        out.value = Some(ProcessedField { field, attrs });
+        out
     }
 }
 

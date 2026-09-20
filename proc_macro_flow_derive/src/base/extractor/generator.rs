@@ -13,27 +13,38 @@
 //! rule exists to prevent. A stub that type-checks buys silence downstream so the real diagnostic
 //! is the only thing the user reads"
 
-use proc_macro2::TokenStream;
-use quote::quote;
-use syn::DeriveInput;
+use syn::{parse_quote, DeriveInput, ItemImpl};
 
 use crate::base::extractor::processor::ProcessedStruct;
+use crate::base::syntax::extractor::SyntaxHelper;
 
 // TODO(#generator/macro):C[F(generator)], "Proc-macro entry point for the generator stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
-// TODO[ ](#typed-output/generate):U[F(generate).R(TokenStream) -> R(syn::ItemImpl)], "Both functions
-// here build an impl block and hand it back as a raw stream, which is exactly the case
-// @group(#typed-output) in proc_macro_flow_traits::generator names: we KNOW the shape, so returning
-// ItemImpl would let nothing malformed leave this file and would give ID(typed-output/spans) a
-// specific item to point at"
+// TODO[x](#typed-output/generate):U[F(generate).R(TokenStream) -> R(syn::ItemImpl)], "DONE. Both
+// functions return ItemImpl, built with parse_quote!, so nothing malformed leaves this file -
+// a mistake is a panic HERE rather than a mystery rustc error in the author's crate. See
+// NOTE(#generator/parse-quote-panics) for why panicking is the right signal for this specific
+// failure. ID(typed-output/spans) now has a specific item to point at and stays open"
+// NOTE(#generator/shapes-is-a-probe): V[C(SHAPES).proves(cascade)], "SHAPES is not a feature. It
+// exists to demonstrate that a THIRD-LEVEL value - an attribute's carried tokens - reaches
+// generation, which was false until ProcessedField stopped dropping its attrs. It is the assertion
+// that would have failed before the cascade, written as generated code. Decide the real product
+// with the finished pipeline in view, and delete this if it is not part of it"
 
 impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast> {
     type Input = Self;
 
-    /// The stub is written against the item, which is all there is when extraction produced
-    /// nothing - see NOTE(#generator/stub-is-a-contract).
-    type Item = DeriveInput;
+    /// The node this output is written ABOUT - see the naming rule on Tr(Generator)::Subject.
+    /// Matches `Validate::Source` exactly so Tr(Pipeline) can bind the two.
+    type Subject = &'ast DeriveInput;
 
-    fn generate(input: Self) -> TokenStream {
+    /// The most specific type that fits: this generator emits exactly one impl block.
+    ///
+    /// NOT `syn::Item`. Naming the narrowest level is the point of
+    /// NOTE(#typed-output/level-is-associated) - it is what lets a future parent embed this
+    /// generator's output without either side lowering to tokens.
+    type Output = ItemImpl;
+
+    fn generate(input: Self) -> ItemImpl {
         let name = &input.item.ident;
         let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
 
@@ -45,20 +56,34 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
             }
         });
 
-        quote! {
+        // The THIRD level, and the only reason this const exists. A field's grammar attributes are
+        // extracted, processed and now readable here - which was not true until the cascade
+        // landed, because ProcessedField dropped them. See ID(generator/shapes-is-a-probe).
+        let shapes = input.fields.iter().map(|processed| {
+            processed
+                .attrs
+                .iter()
+                .find(|attribute| attribute.helper == SyntaxHelper::Shape)
+                .map(|attribute| attribute.tokens.to_string())
+                .unwrap_or_default()
+        });
+
+        parse_quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 pub const FIELDS: &'static [&'static str] = &[ #(#names),* ];
+                pub const SHAPES: &'static [&'static str] = &[ #(#shapes),* ];
             }
         }
     }
 
-    fn stub(item: &DeriveInput) -> TokenStream {
-        let name = &item.ident;
-        let (impl_generics, type_generics, where_clause) = item.generics.split_for_impl();
+    fn stub(subject: &'ast DeriveInput) -> ItemImpl {
+        let name = &subject.ident;
+        let (impl_generics, type_generics, where_clause) = subject.generics.split_for_impl();
 
-        quote! {
+        parse_quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 pub const FIELDS: &'static [&'static str] = &[];
+                pub const SHAPES: &'static [&'static str] = &[];
             }
         }
     }

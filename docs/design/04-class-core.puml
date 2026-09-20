@@ -97,10 +97,9 @@ package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> 
 
   interface "Validate<'ast>" as Validate <<(T,#F5CBA7) trait>> {
     +type Source: Visitable<'ast>
-    +type ValidityError
     +type Valid
     --
-    +validate(Source) -> Result<Valid, ValidityError>
+    +validate(Source) -> Result<Valid, Reason>
   }
 
   interface "Extractor<'ast>" as Extractor <<(T,#F5CBA7) trait>> {
@@ -262,6 +261,21 @@ note bottom of Validate
   Not vestigial — it was UNDEFINED, which is why
   every impl used to be ""Ok(input)"".
   (#pipeline/validity-scope, #derive/three-not-one)
+
+  **""ValidityError"" is gone.** It was written by
+  five impls and read by ZERO — every ""Err"" arm
+  discarded it — and three of the five set it to
+  ""()"" because there was nothing to name. A
+  failure is a ""Reason"": a span and a cause.
+
+  Returning one OFFERS it; it does not oblige the
+  caller to record it. A hand-written
+  ""extract_from"" decides; the DERIVE always
+  records. The case that forces the distinction
+  is #heads-are-rustcs — an attribute that is not
+  ours gets no value and NO COMPLAINT, because a
+  doc comment is an attribute.
+  (#validate/reason-is-offered-not-imposed)
 end note
 
 note bottom of Visitable

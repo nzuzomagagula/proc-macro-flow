@@ -2,6 +2,7 @@
 pub mod extractor;
 pub mod generator;
 pub mod meta;
+pub mod pipeline;
 pub mod processor;
 pub mod render;
 

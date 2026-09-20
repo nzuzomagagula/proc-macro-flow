@@ -155,14 +155,14 @@ in   ""&'ast syn::Meta""      ""configuration(..)""
 out  ""Opening::List(ListBody(&'ast TokenStream))""; <<#FFF4E5>>
 note right
   **Below here, nothing is on the macro path.**
-  VERIFIED: ""lib.rs"" imports ""base::extractor""
-  and nothing else, and ""base/syntax"" carries
-  an explicit ""#![allow(dead_code)]"" saying so.
-
   These steps are built and unit-tested, driven
   ONLY by ""base/syntax/worked.rs"" — never by a
   real macro invocation. Amber, not green.
-  (#syntax/not-driven)
+
+  Note this is now the VOCAB SUITE only. The
+  syntax EXTRACTOR above went green when a
+  field's children became its attributes.
+  (#field/children)
 
   ""syn::Meta"" IS the attribute AST. Nothing
   invents a node layer beside it.

@@ -302,6 +302,52 @@ impl<T, I: ToTokens> Extracted<T, I> {
 // interpreting it. It must NOT parse and it must not read grammar; a node's meaning belongs to the
 // processor. That also settles the sibling question at ID(pipeline/validity-error): failures here
 // become a Reason on the node, because a surface check has a span and a cause and nothing else"
+/* @group(#multi-source)
+ *
+ * ONE extraction pipeline, SEVERAL source node kinds. The motivating case is a grammar that must
+ * read the same information from, say, an ItemMod and an ItemFn - and the evolution case behind
+ * it: a React-like syntax that starts with types as proxies for render parameters and later grows
+ * function forms, where backward compatibility should be an ADDED impl rather than a rewrite.
+ *
+ * NOTE(#multi-source/free-at-the-trait): V[S(X<S>).impl(Extractor).each(S)], "VERIFIED FREE TODAY,
+ * on these traits, unmodified. Make the EXTRACTION TYPE generic and let each monomorphisation
+ * carry one source:
+ *
+ *     struct Decl<S>(PhantomData<S>);
+ *     impl<'ast> Validate<'ast> for Decl<ItemMod> { type Source = &'ast ItemMod; type Valid = Declared<'ast>; .. }
+ *     impl<'ast> Validate<'ast> for Decl<ItemFn>  { type Source = &'ast ItemFn;  type Valid = Declared<'ast>; .. }
+ *
+ * Both resolve with no turbofish and no annotation, and `Decl::<ItemMod>::extract_maybe(None)`
+ * still resolves - because the TYPE carries the source, so each concrete type has exactly one impl.
+ *
+ * THE WARNING IS THE POINT OF THIS NOTE. The obvious way to 'add multi-source support' is to turn
+ * Ty(Source) back into a trait parameter, `Extractor<'ast, I>`, so one type can have many impls.
+ * That reintroduces the guessing game: with several impls, a call whose argument pins nothing fails
+ * with `error[E0283]: type annotations needed` / `multiple impls satisfying X: Extractor<_> found`
+ * - and `extract_maybe(None)` is an ordinary thing for the derive to emit for an Option field. See
+ * NOTE(#pipeline/source-is-associated). The generic goes on the TYPE, never on the trait"
+ *
+ * NOTE(#multi-source/valid-must-be-shared): V[Ty(Valid).shared], "Multi-source is legitimate ONLY
+ * when the sources normalise to one Ty(Valid). That is what makes the rest of the pipeline
+ * source-agnostic for free: everything downstream - Attr(from) included, whose `source` binding is
+ * the VALIDATED value - consumes Valid and never learns which node it came from.
+ *
+ * If they do not share one, you do not have one pipeline with two sources. You have two pipelines
+ * sharing a name, which is worse than two types, because the shared name asserts a commonality
+ * that is not there. The tell: Ty(Valid) growing Option<T> fields so one source can leave them
+ * empty, until it keeps only what EVERY source can supply and each source loses the thing that
+ * made it worth extracting. Same failure mode NOTE(#from/not-total) names, in a different costume"
+ *
+ * TODO[ ](#multi-source/source-list):C[Attr(source).list], "The derive half, and the only expensive
+ * part - which is why the attribute design is worth settling before Attr(source) grows neighbours.
+ * `#[source(A, B)]` emits one Extractor impl per source. It must also FORCE a hand-written
+ * Tr(Validate): there is no sensible generated narrowing from two unrelated nodes to one Ty(Valid),
+ * and that is fine - it is the case ID(derive/three-not-one) split Validate out for.
+ *
+ * Note what does NOT need solving: Attr(from) expressions do not have to typecheck against every
+ * source, because they are written against Ty(Valid), not against the raw node"
+ */
+
 // NOTE(#pipeline/source-is-associated): V[Tr(Validate).Ty(Source) && !Tr(Extractor).P(I)], "The
 // source is an ASSOCIATED TYPE, not a trait parameter, so it is DETERMINED BY Self and never
 // inferred. This is the same principle Ty(Output), Ty(Input) and the Stage GAT already follow, and

@@ -1,6 +1,9 @@
 # Design diagrams
 
-PlantUML sources for the crate's structure. Rendered output is not committed — regenerate below.
+PlantUML sources for the crate's structure, and the rendered `.svg` beside each one.
+
+The SVGs **are** committed (`git ls-files` lists them), so a diagram change should be
+re-rendered in the same commit — otherwise the picture in the repo contradicts its source.
 
 | File | What it shows |
 |---|---|

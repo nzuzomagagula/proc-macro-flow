@@ -110,3 +110,4 @@ fn expand(
 }
 
 //TODO[ ](#future-thought): C[Attr(Custom), "Create attributes that point to or annotate custom implementation of things so that the derives are not all or nothing, you can choose what to include and exclude from the generated code"]
+//TODO[ ](#future-thought): C[Attr(Map), "Map items in the extractor to be flagged as requiring their own processor and maybe generator source? the point is that because everything is nested, users may want a parallel pattern where once nested concept moves throughout the pipeline in different forms so we can maybe actually use sub pipelines? oay so we need to create the notion of a pipeline and be able to nest them"]

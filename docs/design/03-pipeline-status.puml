@@ -8,7 +8,7 @@ rectangle "lib.rs::field_names\n""#[proc_macro_derive(FieldNames)]""" as Entry #
 
 rectangle "StructExtraction\n<&'ast DeriveInput>" as S #E8F4EA
 rectangle "FieldExtraction\n<&'ast Field>" as F #E8F4EA
-rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
+rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #E8F4EA
 
 rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #FFF4E5
 
@@ -23,6 +23,7 @@ rectangle """#[derive(Validate)]""\npass-through" as DV #E8F4EA
 
 Entry --> S : extract_from
 S --> F : extract_each(data.fields.iter())
+F --> Y : extract_each(field.attrs.iter())
 
 S --> R : Extracted<..>, borrowed
 R --> G : Vec<syn::Error>
@@ -52,11 +53,23 @@ note bottom of F
 end note
 
 note bottom of Y
-  Works and is tested, but driven ONLY by
-  base/syntax/worked.rs — never by the macro
-  path. The module carries an explicit
-  ""#![allow(dead_code)]"" saying so.
-  (#syntax/not-driven)
+  **On the macro path at last.** A field's
+  children are its ATTRIBUTES, so the chain runs
+  field_names -> Struct -> Field -> here. The
+  module-wide ""#![allow(dead_code)]"" is gone.
+  (#field/children, #syntax/not-driven)
+
+  A doc comment IS an attribute, so a
+  non-grammar head extracts to an EMPTY child
+  carrying no value and NO REASON — otherwise
+  every documented field is an error, which it
+  once was. (#heads-are-rustcs)
+
+  RESOLUTION is still deliberately off this path:
+  ""resolve"" exists for a stage that must inspect,
+  and the compiler-checked path splices instead.
+  Those items keep a NARROW allow naming that.
+  (#syntax/resolution-is-deferred-not-dead)
 end note
 
 note bottom of P
@@ -112,8 +125,8 @@ note as Gap
   already IS source order.
   (#render/traversal-is-source-order)
 
-  What remains: the syntax stage is still not
-  on the path at all.
+  What remains: the VOCAB SUITE is still not on
+  the path. The syntax EXTRACTOR now is.
 end note
 
 Gap .. R
