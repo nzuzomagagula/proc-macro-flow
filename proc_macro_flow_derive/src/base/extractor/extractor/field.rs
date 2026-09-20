@@ -1,5 +1,5 @@
 // @review [ ]
-use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Validate};
+use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Reason, Validate};
 use proc_macro_flow_traits::render::Diagnose;
 use syn::Field;
 
@@ -17,8 +17,6 @@ pub(crate) struct FieldExtraction<'ast> {
     // transformation EXPRESSION mistaken for a child node"
     _marker: ::core::marker::PhantomData<&'ast ()>,
 }
-
-pub struct FieldExtractionError;
 
 impl<'ast> Extractor<'ast> for FieldExtraction<'ast> {
     type Output = Extracted<Self, &'ast Field>;
@@ -38,15 +36,15 @@ impl<'ast> Extractor<'ast> for FieldExtraction<'ast> {
 
 impl<'ast> Validate<'ast> for FieldExtraction<'ast> {
     type Source = &'ast Field;
-    type ValidityError = FieldExtractionError;
-
     type Valid = &'ast Field;
 
-    // TODO[ ](#extractor/field-validate):U[F(validate)], "Validates nothing - every Field is
-    // accepted. Kept honest rather than made to look busy: what there is to check here is whether
-    // the field's attributes form a well-shaped grammar node, and that is ID(syntax/extraction)'s
-    // job, not a check this stage can do on its own"
-    fn validate(input: &'ast Field) -> Result<Self::Valid, Self::ValidityError> {
+    // NOTE(#extractor/field-validate): V[F(validate).accepts(all)], "Validates nothing - every
+    // Field is accepted, and that is the ANSWER rather than an outstanding task, which is why this
+    // is no longer a TODO. Kept honest rather than made to look busy: what there is to check here
+    // is whether the field's ATTRIBUTES form a well-shaped grammar node, and each of those is now
+    // its own child extraction (ID(field/children)) with its own validate. A check here would
+    // duplicate theirs and have a worse span to report it against"
+    fn validate(input: &'ast Field) -> Result<Self::Valid, Reason> {
         Ok(input)
     }
 }

@@ -58,7 +58,10 @@ impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
             Ok(data) => Extraction::value(Self {
                 fields: FieldExtraction::extract_each(data.fields.iter()),
             }),
-            Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape)),
+            // validate's reason is RECORDED here - see NOTE(#validate/reason-is-offered-not-imposed)
+            // for why that is a choice this function makes rather than something the signature
+            // forces.
+            Err(reason) => Extraction::failed(reason),
         };
 
         // The source rides on the OUTPUT and is stored nowhere else. It survives the Err arm
@@ -68,20 +71,34 @@ impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
     }
 }
 
-//TODO[ ](#extractor/error):R[S(StructExtractionValidityError) -> E(Reason)], "ANSWERED but NOT YET DONE, and the two halves have come apart. The answer stands: meaning comes from a closed Reason set, not from a taxonomy of error types - a proc macro never handles an error programmatically, it only emits one, so per-type errors buy nothing and cannot combine with a sibling's. What has changed is where they survive. extract_from no longer has an ExtractionError at all (ID(extractor/no-result)), so the four remaining unit structs - StructExtractionValidityError, FieldExtractionError, TransformationExtractionError, SyntaxFieldAttributeError - are now Tr(Validate)::ValidityError and nothing else. Collapsing them is therefore a VALIDATE question: under ID(pipeline/validity-scope) a surface check has a span and a cause and nothing more, which is a Reason, so ValidityError should stop being an associated type rather than becoming syn::Error"
-pub struct StructExtractionValidityError;
+// TODO[x](#extractor/error):R[Ty(Validate::ValidityError) -> E(Reason)], "DONE. The answer was the
+// one predicted - meaning comes from a closed Reason set, not a taxonomy of error types - and the
+// three unit structs it named are deleted: StructExtractionValidityError, FieldExtractionError and
+// SyntaxFieldAttributeError. A fourth, TransformationExtractionError, had already gone with
+// ID(attribute/generic-grammar), so the annotation was describing a type that no longer existed.
+//
+// What made the case unarguable was evidence rather than argument. The associated type was written
+// by five impls and read by ZERO - every Err arm discarded it - while three of the five already set
+// it to `()`. Two things fell out of removing it that were not the point but are worth more than
+// the tidying: validate now builds its reason WHERE THE CAUSE IS KNOWN, so this extraction reports
+// against the offending ident instead of extract_from hardcoding WrongShape against the whole item;
+// and the derive stopped failing SILENTLY (ID(derive/silent-validate))"
 
 impl<'ast> Validate<'ast> for StructExtraction<'ast> {
     type Source = &'ast DeriveInput;
-    type ValidityError = StructExtractionValidityError;
     type Valid = &'ast DataStruct;
 
-    fn validate(input: &'ast DeriveInput) -> Result<&'ast DataStruct, Self::ValidityError> {
+    fn validate(input: &'ast DeriveInput) -> Result<&'ast DataStruct, Reason> {
         // `&input.data`, not `input.data` - matching by value moves the variant binding out and
         // the old `Ok(&data_struct)` handed back a reference to a local.
         match &input.data {
             syn::Data::Struct(data_struct) => Ok(data_struct),
-            syn::Data::Enum(_) | syn::Data::Union(_) => Err(StructExtractionValidityError),
+            // The reason is built HERE now, where the cause is known, instead of extract_from
+            // discarding an opaque error type and hardcoding one. It carries a span of its own:
+            // the ident is what the author can act on, not the whole item.
+            syn::Data::Enum(_) | syn::Data::Union(_) => {
+                Err(Reason::at(ReasonKind::WrongShape, &input.ident))
+            }
         }
     }
 }

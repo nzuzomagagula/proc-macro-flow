@@ -177,19 +177,20 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
 
 impl<'ast, S: Stage> Validate<'ast> for SyntaxFieldAttributeExtraction<'ast, S> {
     type Source = &'ast Attribute;
-    type ValidityError = SyntaxFieldAttributeError;
-
     /// A genuine narrowing, not the input handed back: the head is now RESOLVED to the vocabulary
     /// entry it names, so no later stage repeats the comparison. This is what `Valid` is for.
     type Valid = (&'ast Attribute, SyntaxHelper);
 
     // Surface-level and nothing more, which is exactly ID(pipeline/validity-scope)'s remit: is
     // this attribute one of ours? No token is interpreted to answer it.
-    fn validate(input: &'ast Attribute) -> Result<Self::Valid, Self::ValidityError> {
+    fn validate(input: &'ast Attribute) -> Result<Self::Valid, Reason> {
         SyntaxHelper::try_from(input.path())
             .map(|helper| (input, helper))
-            .map_err(|_| SyntaxFieldAttributeError)
+            // OFFERED and, by this extractor, DELIBERATELY DROPPED - see
+            // NOTE(#validate/reason-is-offered-not-imposed) and ID(heads-are-rustcs). The reason is
+            // constructed so the signature is honest about what failed; extract_from below throws
+            // it away because 'not one of ours' is not a complaint.
+            .map_err(|_| Reason::at(ReasonKind::UnknownKey, input.path()))
     }
 }
 
-pub struct SyntaxFieldAttributeError;
