@@ -51,9 +51,8 @@ mod derives {
 
     impl<'ast> Validate<'ast> for Leaf<'ast> {
     type Source = &'ast syn::Attribute;
-        type ValidityError = ();
         type Valid = &'ast syn::Attribute;
-        fn validate(input: &'ast syn::Attribute) -> Result<Self::Valid, ()> {
+        fn validate(input: &'ast syn::Attribute) -> Result<Self::Valid, Reason> {
             Ok(input)
         }
     }
@@ -81,13 +80,12 @@ mod derives {
 
     impl<'ast> Validate<'ast> for DerivedStruct<'ast> {
     type Source = &'ast DeriveInput;
-        type ValidityError = ();
         type Valid = &'ast DataStruct;
 
-        fn validate(input: &'ast DeriveInput) -> Result<Self::Valid, ()> {
+        fn validate(input: &'ast DeriveInput) -> Result<Self::Valid, Reason> {
             match &input.data {
                 syn::Data::Struct(data) => Ok(data),
-                _ => Err(()),
+                _ => Err(Reason::at(ReasonKind::WrongShape, &input.ident)),
             }
         }
     }
@@ -123,6 +121,34 @@ mod derives {
         assert!(extracted.value().is_none());
         // the node survived the failure - which is the point of it riding on the output
         assert_eq!(extracted.source().ident.to_string(), "Thing");
+    }
+
+    #[test]
+    fn a_failing_validate_says_why() {
+        // REGRESSION for Fix[x](#derive/silent-validate). The derived `extract_from` used to emit
+        // `Extraction::default()` here - no value AND NO REASONS - so a derived extractor that
+        // rejected its input produced a vacant impl and not one word explaining it.
+        //
+        // This went unseen because the test ABOVE is the one that covered this path, and it asks
+        // only whether the value is absent. An empty extraction passes that assertion perfectly.
+        // So the missing assertion is the whole point of this test.
+        let input = item("pub enum Thing { A }");
+        let extracted = DerivedStruct::extract_from(&input);
+
+        assert_eq!(extracted.reasons().len(), 1, "the failure was silent");
+        // asserted through the public rendering - ReasonKind carries no PartialEq, and widening
+        // the API for a test is the wrong way round
+        assert_eq!(extracted.reasons()[0].message(), "written in the wrong shape");
+    }
+
+    #[test]
+    fn a_failing_validate_reaches_the_user_through_the_walk() {
+        // and the reason is not merely recorded - it renders
+        let input = item("pub enum Thing { A }");
+        let errors = DerivedStruct::extract_from(&input).render();
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].to_string(), "written in the wrong shape");
     }
 
     #[test]

@@ -13,7 +13,6 @@ use crate::base::extractor::processor::ProcessedStruct;
 mod base;
 mod derive;
 
-
 #[proc_macro_derive(HelloMacro)]
 pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -109,3 +108,5 @@ fn expand(
         Err(error) => error.to_compile_error().into(),
     }
 }
+
+//TODO[ ](#future-thought): C[Attr(Custom), "Create attributes that point to or annotate custom implementation of things so that the derives are not all or nothing, you can choose what to include and exclude from the generated code"]

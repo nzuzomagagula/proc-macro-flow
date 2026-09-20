@@ -38,14 +38,13 @@ pub(crate) fn derive_validate(input: DeriveInput) -> Result<TokenStream> {
             // Attr(source(Ty)) maps ONE-FOR-ONE onto the associated type - see
             // NOTE(#pipeline/source-is-associated).
             type Source = & #lifetime #source;
-            type ValidityError = ();
             type Valid = & #lifetime #source;
 
             /// Narrows nothing, and is honest about it: surface-level validation is what this
             /// trait is for, and this type has no surface check to make.
             fn validate(
                 input: & #lifetime #source,
-            ) -> ::std::result::Result<Self::Valid, Self::ValidityError> {
+            ) -> ::std::result::Result<Self::Valid, ::proc_macro_flow_traits::extractor::Reason> {
                 ::std::result::Result::Ok(input)
             }
         }
