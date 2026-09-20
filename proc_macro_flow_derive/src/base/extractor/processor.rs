@@ -19,14 +19,10 @@
 //! nothing to work with the moment an extraction failed. It is available here precisely because it
 //! never depended on the value existing"
 
-use proc_macro_flow_traits::{
-    extractor::Extraction,
-    extractor::Extracted,
-    processor::{Processor, process_each},
-};
+use proc_macro_flow_traits::{extractor::Extracted, extractor::Extraction, processor::Processor};
 use syn::{DeriveInput, Field};
 
-use crate::base::extractor::extractor::{StructExtraction, field::FieldExtraction};
+use crate::base::extractor::extractor::{field::FieldExtraction, StructExtraction};
 
 // DEPRECATED(#processor/bare-source):D[S(ExtractorProcessor)] && D[S(FieldProcessor)] && D[S(TransformationProcessor)], "Deleted. Each held `source: XExtraction` - the bare extraction, unwrapped - and that is settled the other way: a processor receives Ty(Extractor::Output) WHOLE. Unwrapping would strip the source node off exactly the value a processor needs it for. Replaced by the impls below, which take Extracted and narrow it"
 // TODO(#processor/macro):C[F(processor)], "Proc-macro entry point for the processor stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
@@ -82,7 +78,7 @@ impl<'ast> Processor for StructExtraction<'ast> {
         // CHILDREN FIRST, then combine. `absorb` takes each child's reasons across whether or not
         // it produced a value, so a bad field cannot silently remove its siblings' complaints.
         let mut fields = Vec::new();
-        for child in process_each::<FieldExtraction, _>(value.fields) {
+        for child in FieldExtraction::process_each(value.fields) {
             if let Some(field) = out.absorb(child) {
                 fields.push(field);
             }
@@ -101,9 +97,8 @@ mod tests {
 
     fn processed(source: &str) -> Extraction<ProcessedStruct<'_>> {
         // leak so the borrow outlives the call, which a real macro gets for free from its input
-        let input: &'static DeriveInput = Box::leak(Box::new(
-            parse_str(source).expect("the item parses"),
-        ));
+        let input: &'static DeriveInput =
+            Box::leak(Box::new(parse_str(source).expect("the item parses")));
         StructExtraction::process(StructExtraction::extract_from(input))
     }
 

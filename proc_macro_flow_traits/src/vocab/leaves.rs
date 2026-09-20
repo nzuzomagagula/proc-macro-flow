@@ -13,11 +13,25 @@
 //! ID(vocab/orphan-shapes-the-api) for why newtyping the leaves to get TryFrom back was rejected:
 //! it would put our wrapper in the author's own field types"
 
-use syn::{Error, Expr, Ident, Path, Result, spanned::Spanned};
+use syn::{spanned::Spanned, Error, Expr, Ident, Path, Result};
 
 /// Read a terminal out of a value position.
 pub trait FromExpr: Sized {
     fn from_expr(expr: &Expr) -> Result<Self>;
+
+    /// The `FromMeta` body every leaf shares: a terminal is written as the right-hand side of `=`.
+    ///
+    /// Provided here rather than as a free function (NOTE(#pipeline/no-free-functions)), so a leaf
+    /// spells its `FromMeta` impl `Self::leaf_from_meta(meta)` and names nothing twice.
+    fn leaf_from_meta(meta: &syn::Meta) -> Result<Self> {
+        match meta {
+            syn::Meta::NameValue(nv) => Self::from_expr(&nv.value),
+            other => Err(Error::new_spanned(
+                other,
+                "expected `key = value` - this node is a value and has to be written as one",
+            )),
+        }
+    }
 }
 
 /// Read a node out of a `Meta` - the uniform field read.
@@ -30,17 +44,6 @@ pub trait FromExpr: Sized {
 /// meta_list! generate, so each macro emits its own one-liner instead"
 pub trait FromMeta: Sized {
     fn from_meta(meta: &syn::Meta) -> Result<Self>;
-}
-
-/// The `FromMeta` body every leaf shares: a terminal is written as the right-hand side of `=`.
-pub fn leaf_from_meta<T: FromExpr>(meta: &syn::Meta) -> Result<T> {
-    match meta {
-        syn::Meta::NameValue(nv) => T::from_expr(&nv.value),
-        other => Err(Error::new_spanned(
-            other,
-            "expected `key = value` - this node is a value and has to be written as one",
-        )),
-    }
 }
 
 /// Implement [`FromExpr`] for the `Lit` family, which is uniform.
@@ -58,7 +61,7 @@ macro_rules! leaf {
         $(
             impl $crate::vocab::leaves::FromMeta for ::syn::$ty {
                 fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                    $crate::vocab::leaves::leaf_from_meta::<::syn::$ty>(meta)
+                    <::syn::$ty as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
                 }
             }
 
@@ -135,7 +138,7 @@ macro_rules! leaf_meta {
         $(
             impl FromMeta for $ty {
                 fn from_meta(meta: &syn::Meta) -> Result<Self> {
-                    leaf_from_meta::<$ty>(meta)
+                    <$ty as FromExpr>::leaf_from_meta(meta)
                 }
             }
         )+
@@ -160,7 +163,10 @@ mod tests {
             "thing"
         );
         assert_eq!(
-            syn::LitInt::from_expr(&expr("64")).unwrap().base10_parse::<u32>().unwrap(),
+            syn::LitInt::from_expr(&expr("64"))
+                .unwrap()
+                .base10_parse::<u32>()
+                .unwrap(),
             64
         );
         assert!(bool::from_expr(&expr("true")).unwrap());
@@ -168,7 +174,9 @@ mod tests {
 
     #[test]
     fn a_leaf_mismatch_names_what_was_expected() {
-        let error = syn::LitStr::from_expr(&expr("64")).err().expect("not a string");
+        let error = syn::LitStr::from_expr(&expr("64"))
+            .err()
+            .expect("not a string");
         assert_eq!(error.to_string(), "expected a Str literal");
         assert!(!error.to_compile_error().is_empty());
     }

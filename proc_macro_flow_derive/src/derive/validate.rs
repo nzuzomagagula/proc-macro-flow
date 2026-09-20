@@ -32,10 +32,12 @@ pub(crate) fn derive_validate(input: DeriveInput) -> Result<TokenStream> {
         .ok_or_else(|| Error::new_spanned(&input.ident, "expected a lifetime parameter"))?;
 
     Ok(quote! {
-        impl #impl_generics ::proc_macro_flow_traits::extractor::Validate<
-            #lifetime,
-            & #lifetime #source,
-        > for #name #type_generics #where_clause {
+        impl #impl_generics ::proc_macro_flow_traits::extractor::Validate<#lifetime>
+            for #name #type_generics #where_clause
+        {
+            // Attr(source(Ty)) maps ONE-FOR-ONE onto the associated type - see
+            // NOTE(#pipeline/source-is-associated).
+            type Source = & #lifetime #source;
             type ValidityError = ();
             type Valid = & #lifetime #source;
 

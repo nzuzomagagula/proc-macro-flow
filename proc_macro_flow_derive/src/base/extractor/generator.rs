@@ -29,6 +29,10 @@ use crate::base::extractor::processor::ProcessedStruct;
 impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast> {
     type Input = Self;
 
+    /// The stub is written against the item, which is all there is when extraction produced
+    /// nothing - see NOTE(#generator/stub-is-a-contract).
+    type Item = DeriveInput;
+
     fn generate(input: Self) -> TokenStream {
         let name = &input.item.ident;
         let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
@@ -47,14 +51,8 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
             }
         }
     }
-}
 
-impl<'ast> ProcessedStruct<'ast> {
-    /// The same impl, vacant, for when extraction produced nothing.
-    ///
-    /// Takes the `DeriveInput` rather than a `ProcessedStruct` because there is no processed value
-    /// in the case this exists for.
-    pub(crate) fn stub(item: &DeriveInput) -> TokenStream {
+    fn stub(item: &DeriveInput) -> TokenStream {
         let name = &item.ident;
         let (impl_generics, type_generics, where_clause) = item.generics.split_for_impl();
 
@@ -70,7 +68,7 @@ impl<'ast> ProcessedStruct<'ast> {
 mod tests {
     use super::*;
     use proc_macro_flow_traits::{
-        extractor::Extractor, generator::Generator, processor::Processor,
+        extractor::Extractor, generator::Generator, processor::Processor, render::Diagnose,
     };
     use syn::parse_str;
 
@@ -81,20 +79,12 @@ mod tests {
         let item: &'static DeriveInput =
             Box::leak(Box::new(parse_str(source).expect("the item parses")));
 
-        let processed = StructExtraction::process(StructExtraction::extract_from(item));
+        let extracted = StructExtraction::extract_from(item);
+        let errors = extracted.render();
+        let processed = StructExtraction::process(extracted);
 
-        let body = match processed.value {
-            Some(value) => ProcessedStruct::generate(value),
-            None => ProcessedStruct::stub(item),
-        };
-
-        proc_macro_flow_traits::generator::emit(
-            body,
-            &processed.reasons,
-            item,
-            "could not extract",
-        )
-        .to_string()
+        // one call, and no way to forget the stub - NOTE(#generator/stub-is-a-contract)
+        ProcessedStruct::emit(processed.value, item, errors).to_string()
     }
 
     #[test]
@@ -128,7 +118,10 @@ mod tests {
 
         assert!(out.contains("impl Thing"), "the stub is missing: {out}");
         assert!(out.contains("FIELDS"), "the stub is vacant of items: {out}");
-        assert!(out.contains("compile_error"), "the reason is missing: {out}");
+        assert!(
+            out.contains("compile_error"),
+            "the reason is missing: {out}"
+        );
     }
 
     #[test]

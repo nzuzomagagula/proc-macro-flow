@@ -123,7 +123,7 @@ mod walkthrough {
         resolution::{Deferred, Raw},
     };
     use quote::ToTokens;
-    use syn::{Field, ItemStruct, parse_str};
+    use syn::{parse_str, Field, ItemStruct};
 
     use crate::base::syntax::extractor::{
         SyntaxFieldAttributeExtraction, SyntaxFieldAttributeKind,
@@ -163,13 +163,11 @@ mod walkthrough {
         // Every node can point at what the user wrote - and the source is on the OUTPUT, not on
         // the value, so this works even when extraction produced nothing. That is what made
         // Tr(Sourced) redundant: it asked every extractor to store and return the same node.
-        assert!(
-            extractions[0]
-                .source()
-                .to_token_stream()
-                .to_string()
-                .contains("shape")
-        );
+        assert!(extractions[0]
+            .source()
+            .to_token_stream()
+            .to_string()
+            .contains("shape"));
     }
 
     #[test]
@@ -183,8 +181,7 @@ mod walkthrough {
             "#,
         );
 
-        let extraction =
-            SyntaxFieldAttributeExtraction::<Raw>::extract_from(&field.attrs[0]);
+        let extraction = SyntaxFieldAttributeExtraction::<Raw>::extract_from(&field.attrs[0]);
         let node = extraction.value().unwrap();
 
         let SyntaxFieldAttributeKind::Shape(shape) = node.kind() else {
@@ -256,12 +253,10 @@ mod walkthrough {
         // still required by the signature and simply goes unused here; a caller always has one,
         // because it is the caller who held the Extracted in the first place.
         assert!(resolved.reasons[0].span().is_some());
-        assert!(
-            !resolved.reasons[0]
-                .to_error(&field.attrs[0], "not a shape")
-                .to_compile_error()
-                .is_empty()
-        );
+        assert!(!resolved.reasons[0]
+            .to_error(&field.attrs[0], "not a shape")
+            .to_compile_error()
+            .is_empty());
     }
 
     #[test]
@@ -311,7 +306,9 @@ mod walkthrough {
             .collect();
 
         assert_eq!(reasons.len(), 2);
-        assert!(reasons.iter().all(|r| matches!(r.kind, ReasonKind::WrongShape)));
+        assert!(reasons
+            .iter()
+            .all(|r| matches!(r.kind, ReasonKind::WrongShape)));
     }
 
     #[test]
@@ -330,23 +327,19 @@ mod walkthrough {
         let extracted = SyntaxFieldAttributeExtraction::<Raw>::extract_from(&field.attrs[0]);
 
         assert!(extracted.value().is_none());
-        assert!(
-            extracted
-                .source()
-                .to_token_stream()
-                .to_string()
-                .contains("shpae")
-        );
+        assert!(extracted
+            .source()
+            .to_token_stream()
+            .to_string()
+            .contains("shpae"));
 
         // And it can be rendered, spanned under the whole attribute.
         // Rendered through the chain: Extracted holds the node, so a reason with nothing finer
         // to say still lands somewhere real.
-        assert!(
-            !extracted
-                .to_error("unknown helper attribute")
-                .to_compile_error()
-                .is_empty()
-        );
+        assert!(!extracted
+            .to_error("unknown helper attribute")
+            .to_compile_error()
+            .is_empty());
     }
 
     #[test]

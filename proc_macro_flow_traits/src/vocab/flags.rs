@@ -51,7 +51,7 @@ macro_rules! flag {
                 }
 
                 pub fn candidates() -> ::std::string::String {
-                    let names: ::std::vec::Vec<_> = $name::spellings()
+                    let names: ::std::vec::Vec<::std::string::String> = $name::spellings()
                         .iter()
                         .map(|spelling| ::std::format!("`{}`", spelling))
                         .collect();
@@ -141,7 +141,7 @@ macro_rules! flag {
 
 #[cfg(test)]
 mod tests {
-    use syn::{Attribute, ItemStruct, Meta, Path, parse_str};
+    use syn::{parse_str, Attribute, ItemStruct, Meta, Path};
 
     flag! {
         /// `#[no_clean]`
@@ -177,16 +177,22 @@ mod tests {
 
     #[test]
     fn a_flag_with_a_payload_is_rejected_and_says_why() {
-        let error = NoClean::try_from(&meta_of("#[no_clean(extra)]")).err().expect("has a payload");
+        let error = NoClean::try_from(&meta_of("#[no_clean(extra)]"))
+            .err()
+            .expect("has a payload");
         assert!(error.to_string().contains("takes no arguments"), "{error}");
 
-        let error = NoClean::try_from(&meta_of("#[no_clean = 1]")).err().expect("has a payload");
+        let error = NoClean::try_from(&meta_of("#[no_clean = 1]"))
+            .err()
+            .expect("has a payload");
         assert!(error.to_string().contains("takes no arguments"), "{error}");
     }
 
     #[test]
     fn an_unknown_name_carries_the_candidate_list() {
-        let error = NoClean::try_from(&meta_of("#[no_cleen]")).err().expect("not this flag");
+        let error = NoClean::try_from(&meta_of("#[no_cleen]"))
+            .err()
+            .expect("not this flag");
         assert_eq!(error.to_string(), "expected one of: `no_clean`, `NoClean`");
     }
 

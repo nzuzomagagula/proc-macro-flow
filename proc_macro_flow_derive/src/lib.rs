@@ -4,10 +4,7 @@ use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
 use proc_macro_flow_traits::{
-    extractor::Extractor,
-    generator::{Generator, emit_errors},
-    processor::Processor,
-    render::render,
+    extractor::Extractor, generator::Generator, processor::Processor, render::Diagnose,
 };
 
 use crate::base::extractor::StructExtraction;
@@ -55,7 +52,7 @@ pub fn field_names(input: TokenStream) -> TokenStream {
 
     // The whole tree, before processing consumes it. Children's reasons were recorded faithfully
     // and never read until this walk existed - which made #no-result's guarantee half a promise.
-    let mut errors = render(&extracted);
+    let mut errors = extracted.render();
 
     let processed = StructExtraction::process(extracted);
     errors.extend(
@@ -65,14 +62,9 @@ pub fn field_names(input: TokenStream) -> TokenStream {
             .map(|reason| reason.to_error(&derive_input, reason.message())),
     );
 
-    // The stub goes out whether or not there is a value - see
-    // NOTE(#generator/stub-alongside-errors).
-    let body = match processed.value {
-        Some(value) => ProcessedStruct::generate(value),
-        None => ProcessedStruct::stub(&derive_input),
-    };
-
-    emit_errors(body, errors).into()
+    // One call. The stub-always rule is the trait's, not this function's, so there is no longer a
+    // match here to get wrong - see NOTE(#generator/stub-is-a-contract).
+    ProcessedStruct::emit(processed.value, &derive_input, errors).into()
 }
 
 // ===========================================================================

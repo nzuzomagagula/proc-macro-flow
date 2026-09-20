@@ -5,6 +5,30 @@ pub mod meta;
 pub mod processor;
 pub mod render;
 
+/* NOTE(#pipeline/no-free-functions): V[!N(traits).F(free)], "EVERY stage helper is an associated
+ * item on the trait it belongs to, and none is a free function. What moved: F(extract)/
+ * F(extract_each)/F(extract_maybe) onto Tr(Extractor), F(process_each)/F(process_maybe) onto
+ * Tr(Processor), F(render)/F(combined) onto Tr(Diagnose), F(emit)/F(emit_errors) onto
+ * Tr(Generator). F(extract) was DELETED outright - it was `T::extract_from(node)` spelled longer.
+ *
+ * THE REASON IS PROCEDURAL-MACRO ERGONOMICS, not taste. A free function makes the pipeline's
+ * parameters implicit in its ARGUMENT LIST, where a macro has to reconstruct them; an associated
+ * item makes them the receiver's own, where a macro can read them off a type it already names. The
+ * derive shows the difference directly - it used to emit
+ * `extract_each::<FieldExtraction, _, _>(it)` and now emits `<FieldExtraction>::extract_each(it)`,
+ * which is shorter, needs no inference, and closed Fix[x](#from/names-its-target) on the way.
+ *
+ * The second gain is that a RULE can become a CONTRACT. Tr(Generator)'s stub-always rule used to be
+ * four lines every entry point had to write correctly; F(stub) is now a required method and F(emit)
+ * the only way to spend it, so the rule cannot be forgotten - see
+ * NOTE(#generator/stub-is-a-contract). No free function could have done that, because a free
+ * function cannot require anything of the type it is handed.
+ *
+ * COST, recorded honestly: a provided method is only reachable with the trait in scope, so
+ * generated code must import it. The derive does that anonymously - `use Tr(Extractor) as _;` -
+ * which is the ordinary hygiene bargain it already took for Tr(Validate)"
+ */
+
 /// Re-exported so generated code can name `syn` types without the AUTHOR'S crate having to depend
 /// on syn under that exact name.
 ///

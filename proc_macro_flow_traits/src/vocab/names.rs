@@ -62,7 +62,7 @@ macro_rules! names {
 
             /// The candidate list a diagnostic shows, in `lookahead1`'s shape.
             pub fn candidates() -> ::std::string::String {
-                let names: ::std::vec::Vec<_> = $name::ALL
+                let names: ::std::vec::Vec<::std::string::String> = $name::ALL
                     .iter()
                     .map(|entry| ::std::format!("`{}`", entry.spelling()))
                     .collect();
@@ -158,7 +158,7 @@ macro_rules! vocabulary {
 
 #[cfg(test)]
 mod tests {
-    use syn::{Ident, Path, parse_str};
+    use syn::{parse_str, Ident, Path};
 
     vocabulary! {
         /// The helper attributes the syntax stage registers.

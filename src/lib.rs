@@ -18,7 +18,7 @@ mod derives {
     use proc_macro_flow_traits::{
         extractor::{Extracted, Extraction, Extractor, Reason, ReasonKind, Validate},
         processor::Processor,
-        render::{Diagnose, render},
+        render::Diagnose,
     };
     use syn::{DataStruct, DeriveInput, Field, parse_str};
 
@@ -49,7 +49,8 @@ mod derives {
         fn diagnose(&self, _: &mut Vec<syn::Error>) {}
     }
 
-    impl<'ast> Validate<'ast, &'ast syn::Attribute> for Leaf<'ast> {
+    impl<'ast> Validate<'ast> for Leaf<'ast> {
+    type Source = &'ast syn::Attribute;
         type ValidityError = ();
         type Valid = &'ast syn::Attribute;
         fn validate(input: &'ast syn::Attribute) -> Result<Self::Valid, ()> {
@@ -57,7 +58,7 @@ mod derives {
         }
     }
 
-    impl<'ast> Extractor<'ast, &'ast syn::Attribute> for Leaf<'ast> {
+    impl<'ast> Extractor<'ast> for Leaf<'ast> {
         type Output = Extracted<Self, &'ast syn::Attribute>;
         fn extract_from(node: &'ast syn::Attribute) -> Self::Output {
             Extracted::new(
@@ -78,7 +79,8 @@ mod derives {
         fields: Vec<Extracted<DerivedField<'ast>, &'ast Field>>,
     }
 
-    impl<'ast> Validate<'ast, &'ast DeriveInput> for DerivedStruct<'ast> {
+    impl<'ast> Validate<'ast> for DerivedStruct<'ast> {
+    type Source = &'ast DeriveInput;
         type ValidityError = ();
         type Valid = &'ast DataStruct;
 
@@ -158,7 +160,7 @@ mod derives {
     #[test]
     fn a_derived_tree_renders_nothing_when_it_is_clean() {
         let input = item("pub struct Thing { a: u8 }");
-        assert!(render(&DerivedStruct::extract_from(&input)).is_empty());
+        assert!(DerivedStruct::extract_from(&input).render().is_empty());
     }
 
     #[test]
@@ -179,7 +181,7 @@ mod derives {
             *leaf.source(),
         );
 
-        let errors = render(&complaining);
+        let errors = complaining.render();
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].to_string(), "not a key this node accepts");
     }
@@ -219,7 +221,7 @@ mod derives {
             &input,
         );
 
-        let errors = render(&root);
+        let errors = root.render();
         assert_eq!(errors.len(), 1, "the walk stopped short");
         assert_eq!(errors[0].to_string(), "required, and not written");
     }

@@ -24,9 +24,7 @@ pub(crate) use extractor::derive_extractor;
 pub(crate) use processor::derive_processor;
 pub(crate) use validate::derive_validate;
 
-use syn::{
-    Attribute, Error, GenericArgument, PathArguments, Result, Type, spanned::Spanned,
-};
+use syn::{spanned::Spanned, Attribute, Error, GenericArgument, PathArguments, Result, Type};
 
 /// How many children a field declares, read off its written type.
 ///

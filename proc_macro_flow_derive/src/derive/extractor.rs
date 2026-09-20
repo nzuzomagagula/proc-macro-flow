@@ -14,7 +14,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Fields, Result, Type};
 
-use super::{Arity, Child, expr_arg, find_one};
+use super::{expr_arg, find_one, Arity, Child};
 
 pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
     let name = &input.ident;
@@ -70,17 +70,13 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
         let child = Child::of(&field.ty)?;
         let extractor = &child.extractor;
 
-        // Arity picks the helper, read off the field's TYPE and never off the attribute.
+        // Arity picks the method, read off the field's TYPE and never off the attribute. These
+        // are provided methods on Tr(Extractor), so the extractor NAMES itself and no turbofish is
+        // needed - see Fix[x](#from/names-its-target).
         let call = match child.arity {
-            Arity::One => quote!(
-                ::proc_macro_flow_traits::extractor::extract::<#extractor, _>(#reach)
-            ),
-            Arity::Many => quote!(
-                ::proc_macro_flow_traits::extractor::extract_each::<#extractor, _, _>(#reach)
-            ),
-            Arity::Maybe => quote!(
-                ::proc_macro_flow_traits::extractor::extract_maybe::<#extractor, _>(#reach)
-            ),
+            Arity::One => quote!( <#extractor>::extract_from(#reach) ),
+            Arity::Many => quote!( <#extractor>::extract_each(#reach) ),
+            Arity::Maybe => quote!( <#extractor>::extract_maybe(#reach) ),
         };
 
         assignments.push(quote!(#ident: #call));
@@ -104,21 +100,22 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
         })?;
 
     Ok(quote! {
-        impl #impl_generics ::proc_macro_flow_traits::extractor::Extractor<
-            #lifetime,
-            & #lifetime #source,
-        > for #name #type_generics #where_clause {
+        impl #impl_generics ::proc_macro_flow_traits::extractor::Extractor<#lifetime>
+            for #name #type_generics #where_clause
+        {
             type Output = ::proc_macro_flow_traits::extractor::Extracted<
                 Self,
                 & #lifetime #source,
             >;
 
             fn extract_from(node: & #lifetime #source) -> Self::Output {
+                // Anonymous imports: the methods below are trait methods, and generated code
+                // must never depend on what happens to be in scope at the call site.
+                use ::proc_macro_flow_traits::extractor::Extractor as _;
                 use ::proc_macro_flow_traits::extractor::Validate as _;
 
                 let extraction = match <Self as ::proc_macro_flow_traits::extractor::Validate<
                     #lifetime,
-                    & #lifetime #source,
                 >>::validate(node)
                 {
                     // `source` names the VALIDATED value, not the raw node - so a narrowing

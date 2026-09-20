@@ -25,11 +25,20 @@ legend top
   |<#EAF4FB> **S  struct** | data. ""+"" public field, ""-"" private and reached by an accessor |
   |<#EAF7EF> **E  enum** | a closed set |
   |<#FDF0E3> **T  trait** | a contract an impl must satisfy; associated types listed as ""type X"" |
-  |<#FEF9E7> **F  fn** | free function, no receiver — traversal written once so no author writes it |
+  |<#FEF9E7> **P  provided** | a method with a DEFAULT body — the framework's, inherited by every impl |
   |<#F4ECF7> **B  impl** | an impl the FRAMEWORK provides, so an author inherits the behaviour |
 
   Arrows are Rust relations, not UML ones — each is labelled with the
   construct it stands for (""field"", ""supertrait"", ""type Output ="", ""impl"").
+
+  **There are no free functions.** Every helper is an associated item on the
+  trait it belongs to, so a macro reads the pipeline's parameters off a type
+  it already names instead of rebuilding them in an argument list.
+  (#pipeline/no-free-functions)
+
+  **No trait carries a TYPE parameter — only lifetimes.** Every input and
+  output is an associated type or a GAT, so it is DETERMINED BY Self and
+  never inferred from a call site. (#pipeline/source-is-associated)
 endlegend
 
 ' ===========================================================================
@@ -86,17 +95,21 @@ package "data — what flows between stages" as DATA <<Rectangle>> {
 ' ===========================================================================
 package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> {
 
-  interface "Validate<'ast, I: Visitable<'ast>>" as Validate <<(T,#F5CBA7) trait>> {
+  interface "Validate<'ast>" as Validate <<(T,#F5CBA7) trait>> {
+    +type Source: Visitable<'ast>
     +type ValidityError
     +type Valid
     --
-    +validate(I) -> Result<Valid, ValidityError>
+    +validate(Source) -> Result<Valid, ValidityError>
   }
 
-  interface "Extractor<'ast, I: Visitable<'ast>>" as Extractor <<(T,#F5CBA7) trait>> {
+  interface "Extractor<'ast>" as Extractor <<(T,#F5CBA7) trait>> {
     +type Output
     --
-    +extract_from(I) -> Output
+    +extract_from(Source) -> Output
+    ..provided..
+    +extract_each<N: IntoIterator<Item = Source>>(N) -> Vec<Output>
+    +extract_maybe(Option<Source>) -> Option<Output>
   }
 
   interface Processor <<(T,#F5CBA7) trait>> {
@@ -104,45 +117,30 @@ package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> 
     +type Output
     --
     +process(Input) -> Extraction<Output>
+    ..provided..
+    +process_each<N: IntoIterator<Item = Input>>(N) -> Vec<Extraction<Output>>
+    +process_maybe(Option<Input>) -> Option<Extraction<Output>>
   }
 
   interface Generator <<(T,#F5CBA7) trait>> {
     +type Input
+    +type Item
     --
     +generate(Input) -> TokenStream
+    +stub(&Item) -> TokenStream
+    ..provided..
+    +emit(Option<Input>, &Item, Vec<syn::Error>) -> TokenStream
   }
 
   interface Diagnose <<(T,#F5CBA7) trait>> {
     +diagnose(&self, out: &mut Vec<syn::Error>)
+    ..provided..
+    +render(&self) -> Vec<syn::Error>
+    +rendered(&self) -> Option<syn::Error>
   }
 
   interface "Visitable<'ast>" as Visitable <<(T,#F5CBA7) trait>> {
     +accept<V: Visit<'ast>>(self, &mut V)
-  }
-}
-
-' ===========================================================================
-package "free functions — traversal written once" as FNS <<Rectangle>> {
-
-  class "extractor::{ extract, extract_each, extract_maybe }" as FromHelpers <<(F,#F9E79F) fn>> {
-    extract<T, I>(I) -> T::Output
-    extract_each<T, I, N>(N) -> Vec<T::Output>
-    extract_maybe<T, I>(Option<I>) -> Option<T::Output>
-  }
-
-  class "processor::{ process_each, process_maybe }" as ProcHelpers <<(F,#F9E79F) fn>> {
-    process_each<P, N>(N) -> Vec<Extraction<P::Output>>
-    process_maybe<P>(Option<P::Input>) -> Option<Extraction<P::Output>>
-  }
-
-  class "render::{ render, combined }" as RenderFns <<(F,#F9E79F) fn>> {
-    render(&impl Diagnose) -> Vec<syn::Error>
-    combined(Vec<syn::Error>) -> Option<syn::Error>
-  }
-
-  class "generator::{ emit, emit_errors }" as EmitFns <<(F,#F9E79F) fn>> {
-    emit(stub, &[Reason], &impl ToTokens, msg) -> TokenStream
-    emit_errors(stub, Vec<syn::Error>) -> TokenStream
   }
 }
 
@@ -171,16 +169,11 @@ Reason *-- ReasonKind : field
 
 Extractor --|> Validate : supertrait
 Extractor ..> Extracted : "type Output ="
-Extractor ..> Visitable : "bound on I"
-Validate ..> Visitable : "bound on I"
+Validate ..> Visitable : "bound on\ntype Source"
 
 Extractor ..> Processor : "Output becomes\nProcessor::Input"
 Processor ..> Generator : "Output becomes\nGenerator::Input"
 
-FromHelpers ..> Extractor : calls
-ProcHelpers ..> Processor : calls
-RenderFns ..> Diagnose : calls
-EmitFns ..> RenderFns : consumes\nVec<syn::Error>
 
 ImplExtracted ..|> Diagnose : impl
 ImplVec ..|> Diagnose : impl
@@ -281,6 +274,58 @@ note bottom of Visitable
   wrappers. (#visitable/by-value)
 end note
 
+note bottom of Generator
+  **The stub rule is a CONTRACT, not a habit.**
+  ""stub"" is REQUIRED: a type that cannot say what
+  its vacant form looks like does not compile as a
+  Generator, and ""emit"" is the only way to spend it.
+
+  It used to be four lines every entry point wrote
+  by hand — match the value, generate or stub, then
+  append the errors — and getting it wrong in one
+  place is a missing-item cascade at every use site.
+  (#generator/stub-is-a-contract)
+
+  ""Item"" is separate from ""Input"" precisely because
+  the stub case HAS no Input.
+
+  TODO(#typed-output/generate): both should return a
+  TYPED syn item. We BUILD this content and know its
+  shape, so untyped means nothing checks it until
+  rustc re-parses — and precise spans are impossible.
+end note
+
+note bottom of Extractor
+  ""extract_each"" / ""extract_maybe"" are PROVIDED, so
+  the extractor names itself: the derive emits
+  ""<FieldExtraction>::extract_each(it)"" where it once
+  emitted ""extract_each::<FieldExtraction, _, _>(it)"".
+
+  Which one a field uses is read off its TYPE, never
+  off the attribute (#from/arity-from-type). That the
+  name is needed at all is ID(from/names-its-target) —
+  ""T::Output"" is an associated type and not injective,
+  so nothing can work backwards from the field type.
+  Naming the receiver answers it without a turbofish.
+end note
+
+note bottom of Diagnose
+  ""render"" walks; ""rendered"" folds the walk into one
+  ""syn::Error"". ""syn::Error::combine"" keeps each
+  error's own span, so folding costs no precision.
+
+  Returns a COLLECTION, not a TokenStream, so the
+  entry point can interleave these with the
+  processor's reasons before anything is emitted.
+
+  Does NOT sort by span — impossible on stable AND
+  unnecessary, since depth-first over a source-ordered
+  syn tree already IS source order.
+  (#render/traversal-is-source-order)
+
+  Still owed: (#render/dedupe-and-cap).
+end note
+
 note bottom of Processor
   **Optional stage.** ""#[derive(Processor)]"" emits
   the identity, so downstream sees ONE shape and
@@ -301,33 +346,7 @@ note bottom of Processor
   the type system enforces.
 end note
 
-note bottom of FromHelpers
-  What ""#[from(..)]"" lowers to. Which one a field
-  uses is read off its TYPE, never off the
-  attribute (#from/arity-from-type).
 
-  Call sites must NAME T: ""T::Output"" is an
-  associated type and so not injective, so it
-  cannot be inferred from the field.
-  (#from/names-its-target)
-end note
-
-note bottom of RenderFns
-  ONE depth-first walk, every reason in the tree.
-
-  Returns a COLLECTION, not a TokenStream, so the
-  entry point can interleave these errors with
-  the processor's before anything is emitted —
-  a stream would commit too early.
-
-  Does NOT sort by span. VERIFIED impossible AND
-  unnecessary: ""Span::start"" is gated and returns
-  line 0 inside a real macro, and depth-first
-  over a source-ordered syn tree already IS
-  source order. (#render/traversal-is-source-order)
-
-  Still owed: (#render/dedupe-and-cap).
-end note
 
 note top of IMPLS
   **This is why an author never writes traversal.**
@@ -349,22 +368,5 @@ note top of IMPLS
   silent gap.
 end note
 
-note bottom of EmitFns
-  ""emit_errors"" is the whole-tree form and the one
-  an entry point should use; ""emit"" is the
-  single-node convenience.
-
-  Either way the stub goes out FIRST. Without it
-  the missing impl cascades into "does not
-  implement" at every use site and buries the real
-  diagnostic. (#generator/stub-is-not-empty)
-
-  TODO(#typed-output/generate): both should return
-  a TYPED syn item. We BUILD this content and know
-  its shape, so untyped means nothing checks it
-  until rustc re-parses — and precise spans are
-  impossible. Carrier vs product: ""Unresolved"" and
-  ""ListBody"" stay raw, deliberately.
-end note
 
 @enduml

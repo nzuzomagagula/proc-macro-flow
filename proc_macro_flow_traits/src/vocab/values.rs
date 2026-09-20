@@ -62,7 +62,7 @@ macro_rules! name_value {
 
             impl $crate::vocab::leaves::FromMeta for $name {
                 fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                    $crate::vocab::leaves::leaf_from_meta::<$name>(meta)
+                    <$name as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
                 }
             }
 
@@ -104,7 +104,7 @@ macro_rules! name_value {
 #[cfg(test)]
 mod tests {
     use crate::vocab::leaves::FromExpr;
-    use syn::{Attribute, ItemStruct, LitInt, LitStr, Meta, MetaNameValue, parse_str};
+    use syn::{parse_str, Attribute, ItemStruct, LitInt, LitStr, Meta, MetaNameValue};
 
     name_value! {
         /// `name = "thing"`
@@ -157,10 +157,14 @@ mod tests {
 
     #[test]
     fn a_wrong_leaf_is_rejected_with_the_leafs_own_message() {
-        let error = ConfigName::try_from(&name_value_of("#[name = 64]")).err().expect("not a string");
+        let error = ConfigName::try_from(&name_value_of("#[name = 64]"))
+            .err()
+            .expect("not a string");
         assert_eq!(error.to_string(), "expected a Str literal");
 
-        let error = Retries::try_from(&name_value_of(r#"#[retries = "x"]"#)).err().expect("not an int");
+        let error = Retries::try_from(&name_value_of(r#"#[retries = "x"]"#))
+            .err()
+            .expect("not an int");
         assert_eq!(error.to_string(), "expected a Int literal");
     }
 

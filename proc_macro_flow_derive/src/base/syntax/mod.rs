@@ -185,18 +185,19 @@ pub mod scratch {
     use syn::{punctuated::Punctuated, Expr, Ident, LitInt, LitStr, Path, Token};
 
     #[derive(Syntax)]
-    #[alias(config)]                        // TYPE alias -> #[config(..)] is the same entry
-    pub struct Configuration {              // entry name `configuration`, from the type name
-        #[shape(AttributeKind::MetaList)]   // narrowed: `colour = Red` is rejected here
-        colour: Vec<ColourSetting>,         // required (not Option) + many (Vec)
+    #[alias(config)] // TYPE alias -> #[config(..)] is the same entry
+    pub struct Configuration {
+        // entry name `configuration`, from the type name
+        #[shape(AttributeKind::MetaList)] // narrowed: `colour = Red` is rejected here
+        colour: Vec<ColourSetting>, // required (not Option) + many (Vec)
 
-        fallback: Option<ColourSetting>,    // no #[shape] -> any shape ColourSetting implements
+        fallback: Option<ColourSetting>, // no #[shape] -> any shape ColourSetting implements
 
-        retry: Option<Retry>,               // named-field struct  -> nested list
-        bounds: Option<Bounds>,             // tuple struct        -> positional
+        retry: Option<Retry>,   // named-field struct  -> nested list
+        bounds: Option<Bounds>, // tuple struct        -> positional
         #[alias(label)]
-        name: Option<ConfigName>,           // newtype over a leaf -> name-value
-        no_clean: Option<NoClean>,          // ZST                 -> flag
+        name: Option<ConfigName>, // newtype over a leaf -> name-value
+        no_clean: Option<NoClean>, // ZST                 -> flag
 
         #[shape(AttributeKind::NamedValue)] // bool's other reading; FromPath makes it a flag
         verbose: Option<bool>,
@@ -217,8 +218,12 @@ pub mod scratch {
         Red, // unit variant -> Path
         #[alias(noir)]
         Black,
-        Other(Ident),                            // tuple variant  -> List, payload read as Expr
-        Rgb { r: LitInt, g: LitInt, b: LitInt }, // struct variant -> List of name-values
+        Other(Ident), // tuple variant  -> List, payload read as Expr
+        Rgb {
+            r: LitInt,
+            g: LitInt,
+            b: LitInt,
+        }, // struct variant -> List of name-values
     }
 
     #[derive(Syntax)]

@@ -26,7 +26,7 @@
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{Expr, Meta, Path, Token, parse::Parser, punctuated::Punctuated};
+use syn::{parse::Parser, punctuated::Punctuated, Expr, Meta, Path, Token};
 
 /// `#[flag]`, or a bare path in a value position. Nothing to parse.
 #[derive(Clone, Copy)]
@@ -183,7 +183,7 @@ impl ToTokens for ValueExpr<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::{Attribute, ItemStruct, parse_str};
+    use syn::{parse_str, Attribute, ItemStruct};
 
     fn attribute(source: &str) -> Attribute {
         let item: ItemStruct =
@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(metas.len(), 3);
 
         // and each element is itself an opening - this is the recursion
-        let shapes: Vec<_> = metas.iter().map(ShapeKind::from).collect();
+        let shapes: Vec<ShapeKind> = metas.iter().map(ShapeKind::from).collect();
         assert_eq!(
             shapes,
             [ShapeKind::List, ShapeKind::NameValue, ShapeKind::Path]
@@ -251,7 +251,10 @@ mod tests {
         let Opening::List(body) = Opening::from(&attr.meta) else {
             panic!("a list");
         };
-        assert_eq!(body.to_token_stream().to_string(), "AttributeKind :: MetaList");
+        assert_eq!(
+            body.to_token_stream().to_string(),
+            "AttributeKind :: MetaList"
+        );
     }
 
     #[test]

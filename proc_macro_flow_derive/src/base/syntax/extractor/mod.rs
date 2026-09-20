@@ -7,11 +7,11 @@
 // unreachable then, it is genuinely dead and should go"
 #![allow(dead_code)]
 
+use proc_macro2::Ident;
 use proc_macro_flow_traits::{
     extractor::{Extracted, Extraction, Reason, ReasonKind},
     resolution::{Deferred, Parsed, Raw, Stage, Unresolved},
 };
-use proc_macro2::Ident;
 use syn::{Attribute, Type};
 
 use proc_macro_flow_traits::extractor::{Extractor, Validate};
@@ -98,7 +98,7 @@ impl<'ast, S: Stage> SyntaxFieldAttributeExtraction<'ast, S> {
 /// That is forced rather than chosen: only `Raw` can build an item out of loose tokens, so a
 /// `Stage`-generic `extract_from` could not construct its own payload. Moving to `Parsed` is
 /// `resolve`'s job below, which is exactly the separation the typestate exists to draw.
-impl<'ast> Extractor<'ast, &'ast Attribute> for SyntaxFieldAttributeExtraction<'ast, Raw> {
+impl<'ast> Extractor<'ast> for SyntaxFieldAttributeExtraction<'ast, Raw> {
     type Output = Extracted<Self, &'ast Attribute>;
 
     fn extract_from(node: &'ast Attribute) -> Self::Output {
@@ -175,7 +175,8 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
     }
 }
 
-impl<'ast, S: Stage> Validate<'ast, &'ast Attribute> for SyntaxFieldAttributeExtraction<'ast, S> {
+impl<'ast, S: Stage> Validate<'ast> for SyntaxFieldAttributeExtraction<'ast, S> {
+    type Source = &'ast Attribute;
     type ValidityError = SyntaxFieldAttributeError;
 
     /// A genuine narrowing, not the input handed back: the head is now RESOLVED to the vocabulary

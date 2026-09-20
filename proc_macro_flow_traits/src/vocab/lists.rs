@@ -131,9 +131,7 @@ macro_rules! meta_list {
                 // The walk owns unknown-key and duplicate reporting; this closure only reads the
                 // element it was handed. Every field reads the same way whatever shape it is -
                 // see ID(meta-list/uniform-read).
-                errors.absorb($crate::vocab::walk::walk_keys(
-                    body,
-                    $name::KEYS,
+                errors.absorb(body.walk_keys($name::KEYS,
                     |key, element| {
                         match key {
                             $(
@@ -195,7 +193,7 @@ macro_rules! meta_list {
 #[cfg(test)]
 mod tests {
     use crate::meta::Opening;
-    use syn::{Attribute, ItemStruct, LitInt, LitStr, Meta, parse_str};
+    use syn::{parse_str, Attribute, ItemStruct, LitInt, LitStr, Meta};
 
     meta_list! {
         /// `retry(times = 3, backoff = "200ms")`
@@ -231,7 +229,10 @@ mod tests {
         let error = Retry::try_from(&meta_of(r#"#[retry(backoff = "200ms")]"#))
             .err()
             .expect("times is required");
-        assert!(error.to_string().contains("missing required key `times`"), "{error}");
+        assert!(
+            error.to_string().contains("missing required key `times`"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -302,7 +303,8 @@ mod tests {
             }
         }
 
-        let outer = Outer::try_from(&meta_of(r#"#[outer(retry(times = 2), label = "x")]"#)).unwrap();
+        let outer =
+            Outer::try_from(&meta_of(r#"#[outer(retry(times = 2), label = "x")]"#)).unwrap();
         assert_eq!(outer.retry.times.base10_parse::<u32>().unwrap(), 2);
         assert_eq!(outer.label.unwrap().value(), "x");
     }

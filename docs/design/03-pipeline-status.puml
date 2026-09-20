@@ -13,9 +13,9 @@ rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #FFF4E5
 rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #FFF4E5
 
 rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
-rectangle "Generator\nProcessedStruct -> impl { FIELDS }\n+ stub() + emit_errors()" as G #E8F4EA
+rectangle "Generator\nProcessedStruct -> impl { FIELDS }\nstub() REQUIRED + emit() provided" as G #E8F4EA
 
-rectangle "render()\nDiagnose walk over the tree\nVec<syn::Error>" as R #E8F4EA
+rectangle "Diagnose::render()\nwalk over the tree\nVec<syn::Error>" as R #E8F4EA
 
 rectangle """#[derive(Extractor)]""\n""#[source] #[from] #[with]""\n+ Diagnose" as DE #E8F4EA
 rectangle """#[derive(Processor)]""\nidentity" as DP #E8F4EA

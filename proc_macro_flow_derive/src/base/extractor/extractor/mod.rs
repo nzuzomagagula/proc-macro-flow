@@ -26,7 +26,7 @@
 use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
-use proc_macro_flow_traits::extractor::{Extractor, Reason, ReasonKind, Validate, extract_each};
+use proc_macro_flow_traits::extractor::{Extractor, Reason, ReasonKind, Validate};
 use proc_macro_flow_traits::render::Diagnose;
 
 use crate::base::extractor::extractor::field::FieldExtraction;
@@ -44,7 +44,7 @@ pub(crate) struct StructExtraction<'ast> {
     pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
 }
 
-impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
+impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
     type Output = Extracted<Self, &'ast DeriveInput>;
 
     fn extract_from(node: &'ast DeriveInput) -> Self::Output {
@@ -56,7 +56,7 @@ impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
             // the children are, the Vec in the field's type picks `extract_each`, and the walk is
             // not written out. See @group(#from).
             Ok(data) => Extraction::value(Self {
-                fields: extract_each::<FieldExtraction, _, _>(data.fields.iter()),
+                fields: FieldExtraction::extract_each(data.fields.iter()),
             }),
             Err(_) => Extraction::failed(Reason::new(ReasonKind::WrongShape)),
         };
@@ -71,7 +71,8 @@ impl<'ast> Extractor<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
 //TODO[ ](#extractor/error):R[S(StructExtractionValidityError) -> E(Reason)], "ANSWERED but NOT YET DONE, and the two halves have come apart. The answer stands: meaning comes from a closed Reason set, not from a taxonomy of error types - a proc macro never handles an error programmatically, it only emits one, so per-type errors buy nothing and cannot combine with a sibling's. What has changed is where they survive. extract_from no longer has an ExtractionError at all (ID(extractor/no-result)), so the four remaining unit structs - StructExtractionValidityError, FieldExtractionError, TransformationExtractionError, SyntaxFieldAttributeError - are now Tr(Validate)::ValidityError and nothing else. Collapsing them is therefore a VALIDATE question: under ID(pipeline/validity-scope) a surface check has a span and a cause and nothing more, which is a Reason, so ValidityError should stop being an associated type rather than becoming syn::Error"
 pub struct StructExtractionValidityError;
 
-impl<'ast> Validate<'ast, &'ast DeriveInput> for StructExtraction<'ast> {
+impl<'ast> Validate<'ast> for StructExtraction<'ast> {
+    type Source = &'ast DeriveInput;
     type ValidityError = StructExtractionValidityError;
     type Valid = &'ast DataStruct;
 
@@ -96,7 +97,7 @@ impl<'ast> Diagnose for StructExtraction<'ast> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proc_macro_flow_traits::render::render;
+    use proc_macro_flow_traits::render::Diagnose;
     use syn::parse_str;
 
     fn item(source: &str) -> DeriveInput {
@@ -127,13 +128,13 @@ mod tests {
     #[test]
     fn a_clean_struct_renders_nothing() {
         let input = item("pub struct Thing { a: u8, b: String }");
-        assert!(render(&StructExtraction::extract_from(&input)).is_empty());
+        assert!(StructExtraction::extract_from(&input).render().is_empty());
     }
 
     #[test]
     fn a_failed_validate_renders_the_roots_own_reason() {
         let input = item("pub enum Thing { A }");
-        let errors = render(&StructExtraction::extract_from(&input));
+        let errors = StructExtraction::extract_from(&input).render();
 
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].to_string(), "written in the wrong shape");
@@ -150,7 +151,7 @@ mod tests {
         };
         let field = data.fields.iter().next().expect("one field");
 
-        let errors = render(&with_a_complaining_field(&input, field));
+        let errors = with_a_complaining_field(&input, field).render();
 
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].to_string(), "not a key this node accepts");
@@ -167,12 +168,26 @@ mod tests {
         };
         let field = data.fields.iter().next().expect("one field");
 
-        let errors = render(&with_a_complaining_field(&input, field));
+        let errors = with_a_complaining_field(&input, field).render();
         let rendered = errors[0].to_compile_error().to_string();
 
         // spanned output is not inspectable on stable (ID(render/traversal-is-source-order) covers
         // the same limit), so assert what IS observable: one error, carrying the child's wording
         assert!(rendered.contains("compile_error"), "{rendered}");
         assert!(rendered.contains("not a key"), "{rendered}");
+    }
+
+    #[test]
+    fn a_source_that_pins_nothing_still_resolves() {
+        // REGRESSION for NOTE(#pipeline/source-is-associated). While the source was a trait
+        // PARAMETER these two shapes failed with `error[E0283]: type annotations needed` the
+        // moment a type had more than one impl - and both are ordinary things for the derive to
+        // emit for an Option field or an empty iterator. Neither argument pins the source; the
+        // associated type does, because it is determined by Self.
+        //
+        // No turbofish, no annotation. That is the whole assertion - if this file stops compiling
+        // the source has drifted back to being guessed.
+        assert!(FieldExtraction::extract_maybe(None).is_none());
+        assert!(FieldExtraction::extract_each(::core::iter::empty()).is_empty());
     }
 }

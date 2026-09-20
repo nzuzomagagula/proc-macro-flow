@@ -41,24 +41,21 @@ pub trait Processor: Sized {
     type Output;
 
     fn process(input: Self::Input) -> Extraction<Self::Output>;
-}
 
-/// Process many children. Mirrors `extract_each`, and is how a parent collects before combining.
-pub fn process_each<P, N>(inputs: N) -> Vec<Extraction<P::Output>>
-where
-    P: Processor,
-    N: IntoIterator<Item = P::Input>,
-{
-    inputs.into_iter().map(P::process).collect()
-}
+    /// Process many children. Mirrors `Extractor::extract_each`, and is how a parent collects its
+    /// children's OUTPUTS before combining - the cascade is bottom-up.
+    fn process_each<N>(inputs: N) -> Vec<Extraction<Self::Output>>
+    where
+        N: IntoIterator<Item = Self::Input>,
+    {
+        inputs.into_iter().map(Self::process).collect()
+    }
 
-/// A child that may not be there. Absence is not a failure - the `Option` in the field's type is
-/// what says so.
-pub fn process_maybe<P>(input: Option<P::Input>) -> Option<Extraction<P::Output>>
-where
-    P: Processor,
-{
-    input.map(P::process)
+    /// A child that may not be there. Absence is not a failure - the `Option` in the field's type
+    /// is what says so.
+    fn process_maybe(input: Option<Self::Input>) -> Option<Extraction<Self::Output>> {
+        input.map(Self::process)
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +94,7 @@ mod tests {
 
         fn process(input: Self::Input) -> Extraction<Self::Output> {
             // Children FIRST, then combine - the whole point of ID(processor/cascade-is-a-helper).
-            let children = process_each::<Child, _>(input);
+            let children = Child::process_each(input);
             ORDER.with(|o| o.borrow_mut().push("parent"));
 
             let total = children
@@ -127,8 +124,12 @@ mod tests {
 
     #[test]
     fn process_each_keeps_one_result_per_child() {
-        let out = process_each::<Child, _>(vec![extracted(3), extracted(4)]);
-        let values: Vec<_> = out.into_iter().filter_map(|c| c.value).map(|c| c.0).collect();
+        let out = Child::process_each(vec![extracted(3), extracted(4)]);
+        let values: Vec<_> = out
+            .into_iter()
+            .filter_map(|c| c.value)
+            .map(|c| c.0)
+            .collect();
         assert_eq!(values, [6, 8]);
     }
 
@@ -136,7 +137,7 @@ mod tests {
     fn a_child_that_produced_nothing_still_occupies_its_place() {
         // Absence is not silence: the slot survives so position in the tree is not lost.
         let empty: Extracted<Child, ()> = Extracted::new(Extraction::default(), ());
-        let out = process_each::<Child, _>(vec![extracted(1), empty]);
+        let out = Child::process_each(vec![extracted(1), empty]);
 
         assert_eq!(out.len(), 2);
         assert!(out[1].value.is_none());
@@ -144,7 +145,7 @@ mod tests {
 
     #[test]
     fn process_maybe_passes_absence_through() {
-        assert!(process_maybe::<Child>(None).is_none());
-        assert!(process_maybe::<Child>(Some(extracted(5))).is_some());
+        assert!(Child::process_maybe(None).is_none());
+        assert!(Child::process_maybe(Some(extracted(5))).is_some());
     }
 }

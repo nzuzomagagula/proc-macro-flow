@@ -70,18 +70,31 @@ impl Errors {
     }
 }
 
-/// The last segment of a path, which is how both keys and variant names are matched.
-pub fn last_segment(path: &syn::Path) -> Option<String> {
-    path.segments.last().map(|s| s.ident.to_string())
+/// Naming, on the syn types themselves.
+///
+/// An extension trait rather than free functions, per NOTE(#pipeline/no-free-functions) - and it
+/// has to be a trait because `syn::Path` is foreign, which is the same orphan-rule shape the whole
+/// vocab suite is built around (ID(vocab/orphan-shapes-the-api)).
+pub trait Named {
+    /// The last segment, which is how both keys and variant names are matched.
+    fn last_segment(&self) -> Option<String>;
 }
 
-/// The key a `Meta` is written under.
-pub fn key_of(meta: &Meta) -> Option<String> {
-    last_segment(meta.path())
+impl Named for syn::Path {
+    fn last_segment(&self) -> Option<String> {
+        self.segments.last().map(|s| s.ident.to_string())
+    }
+}
+
+impl Named for Meta {
+    /// The key a `Meta` is written under.
+    fn last_segment(&self) -> Option<String> {
+        self.path().last_segment()
+    }
 }
 
 fn expected_one_of(candidates: &[&'static str]) -> String {
-    let quoted: Vec<_> = candidates.iter().map(|c| format!("`{c}`")).collect();
+    let quoted: Vec<String> = candidates.iter().map(|c| format!("`{c}`")).collect();
     format!("expected one of: {}", quoted.join(", "))
 }
 
@@ -90,72 +103,78 @@ fn expected_one_of(candidates: &[&'static str]) -> String {
 /// Owns unknown-key and duplicate-key reporting; the caller's closure only has to read the element
 /// it was handed. Missing required keys are NOT reported here - which fields are required is the
 /// caller's business, because it is written in their types.
-pub fn walk_keys<F>(body: ListBody<'_>, candidates: &[&'static str], mut accept: F) -> Result<()>
-where
-    F: FnMut(&str, &Meta) -> Result<()>,
-{
-    // The one thing that aborts: a body that is not a meta list has no elements to salvage.
-    let metas = body.metas()?;
+impl<'ast> ListBody<'ast> {
+    /// Walk this body, dispatching each element by its key.
+    ///
+    /// Owns unknown-key and duplicate-key reporting; the caller's closure only has to read the
+    /// element it was handed. Missing required keys are NOT reported here - which fields are
+    /// required is the caller's business, because it is written in their types.
+    pub fn walk_keys<F>(self, candidates: &[&'static str], mut accept: F) -> Result<()>
+    where
+        F: FnMut(&str, &Meta) -> Result<()>,
+    {
+        let body = self;
+        // The one thing that aborts: a body that is not a meta list has no elements to salvage.
+        let metas = body.metas()?;
 
-    let mut errors = Errors::new();
-    let mut seen: Vec<String> = Vec::new();
+        let mut errors = Errors::new();
+        let mut seen: Vec<String> = Vec::new();
 
-    for meta in &metas {
-        let Some(key) = key_of(meta) else {
-            errors.push(Error::new_spanned(meta, expected_one_of(candidates)));
-            continue;
-        };
+        for meta in &metas {
+            let Some(key) = meta.last_segment() else {
+                errors.push(Error::new_spanned(meta, expected_one_of(candidates)));
+                continue;
+            };
 
-        if !candidates.contains(&key.as_str()) {
-            errors.push(Error::new_spanned(
-                meta.path(),
-                expected_one_of(candidates),
-            ));
-            continue;
+            if !candidates.contains(&key.as_str()) {
+                errors.push(Error::new_spanned(meta.path(), expected_one_of(candidates)));
+                continue;
+            }
+
+            if seen.contains(&key) {
+                errors.push(Error::new_spanned(
+                    meta.path(),
+                    format!("`{key}` is written more than once"),
+                ));
+                continue;
+            }
+
+            seen.push(key.clone());
+            errors.absorb(accept(&key, meta));
         }
 
-        if seen.contains(&key) {
-            errors.push(Error::new_spanned(
-                meta.path(),
-                format!("`{key}` is written more than once"),
+        errors.finish()
+    }
+
+    /// Read this body as positional values - what a tuple variant's payload is.
+    ///
+    /// `bounds(0, 64)` cannot go through [`ListBody::walk_keys`]: a bare literal is not valid
+    /// `Meta` at all, so there is no key to dispatch on. Arity is checked here because a tuple's
+    /// arity is fixed by its declaration, not by what was written.
+    pub fn positional(self, arity: usize, what: &str) -> Result<Vec<syn::Expr>> {
+        let body = self;
+        let exprs = body.exprs()?;
+
+        if exprs.len() != arity {
+            return Err(Error::new_spanned(
+                body,
+                format!(
+                    "`{what}` takes {arity} argument{}, {} supplied",
+                    if arity == 1 { "" } else { "s" },
+                    exprs.len()
+                ),
             ));
-            continue;
         }
 
-        seen.push(key.clone());
-        errors.absorb(accept(&key, meta));
+        Ok(exprs.into_iter().collect())
     }
-
-    errors.finish()
-}
-
-/// Read a list body as positional values - what a tuple variant's payload is.
-///
-/// `bounds(0, 64)` cannot go through [`walk_keys`]: a bare literal is not valid `Meta` at all, so
-/// there is no key to dispatch on. Arity is checked here because a tuple's arity is fixed by its
-/// declaration, not by what was written.
-pub fn positional(body: ListBody<'_>, arity: usize, what: &str) -> Result<Vec<syn::Expr>> {
-    let exprs = body.exprs()?;
-
-    if exprs.len() != arity {
-        return Err(Error::new_spanned(
-            body,
-            format!(
-                "`{what}` takes {arity} argument{}, {} supplied",
-                if arity == 1 { "" } else { "s" },
-                exprs.len()
-            ),
-        ));
-    }
-
-    Ok(exprs.into_iter().collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::{ListBody, Opening};
-    use syn::{Attribute, ItemStruct, parse_str};
+    use syn::{parse_str, Attribute, ItemStruct};
 
     fn body_of(source: &str) -> (Attribute, ()) {
         let item: ItemStruct =
@@ -175,15 +194,19 @@ mod tests {
 
     #[test]
     fn every_key_is_dispatched() {
-        let seen = with_body("#[c(colour(Red), name = \"x\", retry(times = 1))]", |body| {
-            let mut seen = Vec::new();
-            walk_keys(body, KEYS, |key, _| {
-                seen.push(key.to_owned());
-                Ok(())
-            })
-            .expect("all keys known");
-            seen
-        });
+        let seen = with_body(
+            "#[c(colour(Red), name = \"x\", retry(times = 1))]",
+            |body| {
+                let mut seen = Vec::new();
+                (body)
+                    .walk_keys(KEYS, |key, _| {
+                        seen.push(key.to_owned());
+                        Ok(())
+                    })
+                    .expect("all keys known");
+                seen
+            },
+        );
 
         assert_eq!(seen, ["colour", "name", "retry"]);
     }
@@ -192,14 +215,17 @@ mod tests {
     fn an_unknown_key_carries_the_candidates_and_the_walk_continues() {
         let (error, seen) = with_body("#[c(colur(Red), name = \"x\")]", |body| {
             let mut seen = Vec::new();
-            let result = walk_keys(body, KEYS, |key, _| {
+            let result = (body).walk_keys(KEYS, |key, _| {
                 seen.push(key.to_owned());
                 Ok(())
             });
             (result.err().expect("colur is unknown"), seen)
         });
 
-        assert_eq!(error.to_string(), "expected one of: `colour`, `name`, `retry`");
+        assert_eq!(
+            error.to_string(),
+            "expected one of: `colour`, `name`, `retry`"
+        );
         // the sibling after the bad element still ran
         assert_eq!(seen, ["name"]);
     }
@@ -208,7 +234,7 @@ mod tests {
     fn a_duplicate_key_is_reported_once_and_the_first_wins() {
         let (error, seen) = with_body("#[c(name = \"a\", name = \"b\")]", |body| {
             let mut seen = Vec::new();
-            let result = walk_keys(body, KEYS, |key, _| {
+            let result = (body).walk_keys(KEYS, |key, _| {
                 seen.push(key.to_owned());
                 Ok(())
             });
@@ -224,7 +250,10 @@ mod tests {
         // THE property. Three bad elements, three complaints - contrast a `?`-based Parse impl,
         // which reports one and drops the rest.
         let error = with_body("#[c(one(x), two(y), three(z))]", |body| {
-            walk_keys(body, KEYS, |_, _| Ok(())).err().expect("all unknown")
+            (body)
+                .walk_keys(KEYS, |_, _| Ok(()))
+                .err()
+                .expect("all unknown")
         });
 
         assert_eq!(error.into_iter().count(), 3);
@@ -233,15 +262,16 @@ mod tests {
     #[test]
     fn an_error_from_the_callback_is_kept_too() {
         let error = with_body("#[c(colour(Red), name = \"x\")]", |body| {
-            walk_keys(body, KEYS, |key, meta| {
-                if key == "colour" {
-                    Err(Error::new_spanned(meta, "colour is unhappy"))
-                } else {
-                    Ok(())
-                }
-            })
-            .err()
-            .expect("the callback failed")
+            (body)
+                .walk_keys(KEYS, |key, meta| {
+                    if key == "colour" {
+                        Err(Error::new_spanned(meta, "colour is unhappy"))
+                    } else {
+                        Ok(())
+                    }
+                })
+                .err()
+                .expect("the callback failed")
         });
 
         assert!(error.to_string().contains("colour is unhappy"), "{error}");
@@ -252,11 +282,12 @@ mod tests {
         // ID(walk/suffix)
         let seen = with_body("#[c(some::colour(Red))]", |body| {
             let mut seen = Vec::new();
-            walk_keys(body, KEYS, |key, _| {
-                seen.push(key.to_owned());
-                Ok(())
-            })
-            .expect("last segment matches");
+            (body)
+                .walk_keys(KEYS, |key, _| {
+                    seen.push(key.to_owned());
+                    Ok(())
+                })
+                .expect("last segment matches");
             seen
         });
 
@@ -266,16 +297,16 @@ mod tests {
     #[test]
     fn a_body_that_is_not_a_meta_list_aborts() {
         // Nothing to salvage - there are no siblings to lose.
-        let result = with_body("#[c(0, 64)]", |body| walk_keys(body, KEYS, |_, _| Ok(())));
+        let result = with_body("#[c(0, 64)]", |body| (body).walk_keys(KEYS, |_, _| Ok(())));
         assert!(result.is_err());
     }
 
     #[test]
     fn positional_checks_arity_against_the_declaration() {
         with_body("#[c(0, 64)]", |body| {
-            assert_eq!(positional(body, 2, "Bounds").unwrap().len(), 2);
+            assert_eq!((body).positional(2, "Bounds").unwrap().len(), 2);
 
-            let error = positional(body, 1, "Other").err().expect("wrong arity");
+            let error = (body).positional(1, "Other").err().expect("wrong arity");
             assert_eq!(error.to_string(), "`Other` takes 1 argument, 2 supplied");
         });
     }

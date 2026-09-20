@@ -97,7 +97,7 @@ note right
   (#attribute/generic-grammar)
 end note
 
-:**render(&extracted)**
+:**extracted.render()**
 ----
 in   ""&Extracted<StructExtraction, ..>""  BORROWED
 out  ""Vec<syn::Error>"" — every reason in the tree
@@ -248,9 +248,9 @@ note right
   and ""Ambiguous"" stay ours.
 end note
 
-:**Generator::generate**, then ""emit_errors(stub, errors)""
+:**Generator::emit(value, item, errors)**
 ----
-in   a processor's ""Output"" + the errors rendered earlier
+in   ""Option<Input>"" + the item + the errors rendered earlier
 out  ""TokenStream"" — stub FIRST, then N ""compile_error!""
 ----
 the stub always goes out; <<#E8F4EA>>

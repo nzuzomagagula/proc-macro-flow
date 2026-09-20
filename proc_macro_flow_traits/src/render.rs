@@ -31,21 +31,24 @@ use crate::extractor::{Extracted, Reason, ReasonKind};
 /// it holds the node those reasons span against.
 pub trait Diagnose {
     fn diagnose(&self, out: &mut Vec<Error>);
-}
 
-/// Walk a finished tree and collect every reason in it, in source order.
-pub fn render(root: &impl Diagnose) -> Vec<Error> {
-    let mut out = Vec::new();
-    root.diagnose(&mut out);
-    out
-}
+    /// Walk this tree and collect every reason in it, in source order.
+    fn render(&self) -> Vec<Error> {
+        let mut out = Vec::new();
+        self.diagnose(&mut out);
+        out
+    }
 
-/// Fold a walk's output into one `syn::Error`, which emits one `compile_error!` per reason.
-pub fn combined(errors: Vec<Error>) -> Option<Error> {
-    errors.into_iter().reduce(|mut all, next| {
-        all.combine(next);
-        all
-    })
+    /// The same walk, folded into one `syn::Error`.
+    ///
+    /// `syn::Error::combine` keeps each error's own span and emits one `compile_error!` per
+    /// reason, so folding costs no precision. `None` means a clean tree.
+    fn rendered(&self) -> Option<Error> {
+        self.render().into_iter().reduce(|mut all, next| {
+            all.combine(next);
+            all
+        })
+    }
 }
 
 impl<T, I> Diagnose for Extracted<T, I>
@@ -112,7 +115,7 @@ mod tests {
     use super::*;
     use crate::extractor::Extraction;
     use quote::quote;
-    use syn::{Ident, parse_str};
+    use syn::{parse_str, Ident};
 
     /// A parent holding children, as a real extraction does.
     struct Parent {
@@ -155,7 +158,7 @@ mod tests {
             ident("root"),
         );
 
-        let errors = render(&tree);
+        let errors = tree.render();
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].to_string(), "required, and not written");
     }
@@ -173,7 +176,7 @@ mod tests {
             ident("root"),
         );
 
-        assert_eq!(render(&tree).len(), 3);
+        assert_eq!(tree.render().len(), 3);
     }
 
     #[test]
@@ -188,7 +191,7 @@ mod tests {
             ident("root"),
         );
 
-        let errors = render(&tree);
+        let errors = tree.render();
         assert_eq!(errors[0].to_string(), "written in the wrong shape");
         assert_eq!(errors[1].to_string(), "not a key this node accepts");
     }
@@ -205,7 +208,7 @@ mod tests {
             ident("root"),
         );
 
-        assert_eq!(render(&tree).len(), 1);
+        assert_eq!(tree.render().len(), 1);
     }
 
     #[test]
@@ -215,15 +218,12 @@ mod tests {
         let token = ident("colur");
         let tree = Extracted::new(
             Extraction::value(Parent {
-                children: vec![child(
-                    "a",
-                    vec![Reason::at(ReasonKind::UnknownKey, &token)],
-                )],
+                children: vec![child("a", vec![Reason::at(ReasonKind::UnknownKey, &token)])],
             }),
             ident("root"),
         );
 
-        let errors = render(&tree);
+        let errors = tree.render();
         assert!(!errors[0].to_compile_error().is_empty());
     }
 
@@ -239,7 +239,7 @@ mod tests {
             ident("root"),
         );
 
-        let all = combined(render(&tree)).expect("two reasons");
+        let all = tree.rendered().expect("two reasons");
         // one compile_error! per reason, which is what syn::Error::combine guarantees
         assert_eq!(all.into_iter().count(), 2);
     }
@@ -253,8 +253,8 @@ mod tests {
             ident("root"),
         );
 
-        assert!(render(&tree).is_empty());
-        assert!(combined(render(&tree)).is_none());
+        assert!(tree.render().is_empty());
+        assert!(tree.rendered().is_none());
         let _ = quote!(); // keep the import honest
     }
 }

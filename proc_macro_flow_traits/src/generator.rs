@@ -16,9 +16,6 @@
 //! alternative, and it would have put that either-ness in every downstream signature forever"
 
 use proc_macro2::TokenStream;
-use quote::ToTokens;
-
-use crate::extractor::Reason;
 
 /* @group(#typed-output)
  *
@@ -50,80 +47,114 @@ use crate::extractor::Reason;
  */
 
 /// Emit code from a processed value.
+///
+/// NOTE(#generator/stub-is-a-contract): V[Tr(Generator).M(stub).required], "F(stub) is a REQUIRED
+/// method, not an inherent convenience a generator may or may not have written. ID(generator/
+/// stub-is-not-empty) was a RULE the entry point had to remember: match on the value, generate or
+/// stub, then append the errors - four lines that had to be right at every entry point, and wrong
+/// in exactly one of them is a cascade of 'no associated item named ..' at every use site. As a
+/// contract the rule cannot be forgotten: a type that cannot say what its vacant form looks like
+/// does not compile as a Generator, and F(emit) below is the only way to spend it"
 pub trait Generator: Sized {
     /// A processor's `Output`.
     type Input;
 
+    /// The item the output is written against - what a STUB names when there is no value to
+    /// generate from. Separate from `Input` precisely because the stub case has no `Input`.
+    type Item;
+
     // TODO[ ](#typed-output/generate): see @group(#typed-output) above - this should be a typed
     // syn item, not a raw stream.
     fn generate(input: Self::Input) -> TokenStream;
-}
 
-/// Combine a stub with the reasons that were recorded against it.
-///
-/// This is the shape every generator's output should take: the stub FIRST so it exists whatever
-/// else happened, then one `compile_error!` per reason. `node` is the fallback a reason spans
-/// against when it has nothing finer to point at.
-pub fn emit(stub: TokenStream, reasons: &[Reason], node: &impl ToTokens, message: &str) -> TokenStream {
-    let mut out = stub;
-    out.extend(
-        reasons
-            .iter()
-            .map(|reason| reason.to_error(node, message).to_compile_error()),
-    );
-    out
-}
+    /// The same output shape, vacant.
+    ///
+    /// Same associated items as a successful generation, none of the content. NOT an empty stream:
+    /// that leaves every use site reporting a missing item on top of the real diagnostic, which is
+    /// the cascade the whole rule exists to prevent.
+    fn stub(item: &Self::Item) -> TokenStream;
 
-/// Combine a stub with errors a render walk produced.
-///
-/// The `Reason`-based [`emit`] is the single-node convenience; this is the whole-tree form, and it
-/// is what an entry point should use - a node's own reasons are only ever part of the story.
-pub fn emit_errors(stub: TokenStream, errors: Vec<syn::Error>) -> TokenStream {
-    let mut out = stub;
-    out.extend(errors.into_iter().map(|error| error.to_compile_error()));
-    out
+    /// The whole emission, with the stub-always rule built in.
+    ///
+    /// This is what an entry point calls. There is deliberately no way to emit errors WITHOUT a
+    /// stub, and no way to emit a stub without having said what a vacant one looks like.
+    fn emit(value: Option<Self::Input>, item: &Self::Item, errors: Vec<syn::Error>) -> TokenStream {
+        // The stub goes out FIRST whatever happened, then one `compile_error!` per error.
+        let mut out = match value {
+            Some(value) => Self::generate(value),
+            None => Self::stub(item),
+        };
+        out.extend(errors.into_iter().map(|error| error.to_compile_error()));
+        out
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractor::{Reason, ReasonKind};
     use quote::quote;
+
+    /// A generator whose vacant form is observably the SAME SHAPE as its full one - which is the
+    /// property NOTE(#generator/stub-is-a-contract) exists to force.
+    struct Tiny;
+
+    impl Generator for Tiny {
+        type Input = &'static str;
+        type Item = &'static str;
+
+        fn generate(input: &'static str) -> TokenStream {
+            let body = syn::LitStr::new(input, proc_macro2::Span::call_site());
+            quote!(impl Thing for T { const NAME: &'static str = #body; })
+        }
+
+        fn stub(_: &&'static str) -> TokenStream {
+            quote!(impl Thing for T { const NAME: &'static str = ""; })
+        }
+    }
+
+    fn errors(n: usize) -> Vec<syn::Error> {
+        (0..n)
+            .map(|_| syn::Error::new(proc_macro2::Span::call_site(), "bad"))
+            .collect()
+    }
 
     #[test]
     fn the_stub_survives_the_errors() {
         // THE property. Without this the missing impl cascades at every use site.
-        let stub = quote!(impl Thing for T {});
-        let reasons = vec![
-            Reason::new(ReasonKind::Missing),
-            Reason::new(ReasonKind::UnknownKey),
-        ];
-
-        let out = emit(stub, &reasons, &quote!(node), "bad").to_string();
+        let out = Tiny::emit(None, &"thing", errors(2)).to_string();
 
         assert!(out.contains("impl Thing for T"), "{out}");
         assert_eq!(out.matches("compile_error").count(), 2, "{out}");
     }
 
     #[test]
-    fn a_clean_generation_is_just_the_stub() {
-        let out = emit(quote!(impl Thing for T {}), &[], &quote!(node), "bad").to_string();
+    fn a_clean_generation_is_just_the_value() {
+        let out = Tiny::emit(Some("thing"), &"thing", vec![]).to_string();
 
         assert!(out.contains("impl Thing for T"));
+        assert!(out.contains("thing"));
         assert!(!out.contains("compile_error"));
     }
 
     #[test]
     fn the_stub_comes_first() {
         // Order matters for readability of the emitted file, and for anyone reading expansion.
-        let out = emit(
-            quote!(impl Thing for T {}),
-            &[Reason::new(ReasonKind::Missing)],
-            &quote!(node),
-            "bad",
-        )
-        .to_string();
+        let out = Tiny::emit(None, &"thing", errors(1)).to_string();
 
-        assert!(out.find("impl").unwrap() < out.find("compile_error").unwrap(), "{out}");
+        assert!(
+            out.find("impl").unwrap() < out.find("compile_error").unwrap(),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_failure_and_a_success_emit_the_same_associated_items() {
+        // The stub is not an empty stream: a use site must find NAME either way, or it reports a
+        // missing item on top of the real diagnostic.
+        let full = Tiny::emit(Some("thing"), &"thing", vec![]).to_string();
+        let vacant = Tiny::emit(None, &"thing", errors(1)).to_string();
+
+        assert!(full.contains("const NAME"), "{full}");
+        assert!(vacant.contains("const NAME"), "{vacant}");
     }
 }

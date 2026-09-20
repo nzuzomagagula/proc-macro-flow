@@ -71,11 +71,17 @@ pub enum ReasonKind {
 
 impl<T> Extraction<T> {
     pub fn value(value: T) -> Self {
-        Self { value: Some(value), reasons: Vec::new() }
+        Self {
+            value: Some(value),
+            reasons: Vec::new(),
+        }
     }
 
     pub fn failed(reason: Reason) -> Self {
-        Self { value: None, reasons: vec![reason] }
+        Self {
+            value: None,
+            reasons: vec![reason],
+        }
     }
 
     pub fn with_reason(mut self, reason: Reason) -> Self {
@@ -100,7 +106,10 @@ impl<T> Extraction<T> {
 
 impl<T> Default for Extraction<T> {
     fn default() -> Self {
-        Self { value: None, reasons: Vec::new() }
+        Self {
+            value: None,
+            reasons: Vec::new(),
+        }
     }
 }
 
@@ -115,7 +124,10 @@ impl Reason {
     /// This is the `colur(Red)` / duplicate-key case: recorded on the PARENT, because no child owns
     /// the offending token, but wanting to underline the token rather than the whole parent.
     pub fn at<S: Spanned + ?Sized>(kind: ReasonKind, token: &S) -> Self {
-        Self { kind, span: Some(token.span()) }
+        Self {
+            kind,
+            span: Some(token.span()),
+        }
     }
 
     pub fn span(&self) -> Option<Span> {
@@ -159,8 +171,14 @@ mod tests {
         let coarse = Reason::new(ReasonKind::WrongShape);
         assert!(coarse.span().is_none());
 
-        assert!(!precise.to_error(&node, "unknown key").to_compile_error().is_empty());
-        assert!(!coarse.to_error(&node, "wrong shape").to_compile_error().is_empty());
+        assert!(!precise
+            .to_error(&node, "unknown key")
+            .to_compile_error()
+            .is_empty());
+        assert!(!coarse
+            .to_error(&node, "wrong shape")
+            .to_compile_error()
+            .is_empty());
     }
 
     #[test]
@@ -171,15 +189,18 @@ mod tests {
         let node = quote!(colour(ColourSetting::Red));
         let reason = Reason::new(ReasonKind::Missing);
 
-        assert!(!reason.to_error(&node, "missing required key").to_compile_error().is_empty());
+        assert!(!reason
+            .to_error(&node, "missing required key")
+            .to_compile_error()
+            .is_empty());
     }
 
     #[test]
     fn absorb_takes_every_reason_even_from_a_child_that_produced_nothing() {
         let mut parent = Extraction::value("parent");
 
-        let good: Extraction<u8> = Extraction::value(1)
-            .with_reason(Reason::at(ReasonKind::UnknownKey, &quote!(colur)));
+        let good: Extraction<u8> =
+            Extraction::value(1).with_reason(Reason::at(ReasonKind::UnknownKey, &quote!(colur)));
         let bad: Extraction<u8> = Extraction::failed(Reason::new(ReasonKind::Missing));
 
         assert_eq!(parent.absorb(good), Some(1));
@@ -281,12 +302,54 @@ impl<T, I: ToTokens> Extracted<T, I> {
 // interpreting it. It must NOT parse and it must not read grammar; a node's meaning belongs to the
 // processor. That also settles the sibling question at ID(pipeline/validity-error): failures here
 // become a Reason on the node, because a surface check has a span and a cause and nothing else"
-pub trait Validate<'ast, I: Visitable<'ast>> {
-    // Answer(#pipeline/validity-error):A[ID(syntax/reason) ==? this], "Was #helper, with an unquoted message that never parsed as a task. Answered: ValidityError should not be bounded by std::error::Error, it should stop being an associated type at all. Failures become a Reason recorded on the node (ID(syntax/extraction)), because a proc macro only ever EMITS an error - it never handles one - so a per-type error buys nothing and cannot combine with a sibling's, which is what accumulation needs"
-    type ValidityError;
+// NOTE(#pipeline/source-is-associated): V[Tr(Validate).Ty(Source) && !Tr(Extractor).P(I)], "The
+// source is an ASSOCIATED TYPE, not a trait parameter, so it is DETERMINED BY Self and never
+// inferred. This is the same principle Ty(Output), Ty(Input) and the Stage GAT already follow, and
+// Tr(Extractor)/Tr(Validate) were the two that did not.
+//
+// VERIFIED that the parameter form made call sites guess. With `Extractor<'ast, I>` a type MAY
+// have several impls, so rustc has to pick one from the argument - and where the argument pins
+// nothing it cannot: `FE::extract_maybe(None)` and `FE::extract_each(empty())` both fail with
+// `error[E0283]: type annotations needed` / `multiple impls satisfying FE: Extractor<_> found`.
+// Both are ordinary things for a derive to emit for an Option field. It only ever compiled because
+// every extraction type happens to have exactly one impl - a property nothing enforced.
+// VERIFIED that the associated form resolves all three call shapes with no annotation.
+//
+// It also makes Attr(source(Ty)) map ONTO something: the attribute declares `type Source = &Ty`
+// one-for-one, where before it filled in a parameter that the trait let vary independently.
+// Ty(Source) lives on Tr(Validate) rather than Tr(Extractor) because that is the trait that reads
+// the node first - ID(extractor/two-questions)'s 'what is the source' is now answered by a type"
+pub trait Validate<'ast> {
+    /// The node this extraction reads - what `#[source(Ty)]` declares.
+    ///
+    /// An ASSOCIATED TYPE, not a trait parameter, and the difference is load-bearing. See
+    /// NOTE(#pipeline/source-is-associated).
+    type Source: Visitable<'ast>;
+
+    // Answer(#pipeline/validity-error):A[ID(syntax/reason) == this], "DONE, and the answer was the
+    // one predicted: ValidityError should not be bounded by std::error::Error, it should stop
+    // being an associated type at all. A proc macro only ever EMITS an error - it never handles
+    // one - so a per-type error buys nothing and cannot combine with a sibling's, which is what
+    // accumulation needs. VERIFIED before removing it: the associated type was written by five
+    // impls and read by ZERO - every Err arm in the crate discarded it - and three of the five
+    // already set it to `()` because there was nothing meaningful to name. A parameter that most
+    // implementors fill with the unit type is not carrying information; it is asking every author
+    // to invent a name for 'no'. See ID(extractor/error)"
     type Valid;
 
-    fn validate(input: I) -> Result<Self::Valid, Self::ValidityError>;
+    /// Narrow the source, or say why it could not be.
+    ///
+    /// NOTE(#validate/reason-is-offered-not-imposed): V[F(validate).R(Reason) != F(extract_from).records],
+    /// "Returning a Reason OFFERS one; it does not oblige the caller to record it. The obvious
+    /// reading of `Result<_, Reason>` is the opposite, so it is written down here: a HAND-WRITTEN
+    /// extract_from decides whether the reason reaches the tree, and the DERIVE always records it.
+    ///
+    /// The case that forces the distinction is ID(heads-are-rustcs). An attribute that is not ours
+    /// gets no value AND NO COMPLAINT - SyntaxFieldAttributeExtraction drops validate's reason on
+    /// the floor deliberately, because a doc comment is an attribute and every documented field
+    /// would otherwise be an error. That was a real bug once. Anyone 'fixing' the discard to look
+    /// consistent with this signature resurrects it"
+    fn validate(input: Self::Source) -> Result<Self::Valid, Reason>;
 }
 
 // TODO[x](#cleanup):R[E(ExtractionState) -> S(Extraction)], "RESOLVED, and now LANDED in
@@ -311,7 +374,7 @@ pub trait Validate<'ast, I: Visitable<'ast>> {
 // There is still deliberately no third question about how to PARSE the node - an extractor may hand
 // on a raw TokenStream and leave understanding it to the processor, which is why Ty(Output) below
 // is unconstrained"
-pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
+pub trait Extractor<'ast>: Sized + Validate<'ast> {
     /// What the processor receives.
     ///
     /// TODO[x](#extractor/output-bound):C[Ty(Output).bound], "RESOLVED, and the answer is that no
@@ -323,16 +386,16 @@ pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     /// See NOTE(#processor/output-needs-no-bound)"
     type Output;
 
-    // `node: I`, not `&'ast I`. `I` is the BORROWED node type (`&'ast DeriveInput`, not
-    // `DeriveInput`), which is what Validate already assumes in `validate(input: I)` - taking a
-    // reference to it again gave `&'ast &'ast DeriveInput`, and that double reference is what the
-    // now-deleted phantom `type Node` existed to paper over.
-    fn extract_from(node: I) -> Self::Output;
+    // `Self::Source` is the BORROWED node type (`&'ast DeriveInput`, not `DeriveInput`), which is
+    // why nothing here takes `&Self::Source` - a reference to it again gave `&'ast &'ast
+    // DeriveInput`, and that double reference is what the now-deleted phantom `type Node` existed
+    // to paper over.
+    fn extract_from(node: Self::Source) -> Self::Output;
 
     /// Many children. The source is anything iterable, which is what a `Vec` field declares.
     fn extract_each<N>(nodes: N) -> Vec<Self::Output>
     where
-        N: IntoIterator<Item = I>,
+        N: IntoIterator<Item = Self::Source>,
     {
         nodes.into_iter().map(Self::extract_from).collect()
     }
@@ -341,7 +404,7 @@ pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     ///
     /// Absence is not a failure and records no reason - the field's `Option` is what says so, and
     /// something allowed to be missing has nothing to complain about when it is.
-    fn extract_maybe(node: Option<I>) -> Option<Self::Output> {
+    fn extract_maybe(node: Option<Self::Source>) -> Option<Self::Output> {
         node.map(Self::extract_from)
     }
 }

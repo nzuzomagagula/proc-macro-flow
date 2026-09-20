@@ -50,7 +50,10 @@ pub trait Deferred<'ast> {
 
 impl<'ast, T> Unresolved<'ast, T> {
     pub fn new(tokens: &'ast TokenStream) -> Self {
-        Self { tokens, _target: PhantomData }
+        Self {
+            tokens,
+            _target: PhantomData,
+        }
     }
 
     /// Resolve through a caller-supplied reader.
@@ -61,7 +64,10 @@ impl<'ast, T> Unresolved<'ast, T> {
         self,
         read: impl FnOnce(&'ast TokenStream) -> Result<T, E>,
     ) -> Result<Resolved<'ast, T>, E> {
-        read(self.tokens).map(|value| Resolved { value, tokens: self.tokens })
+        read(self.tokens).map(|value| Resolved {
+            value,
+            tokens: self.tokens,
+        })
     }
 }
 

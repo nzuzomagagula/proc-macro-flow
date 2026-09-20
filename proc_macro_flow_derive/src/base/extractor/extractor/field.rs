@@ -20,7 +20,7 @@ pub(crate) struct FieldExtraction<'ast> {
 
 pub struct FieldExtractionError;
 
-impl<'ast> Extractor<'ast, &'ast Field> for FieldExtraction<'ast> {
+impl<'ast> Extractor<'ast> for FieldExtraction<'ast> {
     type Output = Extracted<Self, &'ast Field>;
 
     fn extract_from(node: &'ast Field) -> Self::Output {
@@ -36,7 +36,8 @@ impl<'ast> Extractor<'ast, &'ast Field> for FieldExtraction<'ast> {
     }
 }
 
-impl<'ast> Validate<'ast, &'ast Field> for FieldExtraction<'ast> {
+impl<'ast> Validate<'ast> for FieldExtraction<'ast> {
+    type Source = &'ast Field;
     type ValidityError = FieldExtractionError;
 
     type Valid = &'ast Field;

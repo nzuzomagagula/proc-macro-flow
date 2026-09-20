@@ -112,7 +112,7 @@ macro_rules! variants {
             pub const NAMES: &'static [&'static str] = &[ $($key),* ];
 
             fn unknown(span: ::proc_macro2::Span) -> ::syn::Error {
-                let quoted: ::std::vec::Vec<_> = $name::NAMES
+                let quoted: ::std::vec::Vec<::std::string::String> = $name::NAMES
                     .iter()
                     .map(|name| ::std::format!("`{}`", name))
                     .collect();
@@ -135,7 +135,7 @@ macro_rules! variants {
             fn from_expr(expr: &::syn::Expr) -> ::syn::Result<Self> {
                 let path = <::syn::Path as $crate::vocab::leaves::FromExpr>::from_expr(expr)?;
                 let span = ::syn::spanned::Spanned::span(&path);
-                let written = $crate::vocab::walk::last_segment(&path)
+                let written = $crate::vocab::walk::Named::last_segment(&path)
                     .ok_or_else(|| $name::unknown(span))?;
 
                 match written.as_str() {
@@ -154,7 +154,7 @@ macro_rules! variants {
                 match meta {
                     ::syn::Meta::Path(path) => {
                         let span = ::syn::spanned::Spanned::span(path);
-                        let written = $crate::vocab::walk::last_segment(path)
+                        let written = $crate::vocab::walk::Named::last_segment(path)
                             .ok_or_else(|| $name::unknown(span))?;
 
                         match written.as_str() {
@@ -166,7 +166,7 @@ macro_rules! variants {
                     }
                     ::syn::Meta::List(list) => {
                         let span = ::syn::spanned::Spanned::span(&list.path);
-                        let written = $crate::vocab::walk::last_segment(&list.path)
+                        let written = $crate::vocab::walk::Named::last_segment(&list.path)
                             .ok_or_else(|| $name::unknown(span))?;
                         let body = $crate::meta::ListBody(&list.tokens);
 
@@ -232,7 +232,7 @@ macro_rules! variants {
         { $($t:ty),+ } $v:ident ( $($_d:tt)* )
     ) => {{
         let arity = <[()]>::len(&[ $($crate::variants!(@unit_of $t)),+ ]);
-        let exprs = $crate::vocab::walk::positional($body, arity, $key)?;
+        let exprs = $body.positional(arity, $key)?;
         let mut taken = exprs.into_iter();
 
         ::std::result::Result::Ok($name::$v(
@@ -252,7 +252,7 @@ macro_rules! variants {
         $( let mut $f: ::std::option::Option<$t> = ::std::option::Option::None; )+
         let mut errors = $crate::vocab::walk::Errors::new();
 
-        errors.absorb($crate::vocab::walk::walk_keys($body, KEYS, |key, element| {
+        errors.absorb($body.walk_keys(KEYS, |key, element| {
             match key {
                 $(
                     ::std::stringify!($f) => {
@@ -296,7 +296,7 @@ macro_rules! variants {
 #[cfg(test)]
 mod tests {
     use crate::vocab::leaves::FromExpr;
-    use syn::{Attribute, Ident, ItemStruct, LitInt, Meta, parse_str};
+    use syn::{parse_str, Attribute, Ident, ItemStruct, LitInt, Meta};
 
     variants! {
         /// Every variant shape at once.
@@ -366,19 +366,25 @@ mod tests {
 
     #[test]
     fn an_unknown_variant_carries_the_candidate_list() {
-        let error = ColourSetting::try_from(&meta_of("Teal")).err().expect("no such variant");
+        let error = ColourSetting::try_from(&meta_of("Teal"))
+            .err()
+            .expect("no such variant");
         assert_eq!(error.to_string(), "expected one of: `Red`, `Other`, `Rgb`");
     }
 
     #[test]
     fn a_unit_variant_written_with_arguments_says_so() {
-        let error = ColourSetting::try_from(&meta_of("Red(x)")).err().expect("takes none");
+        let error = ColourSetting::try_from(&meta_of("Red(x)"))
+            .err()
+            .expect("takes none");
         assert!(error.to_string().contains("takes no arguments"), "{error}");
     }
 
     #[test]
     fn a_payload_variant_written_bare_says_so() {
-        let error = ColourSetting::try_from(&meta_of("Other")).err().expect("needs arguments");
+        let error = ColourSetting::try_from(&meta_of("Other"))
+            .err()
+            .expect("needs arguments");
         assert!(error.to_string().contains("takes arguments"), "{error}");
     }
 
