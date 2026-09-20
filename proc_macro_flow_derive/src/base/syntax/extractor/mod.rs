@@ -1,7 +1,7 @@
 // @review [x]
 // UNWIRED(#syntax/not-driven): V[N(extractor).tested && !N(extractor).reachable], "Everything below
 // is exercised by the tests in base/syntax/worked.rs and by nothing on the macro's actual path -
-// lib.rs::extractor drives StructExtraction and never reaches the syntax stage. The allow is here
+// lib.rs::field_names drives StructExtraction and never reaches the syntax stage. The allow is here
 // so a clean build stays meaningful rather than carrying nine standing warnings; it comes OFF the
 // moment ID(attribute/generic-grammar) connects the stages, and if anything in here is still
 // unreachable then, it is genuinely dead and should go"

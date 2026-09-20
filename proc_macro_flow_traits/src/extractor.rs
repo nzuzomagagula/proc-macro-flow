@@ -328,6 +328,22 @@ pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
     // reference to it again gave `&'ast &'ast DeriveInput`, and that double reference is what the
     // now-deleted phantom `type Node` existed to paper over.
     fn extract_from(node: I) -> Self::Output;
+
+    /// Many children. The source is anything iterable, which is what a `Vec` field declares.
+    fn extract_each<N>(nodes: N) -> Vec<Self::Output>
+    where
+        N: IntoIterator<Item = I>,
+    {
+        nodes.into_iter().map(Self::extract_from).collect()
+    }
+
+    /// A child that may not be there.
+    ///
+    /// Absence is not a failure and records no reason - the field's `Option` is what says so, and
+    /// something allowed to be missing has nothing to complain about when it is.
+    fn extract_maybe(node: Option<I>) -> Option<Self::Output> {
+        node.map(Self::extract_from)
+    }
 }
 
 /* @group(#from)
@@ -336,13 +352,15 @@ pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
  * never how to walk to it, so the three functions below are the whole injection surface: the derive
  * reads the declared path, picks one of them by the field's TYPE, and emits the call.
  *
- * NOTE(#from/names-its-target): V[F(extract_each).turbofish], "Call sites name T explicitly, and
- * cannot avoid it: the return type is Vec<T::Output>, and an associated type is not injective, so
- * nothing lets rustc work backwards from the field's type to the extractor that produces it. That
- * is a cost of Ty(Output) being free-form (ID(extractor/output-bound)) and it is the right trade -
- * generated code always knows T, so the turbofish is written by the derive and read by nobody. Do
- * not 'fix' it by pinning Output to Extracted; that would buy inference with the flexibility the
- * processor stage was promised"
+ * Fix[x](#from/names-its-target):R[F(extract_each) -> M(Extractor::extract_each)], "RESOLVED by
+ * objectification, and the note that stood here was pessimistic. It said call sites must carry a
+ * turbofish and 'cannot avoid it', because Vec<T::Output> is not injective so rustc cannot work
+ * backwards from the field type to the extractor. The DIAGNOSIS was right and the CONCLUSION was
+ * wrong: nothing has to be inferred if the extractor is NAMED, and as a provided method on
+ * Tr(Extractor) the receiver path names it. `extract_each::<FieldExtraction, _, _>(it)` becomes
+ * `FieldExtraction::extract_each(it)`. Ty(Output) stays free-form, so none of the flexibility the
+ * processor stage was promised is spent buying this. The general rule it is an instance of is
+ * NOTE(#pipeline/no-free-functions)"
  *
  * NOTE(#from/arity-from-type): V[T(Vec) => F(extract_each)] && V[T(Option) => F(extract_maybe)],
  * "Which helper a #[from] lowers to is read off the field's type, never off the attribute. That is
@@ -370,33 +388,3 @@ pub trait Extractor<'ast, I: Visitable<'ast>>: Sized + Validate<'ast, I> {
  * node in the same shape) but not yet landed, because nothing needed it until #[from] did. That is
  * the prerequisite for 'native nodes and our own nodes as sources' being one mechanism"
  */
-
-/// One child, extracted from one node.
-pub fn extract<'ast, T, I>(node: I) -> T::Output
-where
-    T: Extractor<'ast, I>,
-    I: Visitable<'ast>,
-{
-    T::extract_from(node)
-}
-
-/// Many children. The source is anything iterable, which is what a `Vec` field declares.
-pub fn extract_each<'ast, T, I, N>(nodes: N) -> Vec<T::Output>
-where
-    T: Extractor<'ast, I>,
-    I: Visitable<'ast>,
-    N: IntoIterator<Item = I>,
-{
-    nodes.into_iter().map(T::extract_from).collect()
-}
-
-/// A child that may not be there. Absence is not a failure and records no reason - the field's
-/// `Option` is what says so, and something that is allowed to be missing has nothing to complain
-/// about when it is.
-pub fn extract_maybe<'ast, T, I>(node: Option<I>) -> Option<T::Output>
-where
-    T: Extractor<'ast, I>,
-    I: Visitable<'ast>,
-{
-    node.map(T::extract_from)
-}

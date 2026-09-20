@@ -83,7 +83,6 @@ end note
 legend right
   |<#E8F4EA>| live and tested |
   |<#FFF4E5>| works, tested, not wired |
-  |<#FFD9D9>| an OPEN QUESTION, not a status |
 endlegend
 
 note as Gap
@@ -145,38 +144,30 @@ end note
 
 Closed .. Entry
 
-note as Naming #FFD9D9
-  **OPEN QUESTION — a naming fork, not a status.**
-  This box was called ""lib.rs::extractor"" until the
-  derives landed.
+note as Naming
+  **RESOLVED: one feature, not two.**
+  ""#extractor/pipeline"", ""#extractor/expansion"" and
+  ""#extractor/macro-wiring"" are CLOSED against
+  ""Answer(#extractor/self-hosting)"".
 
-  It had to change: two ""#[proc_macro_derive(Extractor)]""
-  in one crate is, VERIFIED:
-  ""error[E0428]: the name `Extractor` is defined multiple times""
-  The new derive took
-  the name; this one was renamed after what it emits.
+  They asked for a bare ExtractorPipeline struct holding
+  an extractor/processor/generator triple, an expand()
+  over it, and that wired into the entry point — 'the
+  extractor stage becomes self-hosting'.
 
-  But the old ""extractor"" was NOT merely a pipeline
-  runner. Its own TODO said its expansion was
-  ""a stub until ExtractorPipeline::expand exists"" — it was the
-  PLACEHOLDER for generating extraction logic, which is
-  what ""#[derive(Extractor)]"" now does by another route.
+  The derive answers the same question DECLARATIVELY:
+  ""#[source]"" names the syn node, ""#[from]"" / ""#[with]""
+  name where each child comes from, and the derive reads
+  them off the extraction type itself.
 
-  So the open question is whether those are ONE feature
-  or TWO:
+  No triple is held, because none is needed — the field
+  TYPE already carries the arity, and ""Extracted"" already
+  carries the source. A struct describing the pipeline
+  would only restate what the extraction struct says.
 
-  • ONE — the architecture moved from a pipeline struct
-    expanded at macro time to declarative attributes on
-    the extraction type. Then #extractor/pipeline,
-    ""#extractor/expansion"" and ""#extractor/macro-wiring"" 
-    should be CLOSED with an answer, not left dangling.
-
-  • TWO — the derive took a reserved name, and the
-    derive is what should be renamed instead.
-
-  Four annotations still say ""lib.rs::extractor"" meaning
-  the OLD one. They resolve cleanly and mean the wrong
-  thing, which is worse than a broken link.
+  So the entry point's rename stands: ""Extractor"" belongs
+  to the derive that earned it, and this one is named
+  after what it emits.
 end note
 
 Naming .. DE

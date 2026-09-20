@@ -37,10 +37,15 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
 pub fn field_names(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
 
-    // RENAMED(#extractor/macro):R[F(extractor) -> F(field_names)], "This derive RUNS the pipeline;
-    // it does not generate extraction logic. The `Extractor` name now belongs to the derive that
-    // does, and two different things sharing it was going to mislead. What this emits -
-    // `const FIELDS` - is what it has always emitted, so the name finally says so"
+    // RENAMED(#extractor/macro):R[F(extractor) -> F(field_names)], "FORCED, not chosen: two
+    // Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]: the name Extractor is
+    // defined multiple times` (VERIFIED), and the derives needed the name. CORRECTION to what this
+    // note said first - it claimed this function never generated extraction logic and so had no
+    // claim on the name. That was wrong. Its expansion was 'a stub until ExtractorPipeline::expand
+    // exists', so it was the PLACEHOLDER for exactly that feature. The question it dodged - one
+    // feature or two - is now settled as ONE by ID(extractor/self-hosting): the derive is that
+    // feature, reached declaratively. So the name moved to the thing that earned it, and what this
+    // emits - `const FIELDS` - is what it has always emitted, which the name now says"
     // TODO[x](#extractor/macro):U[F(field_names)], "The pipeline runs end to end - extract,
     // render, process, generate. ID(syntax/render)'s walk is in: every reason in the tree is
     // emitted, not just the root's. Its 'sorted by span' clause was dropped rather than done -

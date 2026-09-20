@@ -1,306 +1,370 @@
 @startuml class-core
-title Core types and the three stage contracts
+title Core types and the three stage contracts — by Rust kind
 
 skinparam shadowing false
 skinparam classAttributeIconSize 0
+skinparam ArrowColor #444444
 
-package "proc_macro_flow_traits\ndata + stages" as traits_data <<Frame>> {
+' the kind is carried by the BOX colour, so it reads at a glance
+skinparam class {
+  BackgroundColor<<struct>> #EAF4FB
+  BorderColor<<struct>>     #2E86C1
+  BackgroundColor<<enum>>   #EAF7EF
+  BorderColor<<enum>>       #229954
+  BackgroundColor<<trait>>  #FDF0E3
+  BorderColor<<trait>>      #CA6F1E
+  BackgroundColor<<fn>>     #FEF9E7
+  BorderColor<<fn>>         #B7950B
+  BackgroundColor<<impl>>   #F4ECF7
+  BorderColor<<impl>>       #7D3C98
+}
 
-  class "Extraction<T>" as Extraction {
+legend top
+  **Every box says what KIND of Rust item it is.**
+
+  |<#EAF4FB> **S  struct** | data. ""+"" public field, ""-"" private and reached by an accessor |
+  |<#EAF7EF> **E  enum** | a closed set |
+  |<#FDF0E3> **T  trait** | a contract an impl must satisfy; associated types listed as ""type X"" |
+  |<#FEF9E7> **F  fn** | free function, no receiver — traversal written once so no author writes it |
+  |<#F4ECF7> **B  impl** | an impl the FRAMEWORK provides, so an author inherits the behaviour |
+
+  Arrows are Rust relations, not UML ones — each is labelled with the
+  construct it stands for (""field"", ""supertrait"", ""type Output ="", ""impl"").
+endlegend
+
+' ===========================================================================
+package "data — what flows between stages" as DATA <<Rectangle>> {
+
+  class "Extraction<T>" as Extraction <<(S,#AED6F1) struct>> {
     +value: Option<T>
     +reasons: Vec<Reason>
     --
-    +value(T) / +failed(Reason)
-    +with_reason(Reason)
-    +is_failure() -> bool
-    +absorb<U>(Extraction<U>) -> Option<U>
+    +value(T) -> Self
+    +failed(Reason) -> Self
+    +with_reason(Reason) -> Self
+    +is_failure(&self) -> bool
+    +absorb<U>(&mut self, Extraction<U>) -> Option<U>
   }
-  note right of Extraction
-    A struct, NOT a typestate.
-    A node can extract fine AND carry a
-    complaint of its own — an unknown key
-    is the PARENT failing to consume its
-    input while the value stays good.
-    Two states could not say that.
-    (#cleanup)
 
-    No lifetime: see Reason below.
-  end note
-
-  class "Extracted<T, I>" as Extracted {
+  class "Extracted<T, I>" as Extracted <<(S,#AED6F1) struct>> {
     -extraction: Extraction<T>
     -source: I
     --
-    +new(Extraction<T>, I)
-    +source() -> &I
-    +value() -> Option<&T>
-    +reasons() -> &[Reason]
-    +into_extraction() -> Extraction<T>
-    +to_error(msg) -> syn::Error
+    +new(Extraction<T>, I) -> Self
+    +source(&self) -> &I
+    +value(&self) -> Option<&T>
+    +reasons(&self) -> &[Reason]
+    +extraction(&self) -> &Extraction<T>
+    +into_extraction(self) -> Extraction<T>
+    ..where I: ToTokens..
+    +to_error(&self, msg) -> syn::Error
   }
-  note right of Extracted
-    The extractor's OUTPUT and the processor's
-    INPUT — handed over WHOLE, never unwrapped
-    between stages.
 
-    Source lives here, not behind ""T: Sourced"",
-    because a FAILED extraction has no T to ask
-    — the case a diagnostic needs most.
-    (#extracted/source-when-absent)
-
-    No lifetime parameter: ""I"" is always a
-    borrowed node or a Copy wrapper over one,
-    so it already carries 'ast.
-  end note
-
-  class Reason {
+  class Reason <<(S,#AED6F1) struct>> {
     +kind: ReasonKind
     -span: Option<Span>
     --
-    +new(ReasonKind)
-    +at(ReasonKind, &impl Spanned)
-    +span() -> Option<Span>
-    +to_error(&impl ToTokens, msg) -> syn::Error
+    +new(ReasonKind) -> Self
+    +at(ReasonKind, &impl Spanned) -> Self
+    +span(&self) -> Option<Span>
+    +message(&self) -> String
+    +to_error(&self, &impl ToTokens, msg) -> syn::Error
   }
-  note left of Reason
-    Stores a **Span**; ""Extracted"" stores a
-    **node**. Deliberate asymmetry:
 
-    · a node is multi-token → needs
-      ""new_spanned"" for its full range
-    · a reason points at ONE token → needs
-      no ""Span::join"", so it is exact
-
-    ""None"" means "nothing finer than the node
-    I sit on" and the renderer falls back to
-    the chain. ""to_error"" takes that node as an
-    ARGUMENT — a reason cannot render itself,
-    because position belongs to where it SITS.
-    (#reason/span-not-node)
-
-    Span is Copy and owns nothing, which is
-    why neither Reason nor Extraction has a
-    lifetime. (#no-owned-nodes)
-  end note
-
-  enum ReasonKind {
+  enum ReasonKind <<(E,#A9DFBF) enum>> {
     WrongShape
     UnknownKey
     Missing
     Duplicate
     Ambiguous
     Custom(String)
+    --
+    +message(&self) -> String
   }
-  note bottom of ReasonKind
-    CLOSED reasons, open rendering.
-    Closed so the framework can interpret what
-    it caught; ""Custom"" so an exotic grammar is
-    never blocked.
-
-    Three of these are now ALSO obtainable from
-    rustc by re-emitting keys as a struct
-    literal — see 09-diagnostics.
-  end note
-
-  interface Processor {
-    +type Input
-    +type Output
-    +process(Input) -> Extraction<Output>
-  }
-  note right of Processor
-    OPTIONAL stage. ""#[derive(Processor)]"" emits
-    the identity, so downstream sees ONE shape
-    and never an either-or.
-
-    Takes the extractor's ""Output"" WHOLE — the
-    pipeline does not unwrap between stages,
-    because unwrapping strips the source off
-    the value that most needs it.
-
-    Cascade is bottom-up via ""process_each"",
-    a helper rather than a signature: pre-
-    processing children would require the
-    parent's Input to be its own extraction
-    with every child field swapped for that
-    child's Output, which Rust cannot express.
-  end note
-
-  interface Diagnose {
-    +diagnose(&self, out: &mut Vec<syn::Error>)
-  }
-  note right of Diagnose
-    Says WHERE A NODE'S CHILDREN ARE, and
-    nothing else. It does NOT render its own
-    reasons — the ""Extracted"" around it does,
-    because that is the only thing holding the
-    node they span against.
-
-    So a grammar type never learns how a reason
-    becomes an error, and the node-span
-    fallback cannot be forgotten.
-    (#render/who-renders)
-
-    ""#[derive(Extractor)]"" emits this impl
-    alongside. A LEAF is the one case it cannot
-    state — and omitting it is a compile error,
-    never a silent gap.
-  end note
-
-  class "render / combined" as RenderFns <<(F,#FFCC88)>> {
-    render(&impl Diagnose) -> Vec<syn::Error>
-    combined(Vec<Error>) -> Option<Error>
-  }
-  note right of RenderFns
-    ONE walk, depth-first, every reason in the
-    tree. Returns a COLLECTION rather than a
-    stream so the entry point can interleave
-    the walk's errors with the processor's
-    before anything is emitted.
-
-    It does NOT sort by span, which #render
-    asked for. VERIFIED impossible AND
-    unnecessary: ""Span::start"" is gated and
-    returns line 0 inside a real macro, so a
-    sort would be a no-op that looked like a
-    guarantee — and depth-first over a
-    source-ordered syn tree already IS source
-    order. (#render/traversal-is-source-order)
-
-    Still owed: dedupe and cap
-    (#render/dedupe-and-cap).
-  end note
-
-  interface Generator {
-    +type Input
-    +generate(Input) -> TokenStream
-  }
-  note right of Generator
-    Consumes a processor's ""Output"" and nothing
-    else — one shape, because processing is
-    never skipped.
-
-    ""emit_errors(stub, errors)"" puts the stub
-    out FIRST and appends one ""compile_error!""
-    per error, so the stub-always rule is
-    mechanical. ""emit"" is the single-node
-    convenience; an ENTRY POINT should never
-    use it, because a node's own reasons are
-    only ever part of the story.
-
-    TODO(#typed-output/generate): should return
-    a TYPED syn item. We build this content and
-    know its shape; untyped means nothing checks
-    it until rustc re-parses, and precise spans
-    are impossible.
-  end note
 }
 
-package "proc_macro_flow_traits\nthe extraction contract" as traits_contract <<Frame>> {
+' ===========================================================================
+package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> {
 
-  note as Moved
-    **This half is NOT the derive crate.**
-    It used to be drawn as one, and has not
-    been since #pipeline/relocate-traits closed.
-
-    ""#[derive(Extractor)]"" on a USER's type
-    means Extractor, Validate and Visitable
-    have to be NAMEABLE from outside, and a
-    proc-macro crate can export nothing but
-    its macros. So they moved.
-
-    The diagram is one crate. The derive crate
-    holds macro entry points and stage impls
-    only.
-  end note
-
-
-  interface "Extractor<'ast, I: Visitable>" as Extractor {
-    +type Output
-    +extract_from(I) -> Self::Output
-  }
-  note right of Extractor
-    Still the TWO QUESTIONS — what is the
-    source, and how do we get there — but only
-    one is a supertrait. ""I: Visitable"" answers
-    the second; ""Extracted"" answers the first
-    STRUCTURALLY, by a type that cannot be
-    built without a source.
-
-    **""Sourced"" was deleted.** It had one real
-    caller, in a test, while ""Extracted::source""
-    covered every other site AND survived a
-    failed extraction. Asking each extractor to
-    store and hand back the same node was a
-    second answer to one question.
-
-    ""Output"" stays UNBOUNDED, and that is now
-    the settled answer rather than a deferral:
-    an extractor does not know which processor
-    consumes it, so the agreement is declared
-    from the Processor side.
-    (#processor/output-needs-no-bound)
-
-    Grammar types do NOT implement this.
-  end note
-
-  interface "Validate<'ast, I>" as Validate {
+  interface "Validate<'ast, I: Visitable<'ast>>" as Validate <<(T,#F5CBA7) trait>> {
     +type ValidityError
     +type Valid
+    --
     +validate(I) -> Result<Valid, ValidityError>
   }
-  note bottom of Validate
-    SURFACE-LEVEL ONLY: does this exist where
-    required, is this within a bound. Never
-    parsing, never grammar.
 
-    Not vestigial — it was UNDEFINED, which is
-    why every impl was ""Ok(input)"". The syntax
-    stage now uses it for a real narrowing:
-    ""Valid = (&Attribute, SyntaxHelper)"".
-    (#pipeline/validity-scope)
-  end note
+  interface "Extractor<'ast, I: Visitable<'ast>>" as Extractor <<(T,#F5CBA7) trait>> {
+    +type Output
+    --
+    +extract_from(I) -> Output
+  }
 
-  interface "Visitable<'ast>" as Visitable {
+  interface Processor <<(T,#F5CBA7) trait>> {
+    +type Input
+    +type Output
+    --
+    +process(Input) -> Extraction<Output>
+  }
+
+  interface Generator <<(T,#F5CBA7) trait>> {
+    +type Input
+    --
+    +generate(Input) -> TokenStream
+  }
+
+  interface Diagnose <<(T,#F5CBA7) trait>> {
+    +diagnose(&self, out: &mut Vec<syn::Error>)
+  }
+
+  interface "Visitable<'ast>" as Visitable <<(T,#F5CBA7) trait>> {
     +accept<V: Visit<'ast>>(self, &mut V)
   }
-  note bottom of Visitable
-    Implemented for the REFERENCE types
-    (""&'ast syn::Attribute""), so ""self"" is
-    already the ""&'ast T"" every ""visit_*"" wants.
+}
 
-    Implementing it for the OWNED type made the
-    receiver unconstructible for value-passed
-    wrappers — it needed a ""&'ast Self"" pointing
-    at something built on the stack.
-    (#visitable/by-value)
-  end note
+' ===========================================================================
+package "free functions — traversal written once" as FNS <<Rectangle>> {
 
-  class "extract / extract_each / extract_maybe" as FromHelpers <<(F,#FFCC88)>> {
+  class "extractor::{ extract, extract_each, extract_maybe }" as FromHelpers <<(F,#F9E79F) fn>> {
     extract<T, I>(I) -> T::Output
     extract_each<T, I, N>(N) -> Vec<T::Output>
     extract_maybe<T, I>(Option<I>) -> Option<T::Output>
   }
-  note bottom of FromHelpers
-    What ""#[from(..)]"" lowers to. Which one a
-    field uses is read off its TYPE, never off
-    the attribute (#from/arity-from-type).
 
-    Call sites must name T: ""T::Output"" is an
-    associated type and so not injective.
-    Generated code always knows it.
-    (#from/names-its-target)
-  end note
+  class "processor::{ process_each, process_maybe }" as ProcHelpers <<(F,#F9E79F) fn>> {
+    process_each<P, N>(N) -> Vec<Extraction<P::Output>>
+    process_maybe<P>(Option<P::Input>) -> Option<Extraction<P::Output>>
+  }
+
+  class "render::{ render, combined }" as RenderFns <<(F,#F9E79F) fn>> {
+    render(&impl Diagnose) -> Vec<syn::Error>
+    combined(Vec<syn::Error>) -> Option<syn::Error>
+  }
+
+  class "generator::{ emit, emit_errors }" as EmitFns <<(F,#F9E79F) fn>> {
+    emit(stub, &[Reason], &impl ToTokens, msg) -> TokenStream
+    emit_errors(stub, Vec<syn::Error>) -> TokenStream
+  }
 }
 
-Extracted *-- Extraction
-Extraction *-- "0..*" Reason
-Reason *-- ReasonKind
-Extractor --|> Validate
-Extractor ..> Processor : Output feeds
-Processor ..> Generator : Output feeds
-Extractor ..> Extracted : Output is\ntypically
-FromHelpers ..> Extractor : drives
-RenderFns ..> Diagnose : walks
-Extracted ..> Diagnose : renders its\nown reasons
+' ===========================================================================
+package "framework impls — what an author does NOT write" as IMPLS <<Rectangle>> {
+
+  class "impl Diagnose for Extracted<T, I>\nwhere T: Diagnose, I: ToTokens" as ImplExtracted <<(B,#D7BDE2) impl>> {
+    renders THIS node's own reasons
+    then descends into value()
+  }
+
+  class "impl<T: Diagnose> Diagnose for Vec<T>" as ImplVec <<(B,#D7BDE2) impl>> {
+    every element, in order
+  }
+
+  class "impl<T: Diagnose> Diagnose for Option<T>" as ImplOption <<(B,#D7BDE2) impl>> {
+    the Some arm, or nothing
+  }
+}
+
+' ===========================================================================
+' relations, each labelled with the Rust construct it stands for
+Extracted *-- Extraction : field
+Extraction o-- "0..*" Reason : field
+Reason *-- ReasonKind : field
+
+Extractor --|> Validate : supertrait
+Extractor ..> Extracted : "type Output ="
+Extractor ..> Visitable : "bound on I"
+Validate ..> Visitable : "bound on I"
+
+Extractor ..> Processor : "Output becomes\nProcessor::Input"
+Processor ..> Generator : "Output becomes\nGenerator::Input"
+
+FromHelpers ..> Extractor : calls
+ProcHelpers ..> Processor : calls
+RenderFns ..> Diagnose : calls
+EmitFns ..> RenderFns : consumes\nVec<syn::Error>
+
+ImplExtracted ..|> Diagnose : impl
+ImplVec ..|> Diagnose : impl
+ImplOption ..|> Diagnose : impl
+ImplExtracted ..> Extracted : for
+
+' ===========================================================================
+note right of Extraction
+  **A struct, NOT a two-state.**
+  A node can extract fine AND carry a complaint:
+  an unknown key is the PARENT failing to consume
+  its input while the value stays good. A Result
+  would force a choice and discard something true.
+
+  Value and reasons are ORTHOGONAL axes, so they
+  get orthogonal fields. This is what lets
+  ID(no-result) hold downstream — no ""?"", no early
+  return, so no sibling is ever dropped.
+
+  No lifetime: see Reason.
+end note
+
+note right of Extracted
+  **Private fields, public accessors** — unlike
+  Extraction, whose fields are public. The
+  asymmetry is deliberate: Extraction is a value
+  a stage BUILDS, Extracted is a wrapper a stage
+  RECEIVES and must not tear apart.
+
+  The extractor's OUTPUT and the processor's
+  INPUT, handed over WHOLE.
+
+  The source lives here, not behind a
+  ""T: Sourced"" bound, because a FAILED extraction
+  has no T to ask — the case a diagnostic needs
+  most. (#extracted/source-when-absent)
+
+  No lifetime parameter: ""I"" is always a borrowed
+  node or a Copy wrapper, so it carries 'ast.
+end note
+
+note left of Reason
+  Stores a **Span**; Extracted stores a **node**.
+  Deliberate asymmetry:
+
+  · a node is multi-token, so it needs
+    ""new_spanned"" for its full range
+  · a reason points at ONE token, so it needs no
+    ""Span::join"" and is exact
+
+  ""None"" means nothing finer than the node it sits
+  on, and the walk falls back. ""to_error"" takes
+  that node as an ARGUMENT — a reason cannot
+  render itself, because position belongs to
+  where it SITS. (#reason/span-not-node)
+
+  ""Span"" is Copy and owns nothing, which is why
+  neither Reason nor Extraction has a lifetime.
+  (#no-owned-nodes)
+end note
+
+note bottom of ReasonKind
+  **Closed reasons, open rendering.**
+  Closed so the framework can interpret what it
+  caught; ""Custom"" so an exotic grammar is never
+  blocked.
+
+  ""message()"" is the OPEN half: wording is
+  produced LATE, at render time, never baked in
+  when the reason is recorded — so an author's
+  own diagnostics can replace it without the
+  framework losing the span or the tree position.
+
+  Three variants are ALSO obtainable free from
+  rustc by re-emitting keys as a struct literal
+  — see the GENERATION lane of 02-pipeline.
+  ""WrongShape"" and ""Ambiguous"" stay ours.
+end note
+
+note bottom of Validate
+  Separate from Extractor because it has a REAL
+  hand-written case: StructExtraction narrows
+  ""&DeriveInput"" to ""&DataStruct"", and the syntax
+  stage narrows to ""(&Attribute, SyntaxHelper)"".
+
+  Not vestigial — it was UNDEFINED, which is why
+  every impl used to be ""Ok(input)"".
+  (#pipeline/validity-scope, #derive/three-not-one)
+end note
+
+note bottom of Visitable
+  Implemented for the REFERENCE types
+  (""&'ast syn::Attribute""), so ""self"" is already
+  the ""&'ast T"" every ""visit_*"" wants.
+
+  Implementing it for the OWNED type made the
+  receiver unconstructible for value-passed
+  wrappers. (#visitable/by-value)
+end note
+
+note bottom of Processor
+  **Optional stage.** ""#[derive(Processor)]"" emits
+  the identity, so downstream sees ONE shape and
+  never an either-or.
+
+  Takes the extractor's ""Output"" WHOLE — the
+  pipeline never unwraps between stages, because
+  unwrapping strips the source off the value that
+  most needs it.
+
+  The bottom-up cascade is a HELPER, not a
+  signature: pre-processing children would need
+  the parent's Input to be its own extraction
+  with every child field swapped for that child's
+  Output — a type-level struct transformation
+  Rust cannot express. So the order is a
+  DISCIPLINE the author follows, not something
+  the type system enforces.
+end note
+
+note bottom of FromHelpers
+  What ""#[from(..)]"" lowers to. Which one a field
+  uses is read off its TYPE, never off the
+  attribute (#from/arity-from-type).
+
+  Call sites must NAME T: ""T::Output"" is an
+  associated type and so not injective, so it
+  cannot be inferred from the field.
+  (#from/names-its-target)
+end note
+
+note bottom of RenderFns
+  ONE depth-first walk, every reason in the tree.
+
+  Returns a COLLECTION, not a TokenStream, so the
+  entry point can interleave these errors with
+  the processor's before anything is emitted —
+  a stream would commit too early.
+
+  Does NOT sort by span. VERIFIED impossible AND
+  unnecessary: ""Span::start"" is gated and returns
+  line 0 inside a real macro, and depth-first
+  over a source-ordered syn tree already IS
+  source order. (#render/traversal-is-source-order)
+
+  Still owed: (#render/dedupe-and-cap).
+end note
+
+note top of IMPLS
+  **This is why an author never writes traversal.**
+
+  ""Diagnose"" asks a value only WHERE ITS CHILDREN
+  ARE. It never renders its own reasons — the
+  ""Extracted"" wrapping it does, because that is
+  the only thing holding the node those reasons
+  span against. (#render/who-renders)
+
+  The three impls below cover the container shapes
+  a field can have, so a grammar type's whole
+  obligation is one line per child field — which
+  is exactly what ""#[derive(Extractor)]"" emits.
+  (#derive/diagnose-rides-along)
+
+  A LEAF is the one case the derive cannot state,
+  and omitting it is a COMPILE ERROR, never a
+  silent gap.
+end note
+
+note bottom of EmitFns
+  ""emit_errors"" is the whole-tree form and the one
+  an entry point should use; ""emit"" is the
+  single-node convenience.
+
+  Either way the stub goes out FIRST. Without it
+  the missing impl cascades into "does not
+  implement" at every use site and buries the real
+  diagnostic. (#generator/stub-is-not-empty)
+
+  TODO(#typed-output/generate): both should return
+  a TYPED syn item. We BUILD this content and know
+  its shape, so untyped means nothing checks it
+  until rustc re-parses — and precise spans are
+  impossible. Carrier vs product: ""Unresolved"" and
+  ""ListBody"" stay raw, deliberately.
+end note
 
 @enduml
