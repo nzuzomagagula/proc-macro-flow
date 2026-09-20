@@ -59,17 +59,62 @@ pub mod vocab;
  *
  * --- THE TRAIT SURFACE -----------------------------------------------------
  *
- * TODO[ ](#traits): C[Tr(FromPath).F(from_path).R(Extraction<Self>)] && C[Tr(FromMetaList).F(from_list).R(Extraction<Self>)] && C[Tr(FromNameValue).F(from_nv).R(Extraction<Self>)], "One trait per attribute shape, so #[shape(..)] lowers to a trait BOUND rather than a runtime match: a type never declared parsable in the selected shape must fail in the AUTHOR's crate at declaration time, which only trait resolution gives. Three and exactly three, because syn::Meta has three variants - Rust's real attribute grammar, not a taxonomy of ours, which is also why it will not drift as the language grows. Closes ID(attribute/list), ID(attribute/path) and ID(attribute/name-value)"
+ * Answer(#traits):A[ID(traits) == Tr(Shape) + Tr(FromMeta)], "SUPERSEDED, not built, and the
+ * substitution is worth recording because the original is still the better-sounding design. It
+ * asked for ONE TRAIT PER SHAPE - FromPath, FromMetaList, FromNameValue - so that Attr(shape)
+ * lowers to a trait BOUND rather than a runtime match, and a type never declared parsable in a
+ * given shape fails in the AUTHOR's crate. That goal was met; the decomposition was not.
  *
- * TODO[ ](#leaves): C[Tr(FromExpr).F(from_expr).A(\1).T(&Expr)], "Leaf trait for value positions, with impls for the syn terminals (Ident, Path, Type, the Lit* family, Expr) and primitives bridged from literals. Meta cannot represent bare literals, so `sizes(1, 2)` needs Expr underneath, and Meta::List::tokens being raw is what lets a terminal node choose this parser instead. syn::MetaNameValue::value is ALREADY an Expr, so the rhs of `=` costs nothing - half the reason Expr is the leaf grammar"
+ * What shipped is Tr(Shape) - `type Input<'ast>` plus `const KIND` - with the three shapes as
+ * ZSTs, and ONE Tr(FromMeta) that reads a node out of whichever variant it was written as. The
+ * reason for the swap is ID(openings): syn::Meta already HAS exactly three variants, so three
+ * traits would have been a second three-valued vocabulary sitting beside rustc's own, free to
+ * disagree with it. Tr(Shape) names the variant instead of duplicating the choice.
  *
- * TODO[ ](#bool-double-duty): V[Impl(bool).impl(FromPath)] && V[Impl(bool).impl(FromNameValue)], "bool implements BOTH, deliberately: FromPath is a flag, FromNameValue is a literal. Recorded as an assertion so nobody later 'fixes' the apparent conflict - shape selection resolves it, which is the whole point of a shape being a capability rather than a property"
+ * The bound still exists and still fails in the author's crate - it is `T: FromMeta` plus the
+ * shape's Ty(Input) - so nothing about ID(no-runtime-shape-match) was given up. See
+ * NOTE(#leaves/uniform-field-read) for why there is deliberately no blanket
+ * `impl<T: FromExpr> FromMeta for T`"
+ *
+ * TODO[x](#leaves): C[Tr(FromExpr).F(from_expr).A(\1).T(&Expr)], "DONE, in vocab::leaves.
+ * Tr(FromExpr) reads a terminal out of a value position, with impls for Ident, Path, Expr, bool
+ * and the six Lit* types via M(leaf). The reasoning held exactly: Meta cannot represent bare
+ * literals, so `sizes(1, 2)` needs Expr underneath, and Meta::List::tokens being raw is what
+ * makes that reachable.
+ *
+ * ONE NAME ON ITS LIST WAS A MISTAKE. It asked for `Type` among the terminals. VERIFIED that Type
+ * is not a grammar leaf at all: the only place it appears is as the payload of Attr(shape), and
+ * that is resolved by S(Unresolved)::resolve through syn::parse2 - syn's own Tr(Parse) - never
+ * through Tr(FromExpr). A value position holds a VALUE; the shape selector holds a TYPE, and they
+ * are different readings. No impl is owed"
+ *
+ * TODO[x](#bool-double-duty): V[Impl(bool).impl(FromExpr)] && V[M(flag).covers(presence)], "DONE,
+ * and the assertion it exists to protect is now written at the impl itself (vocab/leaves.rs): bool
+ * reads a LITERAL through Tr(FromExpr), while its other reading - presence as a flag - belongs to
+ * M(flag). The two coexist deliberately and shape selection resolves which applies.
+ *
+ * The trait NAMES in the original are stale - it said FromPath and FromNameValue, which
+ * Answer(#traits) replaced - but the substance is unchanged and is exactly the thing nobody should
+ * later 'fix' as an apparent conflict"
  *
  * TODO[ ](#forwarding): C[Impl(Option<T>).impl(FromMetaList)] && C[Impl(Vec<T>).impl(FromMetaList)] && C[Impl(Box<T>).impl(FromMetaList)], "Adapters for Option<T>, Vec<T>, NonEmpty<T>, Punctuated<T, Sep>, Box<T> and Spanned<T>. This is where requiredness and arity are enforced, which keeps 'how many' in exactly one place - the field type - instead of smeared across the shape traits. Box<T> is what makes a recursive grammar terminate; Spanned<T> is the opt-in span boundary that lets every other grammar type stay plain data. Sep is contingent on ID(syntax/separator)"
  *
  * --- ERRORS AS DATA --------------------------------------------------------
  *
- * TODO[ ](#reason): C[E(Reason).V(WrongShape)] && C[E(Reason).V(UnknownKey)] && C[E(Reason).V(Missing)] && C[E(Reason).V(Ambiguous)] && C[E(Reason).V(Custom)], "CLOSED REASONS, OPEN RENDERING. Closed so the framework can interpret what it caught and render it against Node; Custom so an exotic grammar is never blocked. Authors never construct a message, so they cannot produce an unspanned or context-free one. Answers ID(extractor/error) structurally: meaning comes from a reason set crossed with a reflection table, never from a taxonomy of error types - a proc macro only ever EMITS an error, so per-type errors buy nothing and actively fight accumulation, since two error structs cannot combine. See ID(syntax/custom-reason)"
+ * TODO[~](#reason): C[E(Reason).V(WrongShape)] && C[E(Reason).V(UnknownKey)] && C[E(Reason).V(Missing)] && C[E(Reason).V(Duplicate)] && C[E(Reason).V(Ambiguous)] && C[E(Reason).V(Custom)], "CLOSED REASONS: DONE. OPEN RENDERING: HALF DONE.
+ * The variant set landed in extractor::ReasonKind and gained Duplicate, which this list omitted -
+ * six, not five. Authors still never construct a message, so they cannot produce an unspanned or
+ * context-free one, which was the point.
+ *
+ * The RENDERING half is where it stands open. E(ReasonKind)::message() gives each variant its
+ * default wording and is called LATE, at render time, which is the property that matters - see
+ * NOTE(#render/who-renders). What is still owed is the other half of 'render it against Node':
+ * there is no Node table yet, so a message cannot say WHICH node it is about or what that node
+ * would have accepted. Blocked on ID(node-table), and ID(diagnostics) is blocked on both.
+ *
+ * ID(extractor/error) is fully closed against this - a per-type error taxonomy bought nothing and
+ * could not combine with a sibling's. ID(syntax/custom-reason) is still unanswered and is overdue:
+ * it said 'decide before ID(reason) is written', and ID(reason) is now mostly written"
  *
  * TODO[ ](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "The reflection const each derive emits. This one table pays for 'expected one of ..', 'did you mean ..' and 'colour is a list here, not a name-value'. It is what makes STRICT MATCHING, LENIENT SUGGESTIONS possible - resolution stays case-sensitive while the did-you-mean search is not, so leniency sits in diagnostics where a wrong guess is free rather than in resolution where it costs a canonical form"
  *
