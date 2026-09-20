@@ -411,9 +411,16 @@ pub trait Extractor<'ast>: Sized + Validate<'ast> {
 
 /* @group(#from)
  *
- * What `#[from = ..]` lowers to. An extraction designer should declare WHERE a field comes from and
- * never how to walk to it, so the three functions below are the whole injection surface: the derive
- * reads the declared path, picks one of them by the field's TYPE, and emits the call.
+ * What `#[from(..)]` lowers to. An extraction designer should declare WHERE a field comes from and
+ * never how to walk to it, so `extract_from` / `extract_each` / `extract_maybe` are the whole
+ * injection surface: the derive reads the declared expression, picks one of them by the field's
+ * TYPE, and emits the call.
+ *
+ * Two corrections this header carried for a while, kept because both were wrong in instructive
+ * ways. It said `#[from = ..]`, which rustc REJECTS outright (ID(derive/list-not-name-value)); and
+ * it said "the three functions BELOW", which stopped being true when they became provided methods
+ * on Tr(Extractor) ABOVE - see NOTE(#pipeline/no-free-functions). A group header that points at
+ * nothing is worse than none, because it reads as current.
  *
  * Fix[x](#from/names-its-target):R[F(extract_each) -> M(Extractor::extract_each)], "RESOLVED by
  * objectification, and the note that stood here was pessimistic. It said call sites must carry a
@@ -431,12 +438,18 @@ pub trait Extractor<'ast>: Sized + Validate<'ast> {
  * optional, Vec<T> repeated - and it is what stops #[from] growing a second vocabulary for arity
  * that could disagree with the type it sits on"
  *
- * TODO[ ](#from/attribute):C[Attr(from)], "The derive half. Takes an EXPRESSION, in two forms that
- * cover the common case: a field path - `#[from = source.data.fields]` - and a simple closure -
- * `#[from = |source| source.attrs.iter().filter(..)]`. Either way the field's TYPE picks the helper
- * below, and the expression is spliced verbatim into generated code, so a bad one is rustc's error
- * at the AUTHOR's span in the author's own crate. That is the same bargain ID(no-parse) already
- * takes for #[shape(..)]: emit it, do not interpret it"
+ * TODO[x](#from/attribute):C[Attr(from)], "DONE, in proc_macro_flow_derive::derive::extractor, and
+ * the bargain held: the expression is spliced verbatim, so a bad one is rustc's error at the
+ * AUTHOR's span in the author's own crate - ID(no-parse)'s deal for Attr(shape), taken again.
+ *
+ * TWO THINGS THIS ASKED FOR ARE NOT WHAT SHIPPED. The syntax is `#[from(expr)]`, not
+ * `#[from = expr]`: VERIFIED that rustc rejects the name-value form with `attribute value must be
+ * a literal`, so the expression never reaches the macro at all (ID(derive/list-not-name-value)).
+ * And the two FORMS split into two ATTRIBUTES. A field path evaluates TO a value while a closure
+ * is APPLIED to one, and telling `(expr)` from `(expr)(source)` apart requires inspecting the
+ * expression - which is exactly what the splice bargain forbids. So the distinction moved to the
+ * attribute NAME, which is ours to match and needs no parsing: Attr(from) evaluates, Attr(with)
+ * applies"
  *
  * NOTE(#from/not-total): V[Attr(from).optional], "#[from] is CONVENIENCE and is not required to be
  * sufficient. Extraction that needs real logic - correlating two sources, conditioning on something
@@ -445,9 +458,14 @@ pub trait Extractor<'ast>: Sized + Validate<'ast> {
  * out longhand, not so the hard minority becomes expressible in an attribute. Resist growing it a
  * vocabulary for the latter; that is the darling failure mode in a different costume"
  *
- * Query(#from/native-and-custom): Q[F(extract_each).A(\1).T(I) ??], "These are generic over
- * I: Visitable, so a syn node works today. A CUSTOM grammar node as a source needs Tr(Visitable)
- * generalised over the visitor family - PROVEN to work (one walk() drove a syn node and a grammar
- * node in the same shape) but not yet landed, because nothing needed it until #[from] did. That is
- * the prerequisite for 'native nodes and our own nodes as sources' being one mechanism"
+ * Query(#from/native-and-custom): Q[Ty(Source).T(custom) ??], "RESTATED against the current shape -
+ * the old wording said 'generic over I: Visitable', and `I` no longer exists: the source became an
+ * ASSOCIATED TYPE in NOTE(#pipeline/source-is-associated). The substance is unchanged. A syn node
+ * works as a Ty(Source) today. A CUSTOM grammar node needs Tr(Visitable) generalised over the
+ * visitor family - PROVEN to work (one walk() drove a syn node and a grammar node in the same
+ * shape) but not landed, because nothing has needed it.
+ *
+ * Note that this is the SAME question @group(#multi-source) asks from the other side: 'several
+ * sources for one extraction' and 'our own nodes as sources' are both answered by what Ty(Source)
+ * is allowed to be. Decide them together"
  */

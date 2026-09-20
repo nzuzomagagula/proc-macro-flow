@@ -1,11 +1,12 @@
 // @review [x]
-// UNWIRED(#syntax/not-driven): V[N(extractor).tested && !N(extractor).reachable], "Everything below
-// is exercised by the tests in base/syntax/worked.rs and by nothing on the macro's actual path -
-// lib.rs::field_names drives StructExtraction and never reaches the syntax stage. The allow is here
-// so a clean build stays meaningful rather than carrying nine standing warnings; it comes OFF the
-// moment ID(attribute/generic-grammar) connects the stages, and if anything in here is still
-// unreachable then, it is genuinely dead and should go"
-#![allow(dead_code)]
+// Fix[x](#syntax/not-driven):D[Attr(allow(dead_code))], "RESOLVED. This module used to be exercised
+// only by base/syntax/worked.rs and by nothing on the macro's actual path, and carried a
+// module-wide allow so a clean build stayed meaningful. It is now REACHABLE: FieldExtraction
+// extracts one of these per attribute (ID(field/children)), so the path runs
+// field_names -> StructExtraction -> FieldExtraction -> here.
+//
+// The allow comes off as that annotation promised, and its own condition applies - anything still
+// warning here is genuinely dead and should go rather than be re-suppressed."
 
 use proc_macro2::Ident;
 use proc_macro_flow_traits::{
@@ -15,6 +16,7 @@ use proc_macro_flow_traits::{
 use syn::{Attribute, Type};
 
 use proc_macro_flow_traits::extractor::{Extractor, Validate};
+use proc_macro_flow_traits::render::Diagnose;
 
 // NOTE(#heads-are-rustcs):V[F(extract_from).!emits(E(ReasonKind).V(UnknownKey))], "An attribute
 // HEAD we do not recognise is never our complaint, and this stage must stay silent about one.
@@ -59,11 +61,27 @@ proc_macro_flow_traits::vocabulary! {
 
 /// One helper attribute on a grammar field.
 ///
-/// The attribute is held separately from the payload so the node has a source in every variant -
-/// `Sourced::source` is required, and an enum whose arms each carried their own span would have
-/// had nothing to give it for `Alias`.
+/// NOTE(#syntax/resolution-is-deferred-not-dead): V[M(resolve).tested && !M(resolve).on_macro_path],
+/// "Fix[x](#syntax/not-driven) promised that anything still warning once the allow came off was
+/// 'genuinely dead and should go'. That condition is WRONG for the three items below, and acting on
+/// it would have deleted the typestate. VERIFIED: `kind`, `resolve` and the `attribute` field are
+/// driven by base/syntax/worked.rs, so they are not unused - they are unused BY THE LIB TARGET,
+/// which is a different thing.
+///
+/// The reason is by design. Only EXTRACTION was wired to the macro path; RESOLUTION deliberately
+/// was not, because on the compiler-checked path the selector is spliced and rustc resolves it -
+/// `resolve` exists for a stage that must INSPECT. So the suppression is narrowed from the module
+/// to exactly these three items, each of which is a deferral with a reason rather than a leftover.
+///
+/// TODO[ ](#syntax/attribute-duplicates-source): `attribute` is read in ONE place - `resolve`,
+/// moving it into the Parsed value - and otherwise duplicates Extracted::source(). It survives only
+/// because `resolve` returns a bare Extraction with no Extracted wrapper to ask. Making resolution
+/// preserve the wrapper would remove the duplication ID(extractor/two-questions) removed
+/// everywhere else. That is the resolution stage's business, not this one's."
 pub struct SyntaxFieldAttributeExtraction<'ast, S: Stage> {
+    #[allow(dead_code, reason = "read by resolve; see #syntax/resolution-is-deferred-not-dead")]
     attribute: &'ast Attribute,
+    #[allow(dead_code, reason = "read by kind(); see #syntax/resolution-is-deferred-not-dead")]
     kind: SyntaxFieldAttributeKind<'ast, S>,
 }
 
@@ -88,6 +106,7 @@ pub enum SyntaxFieldAttributeKind<'ast, S: Stage> {
 }
 
 impl<'ast, S: Stage> SyntaxFieldAttributeExtraction<'ast, S> {
+    #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
     pub fn kind(&self) -> &SyntaxFieldAttributeKind<'ast, S> {
         &self.kind
     }
@@ -144,6 +163,7 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
     /// Note what cannot be written: there is no `resolve` on the `Parsed` form, so resolving twice
     /// is a type error rather than a silent no-op, and nothing downstream has to check a flag to
     /// know which state it is holding.
+    #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
     pub fn resolve(self) -> Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>> {
         let attribute = self.attribute;
 
@@ -194,3 +214,15 @@ impl<'ast, S: Stage> Validate<'ast> for SyntaxFieldAttributeExtraction<'ast, S> 
     }
 }
 
+impl<'ast, S: Stage> Diagnose for SyntaxFieldAttributeExtraction<'ast, S> {
+    /// A LEAF, and that is a statement about the design rather than a stub.
+    ///
+    /// This node's payload is `kind`, which holds CARRIED tokens - an `Unresolved<Type>` or
+    /// `Unresolved<Ident>` - not child extractions. Nothing below it has reasons of its own,
+    /// because nothing below it has been read: that is ID(no-parse). Its own reasons are rendered
+    /// by the `Extracted` around it, per NOTE(#render/who-renders).
+    ///
+    /// It stops being a leaf if and when a nested grammar node becomes an extraction in its own
+    /// right, which is ID(syntax/extraction)'s business.
+    fn diagnose(&self, _: &mut Vec<syn::Error>) {}
+}
