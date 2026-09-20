@@ -26,6 +26,44 @@
 //! express. So `process_each` mirrors `extract_each` and the parent calls it first. Same bottom-up
 //! order, no machinery that does not exist"
 
+/* @group(#processor/fluid)
+ *
+ * What a processor is FOR, recorded before the derive is touched. Processing is the stage that
+ * cannot be abstracted: extraction is a walk and generation is a splice, but understanding what was
+ * written is the author's business by definition. The items below follow from that.
+ *
+ * TODO[ ](#processor/derive-enforces):U[MacDef(Processor)], "Attr(derive(Processor)) currently
+ * emits a working IDENTITY impl, which is the OPPOSITE of the job it should do. The derive should
+ * ENFORCE that the logic exists, not supply it: derive the PLUMBING - Ty(Input) and Ty(Output)
+ * wired from Attr(source) - and delegate the body to an inherent `process_impl` the author must
+ * write, so a missing body is a compile error rather than a silently trivial pipeline.
+ *
+ * This SUPERSEDES a decision, so the conflict is recorded rather than quietly dropped: this
+ * module's header and ID(processor/optionality) both currently justify the identity on the grounds
+ * that 'downstream sees one shape and never an either-or'. That argument is still true - it is why
+ * ID(pipeline/no-processor-is-the-extractor) has no two-stage variant - but it is an argument for
+ * the identity being AVAILABLE, not for it being what the derive hands you by default. Decide
+ * whether the identity survives under another name"
+ *
+ * NOTE(#processor/holds-state): V[S(Processor).P ??], "A processor is a STRUCT, and the intent is
+ * that it may CARRY STATE across its children - counting items, collecting every struct definition
+ * in a module, accumulating something the children contribute to one at a time. Tr(Processor)::
+ * process is STATIC (`fn process(input) -> ..`), so today it cannot: there is no `self` to
+ * accumulate into. Recorded as a signature question rather than pre-empted, because `&self` and
+ * `&mut self` are different designs - the first lets a configured processor be reused, the second
+ * makes the cascade order load-bearing in a way ID(processor/cascade-is-a-helper) currently leaves
+ * free. Decide it when a real stateful processor exists to test it against"
+ *
+ * TODO[ ](#processor/generalises-over-traits):C[Impl(Processor).over(Tr)], "A processor may define
+ * ITS OWN traits, which extractors then implement, and be implemented OVER THAT TRAIT rather than
+ * over a concrete extraction type: `impl<T: MyInput> Processor for MyProc<T>`, calling methods
+ * instead of matching types. That is how one processor handles several shapes of input without
+ * knowing any of them - the processing-side twin of @group(#multi-source), and the same answer:
+ * the generic goes on the TYPE, and what varies is reached through a trait rather than inferred.
+ * Cross-reference both; they should be decided together, because a processor generic over an input
+ * trait and an extractor generic over its source are the same mechanism seen from two ends"
+ */
+
 use crate::extractor::Extraction;
 
 /// Turn an extraction into whatever the generator wants to consume.

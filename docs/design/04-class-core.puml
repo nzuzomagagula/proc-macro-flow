@@ -123,12 +123,19 @@ package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> 
 
   interface Generator <<(T,#F5CBA7) trait>> {
     +type Input
-    +type Item
+    +type Subject
+    +type Output: ToTokens
     --
-    +generate(Input) -> TokenStream
-    +stub(&Item) -> TokenStream
+    +generate(Input) -> Output
+    +stub(Subject) -> Output
+  }
+
+  interface "Pipeline<'ast>" as Pipeline <<(T,#F5CBA7) trait>> {
+    +type Extractor
+    +type Processor
+    +type Generator
     ..provided..
-    +emit(Option<Input>, &Item, Vec<syn::Error>) -> TokenStream
+    +run(Source) -> TokenStream
   }
 
   interface Diagnose <<(T,#F5CBA7) trait>> {
@@ -172,6 +179,9 @@ Validate ..> Visitable : "bound on\ntype Source"
 
 Extractor ..> Processor : "Output becomes\nProcessor::Input"
 Processor ..> Generator : "Output becomes\nGenerator::Input"
+Pipeline ..> Extractor : "names"
+Pipeline ..> Processor : "names"
+Pipeline ..> Generator : "names"
 
 
 ImplExtracted ..|> Diagnose : impl
@@ -292,7 +302,22 @@ note bottom of Generator
   **The stub rule is a CONTRACT, not a habit.**
   ""stub"" is REQUIRED: a type that cannot say what
   its vacant form looks like does not compile as a
-  Generator, and ""emit"" is the only way to spend it.
+  Generator — and now both arms return the SAME
+  TYPE, so "same shape, vacant" is checked by the
+  compiler rather than by grepping a TokenStream.
+
+  ""Output"" is ASSOCIATED, not a fixed ""syn::Item"":
+  a module holds Item, an impl holds ImplItem, a
+  struct holds Field, so one type could not nest.
+  Each generator names its own level and a parent
+  embeds a child's output untouched.
+  (""#typed-output/level-is-associated"" and
+  ""#generator/nested-items"")
+
+  ""emit"" is GONE from here — lowering belongs to
+  the Pipeline. The generator knows the vacant
+  SHAPE; the pipeline decides WHEN to use it.
+  (#generator/lowering-is-not-ours)
 
   It used to be four lines every entry point wrote
   by hand — match the value, generate or stub, then
@@ -338,6 +363,32 @@ note bottom of Diagnose
   (#render/traversal-is-source-order)
 
   Still owed: (#render/dedupe-and-cap).
+end note
+
+note right of Pipeline
+  **The macro boundary.**
+  The only place anything becomes a TokenStream.
+
+  ""run"" is what every entry point used to write
+  by hand: extract, walk the tree for reasons
+  BEFORE processing consumes it, process, choose
+  generate-or-stub, lower, append one
+  ""compile_error!"" per reason. Identical for every
+  macro, so it belongs to one type and the three
+  stages stay clean. (#pipeline/owns-normalisation)
+
+  **This is where the associated types pay off.**
+  The bounds MAKE the stages agree.
+  ""#processor/output-needs-no-bound"" said the
+  agreement is declared from the other side — the
+  other side turns out to be here, not Processor.
+  ""Output: Diagnose"" is required HERE and still
+  not on Extractor itself.
+
+  No two-stage variant: a pipeline with nothing to
+  process names its EXTRACTOR as its Processor,
+  which extraction types already implement.
+  (#pipeline/no-processor-is-the-extractor)
 end note
 
 note bottom of Processor

@@ -3,12 +3,9 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
-use proc_macro_flow_traits::{
-    extractor::Extractor, generator::Generator, processor::Processor, render::Diagnose,
-};
+use proc_macro_flow_traits::pipeline::Pipeline;
 
-use crate::base::extractor::StructExtraction;
-use crate::base::extractor::processor::ProcessedStruct;
+use crate::base::extractor::pipeline::ExtractorPipeline;
 
 mod base;
 mod derive;
@@ -31,8 +28,6 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(FieldNames)]
 pub fn field_names(input: TokenStream) -> TokenStream {
-    let derive_input = parse_macro_input!(input as DeriveInput);
-
     // RENAMED(#extractor/macro):R[F(extractor) -> F(field_names)], "FORCED, not chosen: two
     // Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]: the name Extractor is
     // defined multiple times` (VERIFIED), and the derives needed the name. CORRECTION to what this
@@ -42,28 +37,15 @@ pub fn field_names(input: TokenStream) -> TokenStream {
     // feature or two - is now settled as ONE by ID(extractor/self-hosting): the derive is that
     // feature, reached declaratively. So the name moved to the thing that earned it, and what this
     // emits - `const FIELDS` - is what it has always emitted, which the name now says"
-    // TODO[x](#extractor/macro):U[F(field_names)], "The pipeline runs end to end - extract,
-    // render, process, generate. ID(syntax/render)'s walk is in: every reason in the tree is
-    // emitted, not just the root's. Its 'sorted by span' clause was dropped rather than done -
-    // see NOTE(#render/traversal-is-source-order) for why a sort is impossible on stable AND
-    // unnecessary given a depth-first walk over a source-ordered tree"
-    let extracted = StructExtraction::extract_from(&derive_input);
+    //
+    // Fix[x](#extractor/macro):U[F(field_names)], "This function used to BE the pipeline: run
+    // order, the render walk, the stub decision and the error append, written out. All of it is
+    // normalisation, identical for every macro, and it now lives on Tr(Pipeline) - see
+    // NOTE(#pipeline/owns-normalisation). What is left is the only part that is genuinely this
+    // entry point's business: parse, and hand over."
+    let derive_input = parse_macro_input!(input as DeriveInput);
 
-    // The whole tree, before processing consumes it. Children's reasons were recorded faithfully
-    // and never read until this walk existed - which made #no-result's guarantee half a promise.
-    let mut errors = extracted.render();
-
-    let processed = StructExtraction::process(extracted);
-    errors.extend(
-        processed
-            .reasons
-            .iter()
-            .map(|reason| reason.to_error(&derive_input, reason.message())),
-    );
-
-    // One call. The stub-always rule is the trait's, not this function's, so there is no longer a
-    // match here to get wrong - see NOTE(#generator/stub-is-a-contract).
-    ProcessedStruct::emit(processed.value, &derive_input, errors).into()
+    ExtractorPipeline::run(&derive_input).into()
 }
 
 // ===========================================================================

@@ -8,7 +8,23 @@
 // them off the extraction type itself. Nothing holds a triple, because nothing needs to: the field
 // TYPE already carries the arity (ID(from/arity-from-type)) and Ty(Extracted) already carries the
 // source, so a struct assembled to describe a pipeline would only be restating what the extraction
-// struct says. The three below are closed against this answer, not abandoned"
+// struct says. The three below are closed against this answer, not abandoned.
+//
+// AMENDED, and the amendment matters more than the answer. The sentence 'nothing holds a triple,
+// because nothing needs to' OVERREACHED: the evidence supported only the narrower claim, that
+// nothing needs a triple to DESCRIBE the extraction's shape. That part stands and is why the
+// derive replaced ExtractorPipeline-as-a-description.
+//
+// It said nothing about owning NORMALISATION - run order, the render walk, the stub decision,
+// lowering, helper-attribute declaration - which is a different job with no home but the entry
+// point, where it was hand-written and would have been copy-pasted at every macro. S(ExtractorPipeline)
+// now exists for exactly that (ID(pipeline/owns-normalisation)), carrying the name this answer said
+// would not be needed.
+//
+// The original reasoning is kept because it is the GUARD RAIL, not the refutation: the failure it
+// warns against - a type restating what the extraction struct already says - is precisely the
+// drift S(ExtractorPipeline) must not take. It names the three stages so the BOUNDS make them
+// agree, and holds no data of its own"
 //
 // TODO[x](#extractor/pipeline):C[S(ExtractorPipeline)], "CLOSED by ID(extractor/self-hosting) - and
 // the type is deliberately NOT built. Its job was to be the thing a macro expands; the derive

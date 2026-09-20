@@ -92,24 +92,21 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proc_macro_flow_traits::{
-        extractor::Extractor, generator::Generator, processor::Processor, render::Diagnose,
-    };
+    use proc_macro_flow_traits::pipeline::Pipeline;
     use syn::parse_str;
 
-    use crate::base::extractor::extractor::StructExtraction;
+    use crate::base::extractor::pipeline::ExtractorPipeline;
 
-    /// The whole pipeline, as `lib.rs` runs it.
+    /// The whole pipeline, exactly as `lib.rs::field_names` runs it.
+    ///
+    /// One call now. This helper used to re-assemble the stages by hand - extract, render,
+    /// process, emit - which meant the test could drift from the entry point without either
+    /// noticing. NOTE(#pipeline/owns-normalisation) removed the opportunity.
     fn pipeline(source: &str) -> String {
         let item: &'static DeriveInput =
             Box::leak(Box::new(parse_str(source).expect("the item parses")));
 
-        let extracted = StructExtraction::extract_from(item);
-        let errors = extracted.render();
-        let processed = StructExtraction::process(extracted);
-
-        // one call, and no way to forget the stub - NOTE(#generator/stub-is-a-contract)
-        ProcessedStruct::emit(processed.value, item, errors).to_string()
+        ExtractorPipeline::run(item).to_string()
     }
 
     #[test]
@@ -156,5 +153,35 @@ mod tests {
             out.find("impl").unwrap() < out.find("compile_error").unwrap(),
             "{out}"
         );
+    }
+
+    #[test]
+    fn a_shape_attribute_reaches_generation() {
+        // THE assertion the cascade exists for, and the one that would have failed before it:
+        // an attribute's carried tokens are a THIRD-LEVEL value, and ProcessedField used to drop
+        // them on the way to here. See NOTE(#generator/shapes-is-a-probe).
+        let out = pipeline("pub struct Thing { #[shape(AttributeKind::MetaList)] a: u8 }");
+
+        assert!(out.contains("SHAPES"), "{out}");
+        assert!(out.contains("AttributeKind :: MetaList"), "{out}");
+        assert!(!out.contains("compile_error"), "{out}");
+    }
+
+    #[test]
+    fn a_field_with_no_grammar_attribute_gets_an_empty_shape() {
+        let out = pipeline("pub struct Thing { a: u8 }");
+
+        assert!(out.contains("SHAPES"), "{out}");
+        assert!(!out.contains("AttributeKind"), "{out}");
+    }
+
+    #[test]
+    fn a_doc_comment_does_not_become_a_shape_or_an_error() {
+        // ID(heads-are-rustcs), now checked through the WHOLE pipeline rather than at the
+        // extraction tree - the processor touching attributes must not change this.
+        let out = pipeline("pub struct Thing { /// documented\n a: u8 }");
+
+        assert!(!out.contains("compile_error"), "{out}");
+        assert!(!out.contains("doc"), "{out}");
     }
 }

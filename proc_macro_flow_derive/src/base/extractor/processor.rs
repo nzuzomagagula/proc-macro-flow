@@ -61,7 +61,15 @@ pub(crate) struct ProcessedField<'ast> {
 /// resolve to. What survives is what generation can act on - which helper was written, and the
 /// tokens to splice.
 pub(crate) struct ProcessedAttribute<'ast> {
-    pub(crate) attribute: &'ast Attribute,
+    // NOTE(#processed-attribute/no-unread-node): V[!S(ProcessedAttribute).P(attribute)], "This
+    // struct deliberately does NOT carry its `&'ast Attribute`. It did for one commit, on the
+    // reasoning that ID(typed-output/spans) will eventually want a node to span generated errors
+    // against - and that is exactly the reasoning that produced Tr(Sourced), a whole trait making
+    // every extractor store and hand back a node that one test read. The crate's standard is that
+    // unread is unread: ID(extraction/unconsumed) took an allow OFF a field the moment it got real
+    // readers, rather than suppressing the warning while waiting for one. When
+    // ID(typed-output/spans) lands it can add the node back WITH a reader, which is a smaller and
+    // more honest change than keeping a field warm for a year"
     /// Which helper this is, resolved once at `validate` and never compared again.
     pub(crate) helper: SyntaxHelper,
     /// The argument tokens, still UNREAD. Carrying them is the whole point - ID(no-parse) - and
@@ -79,7 +87,6 @@ impl<'ast> Processor for SyntaxFieldAttributeExtraction<'ast, Raw> {
     type Output = ProcessedAttribute<'ast>;
 
     fn process(input: Self::Input) -> Extraction<Self::Output> {
-        let attribute = *input.source();
         let extraction = input.into_extraction();
 
         Extraction {
@@ -91,11 +98,7 @@ impl<'ast> Processor for SyntaxFieldAttributeExtraction<'ast, Raw> {
                     SyntaxFieldAttributeKind::Alias(alias) => (SyntaxHelper::Alias, alias.tokens()),
                 };
 
-                ProcessedAttribute {
-                    attribute,
-                    helper,
-                    tokens,
-                }
+                ProcessedAttribute { helper, tokens }
             }),
             reasons: extraction.reasons,
         }
@@ -231,5 +234,40 @@ mod tests {
     fn a_struct_with_no_fields_processes_to_an_empty_list() {
         let out = processed("pub struct Thing;");
         assert!(out.value.unwrap().fields.is_empty());
+    }
+
+    #[test]
+    fn a_fields_attributes_survive_processing() {
+        // ID(field/children) made them extraction's children; this is where they used to stop.
+        let out = processed("pub struct Thing { #[shape(AttributeKind::MetaList)] a: u8 }");
+        let value = out.value.expect("a struct extracts");
+
+        let attrs = &value.fields[0].attrs;
+        assert_eq!(attrs.len(), 1, "the attribute was dropped by the processor");
+        assert_eq!(attrs[0].helper, SyntaxHelper::Shape);
+        assert_eq!(attrs[0].tokens.to_string(), "AttributeKind :: MetaList");
+    }
+
+    #[test]
+    fn processing_narrows_and_does_not_resolve() {
+        // Answer(#processor/base-scope): the typestate and the Unresolved wrapper are DROPPED,
+        // the tokens are carried UNREAD. If this stage ever starts reading them it has taken
+        // generation's job and broken ID(no-parse).
+        let out = processed("pub struct Thing { #[alias(colours)] a: u8 }");
+        let value = out.value.unwrap();
+
+        assert_eq!(value.fields[0].attrs[0].helper, SyntaxHelper::Alias);
+        assert_eq!(value.fields[0].attrs[0].tokens.to_string(), "colours");
+    }
+
+    #[test]
+    fn a_doc_comment_processes_to_nothing_and_says_nothing() {
+        // The child is carried by extraction but has no value, so it narrows to nothing here -
+        // and records no complaint on the way. ID(heads-are-rustcs).
+        let out = processed("pub struct Thing { /// documented\n a: u8 }");
+        let value = out.value.unwrap();
+
+        assert!(value.fields[0].attrs.is_empty());
+        assert!(out.reasons.is_empty(), "a doc comment was complained about");
     }
 }

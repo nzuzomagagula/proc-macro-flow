@@ -13,7 +13,9 @@ rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #E8F4EA
 rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #FFF4E5
 
 rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
-rectangle "Generator\nProcessedStruct -> impl { FIELDS }\nstub() REQUIRED + emit() provided" as G #E8F4EA
+rectangle "Generator\nProcessedStruct -> syn::ItemImpl\nstub() REQUIRED, typed Output" as G #E8F4EA
+
+rectangle "ExtractorPipeline\nPipeline::run - the macro boundary\nthe ONLY lowering to TokenStream" as PL #E8F4EA
 
 rectangle "Diagnose::render()\nwalk over the tree\nVec<syn::Error>" as R #E8F4EA
 
@@ -21,7 +23,8 @@ rectangle """#[derive(Extractor)]""\n""#[source] #[from] #[with]""\n+ Diagnose" 
 rectangle """#[derive(Processor)]""\nidentity" as DP #E8F4EA
 rectangle """#[derive(Validate)]""\npass-through" as DV #E8F4EA
 
-Entry --> S : extract_from
+Entry --> PL : parse, then hand over
+PL --> S : extract_from
 S --> F : extract_each(data.fields.iter())
 F --> Y : extract_each(field.attrs.iter())
 

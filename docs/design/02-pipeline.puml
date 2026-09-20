@@ -248,10 +248,11 @@ note right
   and ""Ambiguous"" stay ours.
 end note
 
-:**Generator::emit(value, item, errors)**
+:**Generator::generate** or **::stub**, then **Pipeline::run** lowers
 ----
-in   ""Option<Input>"" + the item + the errors rendered earlier
-out  ""TokenStream"" — stub FIRST, then N ""compile_error!""
+in   ""Option<Input>"" + the subject + the errors rendered earlier
+out  a TYPED ""syn::ItemImpl"", then ""TokenStream"" — stub FIRST,
+     then N ""compile_error!""
 ----
 the stub always goes out; <<#E8F4EA>>
 note right

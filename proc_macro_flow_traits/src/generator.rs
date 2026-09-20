@@ -19,25 +19,56 @@ use quote::ToTokens;
 
 /* @group(#typed-output)
  *
- * TODO[ ](#typed-output/generate): U[Tr(Generator).F(generate).R(TokenStream) -> R(syn::Item)],
- * "generate returns a raw TokenStream, and should return a TYPED syn item - ItemImpl for the usual
- * case, Item where a generator emits more than one kind. The distinction that matters is CARRIER vs
- * PRODUCT: raw tokens are correct wherever the content is deliberately un-interpreted, which is
- * Unresolved and ListBody and must NOT change - the whole point there is that nobody has read them.
- * A generator is the opposite end: WE produce the content, we know its shape, and handing it back
- * as an untyped stream throws that away. What it costs today is (1) nothing checks that what we
- * emitted is even well-formed until rustc parses it back, and (2) it makes ID(typed-output/spans)
- * below impossible"
+ * TODO[x](#typed-output/generate): U[Tr(Generator).F(generate).R(TokenStream) -> R(Ty(Output))],
+ * "DONE. The distinction it drew is the one that shipped: CARRIER vs PRODUCT. Raw tokens stay
+ * correct wherever the content is deliberately un-interpreted - Unresolved and ListBody, which did
+ * NOT change, because the whole point there is that nobody has read them. A generator is the
+ * opposite end: WE produce the content and know its shape, so it now returns a typed item.
  *
- * TODO[ ](#typed-output/spans): U[F(emit).A(node)], "Errors are currently spanned against whatever
- * node the CALLER passes, which for generated code means pointing at the whole stream and saying
- * 'something in here is wrong'. With a typed item the generator can point at the PART that is
- * wrong - the associated type that could not be filled, the field whose value never arrived - by
- * spanning the specific ImplItem or Field rather than the item entire. Note this is the same
- * argument ID(reason/span-not-node) already makes one level down: a reason that points at one token
- * is exact, and one that points at everything is a shrug. syn 3 also has Error::new_range
- * (error.rs:267) for spanning a cursor range, which is the precise tool for 'this part of what we
- * built', and nothing here uses it yet"
+ * Both costs it named are paid. (1) `parse_quote!` validates what we built AT CONSTRUCTION, so a
+ * malformed item is a panic naming the generator rather than a rustc error in the author's crate -
+ * see NOTE(#generator/parse-quote-panics). (2) ID(typed-output/spans) is no longer impossible; it
+ * is merely not done.
+ *
+ * ONE CORRECTION to what it asked for. It wanted `R(syn::Item)` - 'ItemImpl for the usual case,
+ * Item where a generator emits more than one kind'. That would have been wrong: a FIXED return type
+ * cannot nest, because the levels differ - a module holds Item, an impl holds ImplItem, a struct
+ * holds Field - so any generator emitting below item level would have had to lower to tokens early,
+ * which is the exact thing typing it was meant to stop. Ty(Output) is an ASSOCIATED type instead.
+ * See NOTE(#typed-output/level-is-associated) and NOTE(#generator/nested-items)"
+ *
+ * TODO[ ](#typed-output/spans): U[Tr(Generator).Ty(Output).spans], "RESTATED - its old target,
+ * F(emit), no longer exists. Lowering moved to Tr(Pipeline)::run
+ * (NOTE(#generator/lowering-is-not-ours)), and with it the `node` argument this item was written
+ * against, so the work now belongs to the GENERATOR and its Ty(Output) rather than to the emission
+ * step.
+ *
+ * The substance is unchanged and is now UNBLOCKED by ID(typed-output/generate). Errors about
+ * generated code are still spanned against whatever node Tr(Pipeline)::run was handed - the whole
+ * subject - which says 'something in here is wrong'. Holding a typed Ty(Output) means a generator
+ * can point at the PART: the ImplItem whose associated type could not be filled, the Field whose
+ * value never arrived. Same argument ID(reason/span-not-node) makes one level down - a reason that
+ * points at one token is exact, one that points at everything is a shrug.
+ *
+ * syn 3's Error::new_range (error.rs:267) spans a cursor range and is the precise tool for 'this
+ * part of what we built'. Nothing uses it yet"
+ *
+ * NOTE(#generator/nested-items): V[Ty(Output).composes], "Generators NEST like extractors and
+ * processors: a parent's Ty(Output) holds its children's, typed the whole way down, so a tree of
+ * generated code is assembled from checked pieces rather than concatenated as text. That is what
+ * Ty(Output) being an associated type buys - see NOTE(#typed-output/level-is-associated) - because
+ * the levels genuinely differ: a module holds Item, an impl holds ImplItem, a struct holds Field.
+ * The payoff is that a malformed piece fails where it was BUILT, naming the generator that built
+ * it, instead of arriving in the author's crate as a parse error in code they never wrote"
+ *
+ * NOTE(#generator/parse-quote-panics): V[M(parse_quote).panics], "parse_quote! panics when the
+ * tokens do not parse as the target type, and that is the RIGHT signal here, which is worth saying
+ * because panicking in a proc macro is usually wrong. The distinction is whose mistake it is: these
+ * tokens are ones WE built, so a failure is a FRAMEWORK bug and never bad user input, and a panic
+ * naming the construction site beats the same bug arriving downstream as an inscrutable rustc
+ * error about generated code. The escape hatch if that ever stops being acceptable is
+ * syn::parse2 plus an internal-error stub, which keeps the macro alive and reports the framework
+ * bug as a diagnostic - noted so it does not have to be rediscovered"
  *
  * NOTE(#typed-output/not-the-carriers): V[S(Unresolved).T(TokenStream) && S(ListBody).T(TokenStream)],
  * "Recorded so the TODOs above are not read as 'replace every TokenStream'. Unresolved and ListBody
@@ -101,69 +132,55 @@ pub trait Generator: Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quote::quote;
+    use syn::{parse_quote, ItemImpl};
 
-    /// A generator whose vacant form is observably the SAME SHAPE as its full one - which is the
-    /// property NOTE(#generator/stub-is-a-contract) exists to force.
+    /// A generator whose vacant form is the SAME TYPE as its full one - which is now checked by
+    /// the compiler rather than by reading strings, per NOTE(#generator/stub-is-a-contract).
     struct Tiny;
 
     impl Generator for Tiny {
         type Input = &'static str;
-        type Item = &'static str;
+        type Subject = &'static str;
+        type Output = ItemImpl;
 
-        fn generate(input: &'static str) -> TokenStream {
+        fn generate(input: &'static str) -> ItemImpl {
             let body = syn::LitStr::new(input, proc_macro2::Span::call_site());
-            quote!(impl Thing for T { const NAME: &'static str = #body; })
+            parse_quote!(impl Thing for T { const NAME: &'static str = #body; })
         }
 
-        fn stub(_: &&'static str) -> TokenStream {
-            quote!(impl Thing for T { const NAME: &'static str = ""; })
+        fn stub(_: &'static str) -> ItemImpl {
+            parse_quote!(impl Thing for T { const NAME: &'static str = ""; })
         }
     }
 
-    fn errors(n: usize) -> Vec<syn::Error> {
-        (0..n)
-            .map(|_| syn::Error::new(proc_macro2::Span::call_site(), "bad"))
-            .collect()
+    #[test]
+    fn a_generator_builds_a_typed_item() {
+        let item = Tiny::generate("thing");
+        // it is an ItemImpl, so the SHAPE is inspectable rather than a string to grep
+        assert_eq!(item.items.len(), 1);
     }
 
     #[test]
-    fn the_stub_survives_the_errors() {
-        // THE property. Without this the missing impl cascades at every use site.
-        let out = Tiny::emit(None, &"thing", errors(2)).to_string();
+    fn the_stub_is_the_same_shape_and_the_type_says_so() {
+        // THE rule, now enforced structurally. Both arms return ItemImpl with the same associated
+        // items, so a use site finds NAME either way and never reports a missing item on top of
+        // the real diagnostic. Previously this could only be asserted by string-matching a stream.
+        let full = Tiny::generate("thing");
+        let vacant = Tiny::stub("thing");
 
-        assert!(out.contains("impl Thing for T"), "{out}");
-        assert_eq!(out.matches("compile_error").count(), 2, "{out}");
-    }
-
-    #[test]
-    fn a_clean_generation_is_just_the_value() {
-        let out = Tiny::emit(Some("thing"), &"thing", vec![]).to_string();
-
-        assert!(out.contains("impl Thing for T"));
-        assert!(out.contains("thing"));
-        assert!(!out.contains("compile_error"));
-    }
-
-    #[test]
-    fn the_stub_comes_first() {
-        // Order matters for readability of the emitted file, and for anyone reading expansion.
-        let out = Tiny::emit(None, &"thing", errors(1)).to_string();
-
-        assert!(
-            out.find("impl").unwrap() < out.find("compile_error").unwrap(),
-            "{out}"
+        assert_eq!(full.items.len(), vacant.items.len());
+        // syn types carry no PartialEq without `extra-traits`, so compare the rendered type
+        assert_eq!(
+            full.self_ty.to_token_stream().to_string(),
+            vacant.self_ty.to_token_stream().to_string()
         );
     }
 
     #[test]
-    fn a_failure_and_a_success_emit_the_same_associated_items() {
-        // The stub is not an empty stream: a use site must find NAME either way, or it reports a
-        // missing item on top of the real diagnostic.
-        let full = Tiny::emit(Some("thing"), &"thing", vec![]).to_string();
-        let vacant = Tiny::emit(None, &"thing", errors(1)).to_string();
-
-        assert!(full.contains("const NAME"), "{full}");
-        assert!(vacant.contains("const NAME"), "{vacant}");
+    fn nothing_malformed_can_leave_a_generator() {
+        // parse_quote! validated the tokens as an ItemImpl at construction. A mistake is a panic
+        // HERE, not a mystery error in the author's crate - NOTE(#generator/parse-quote-panics).
+        let item = Tiny::generate("thing");
+        assert!(item.trait_.is_some(), "the impl lost its trait");
     }
 }
