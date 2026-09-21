@@ -182,4 +182,26 @@ end note
 
 Boundary .. Vocab
 
+note as Typed
+  **The walk is typed as of #type-backed.**
+  ""ListBody::walk<K: Keys>"" hands the closure the
+  resolved VARIANT plus the token that spelled it,
+  so a caller's match is exhaustive and every error
+  already carries the author's span.
+
+  The string-shaped ""walk_keys"" is DELETED, not
+  deprecated — keeping both is how the drift grows
+  back. ""const KEYS: &[&str]"" went with it; the
+  table is ""Node"", derived from ""Keys"".
+  (#keys/one-table)
+
+  A spelling table CANNOT be typed tokens:
+  ""Ident::new"" and ""Span::call_site"" are not
+  const, so ""const SPELLINGS: &[Ident]"" cannot
+  exist. The string survives in exactly one place —
+  ""Keys::resolve"" — and allocates nothing, because
+  ""Ident: PartialEq<str>"".
+  (#keys/table-is-strings-the-rest-is-not)
+end note
+
 @enduml

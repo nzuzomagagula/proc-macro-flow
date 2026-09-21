@@ -6,13 +6,12 @@
 //! omits the derive and writes `impl Processor` by hand, which is ordinary Rust and needs no
 //! opt-out attribute.
 
-use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Error, Result, Type};
+use syn::{parse2, DeriveInput, Error, Item, ItemImpl, Result, Type};
 
 use super::find_one;
 
-pub(crate) fn derive_processor(input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn derive_processor(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
 
     let attr = find_one(&input.attrs, "source")?.ok_or_else(|| {
@@ -32,7 +31,7 @@ pub(crate) fn derive_processor(input: DeriveInput) -> Result<TokenStream> {
         .map(|def| &def.lifetime)
         .ok_or_else(|| Error::new_spanned(&input.ident, "expected a lifetime parameter"))?;
 
-    Ok(quote! {
+    let item = parse2::<ItemImpl>(quote! {
         impl #impl_generics ::proc_macro_flow_traits::processor::Processor
             for #name #type_generics #where_clause
         {
@@ -51,5 +50,7 @@ pub(crate) fn derive_processor(input: DeriveInput) -> Result<TokenStream> {
                 input.into_extraction()
             }
         }
-    })
+    })?;
+
+    Ok(vec![Item::Impl(item)])
 }

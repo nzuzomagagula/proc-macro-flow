@@ -77,12 +77,32 @@ pub trait Pipeline<'ast> {
 
         // The stub goes out whatever happened - NOTE(#generator/stub-is-not-empty). There is
         // deliberately no path here that emits errors without one.
+        //
+        // NOTE(#pipeline/generation-degrades): V[F(run).!panics], "Generation can FAIL now rather
+        // than panic (DEPRECATED(#generator/parse-quote-panics)), so this degrades in two steps:
+        // a failed generate falls back to the STUB, and a failed stub emits the errors alone.
+        // The second case is the only one that breaks ID(generator/stub-is-not-empty)'s promise,
+        // and it is the case where keeping it is impossible - the generator could not say what its
+        // vacant form looks like. Either way the author gets a diagnostic instead of a crash"
         let body = match processed.value {
             Some(value) => Self::Generator::generate(value),
             None => Self::Generator::stub(node),
         };
 
-        let mut out = body.into_token_stream();
+        let mut out = match body {
+            Ok(item) => item.into_token_stream(),
+            Err(failure) => match Self::Generator::stub(node) {
+                Ok(vacant) => {
+                    errors.push(failure);
+                    vacant.into_token_stream()
+                }
+                Err(_) => {
+                    errors.push(failure);
+                    TokenStream::new()
+                }
+            },
+        };
+
         out.extend(errors.into_iter().map(|error| error.to_compile_error()));
         out
     }

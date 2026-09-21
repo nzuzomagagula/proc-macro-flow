@@ -1,7 +1,7 @@
 // @review [~]
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{DeriveInput, Item, parse_macro_input};
 
 use proc_macro_flow_traits::pipeline::Pipeline;
 
@@ -85,18 +85,28 @@ pub fn processor(input: TokenStream) -> TokenStream {
 
 /// Shared entry: parse, run, and turn any error into a `compile_error!` at the author's span.
 ///
+/// NOTE(#derive/expansion-is-typed-items): V[F(expand).A(f).R(Vec<Item>)], "A derive hands back
+/// PARSED ITEMS, not a raw stream, so nothing malformed can leave one - each item was validated by
+/// `syn::parse2` where it was built, and a mistake is a `syn::Error` bubbled to the author rather
+/// than a panic in the middle of expansion.
+///
+/// Ty(Vec<Item>) and not Ty(ItemImpl): most of these derives emit MORE THAN ONE item -
+/// Attr(derive(Extractor)) alone emits an Extractor impl and a Diagnose impl - and
+/// `parse2::<ItemImpl>` over two of them fails, because parse2 requires the whole stream consumed.
+/// Ty(Item) is the smallest type that covers what a derive may emit"
+///
 /// A derive that returns nothing on failure leaves the impl missing and every use site reporting
 /// "does not implement", which is the cascade NOTE(#generator/stub-alongside-errors) exists to
 /// prevent. Here there is no meaningful stub - the impl we failed to write IS the product - so the
 /// error is all that goes out, and it is spanned where the author can act on it.
 fn expand(
     input: TokenStream,
-    f: fn(DeriveInput) -> syn::Result<proc_macro2::TokenStream>,
+    f: fn(DeriveInput) -> syn::Result<Vec<Item>>,
 ) -> TokenStream {
     let parsed = parse_macro_input!(input as DeriveInput);
 
     match f(parsed) {
-        Ok(tokens) => tokens.into(),
+        Ok(items) => quote!( #(#items)* ).into(),
         Err(error) => error.to_compile_error().into(),
     }
 }

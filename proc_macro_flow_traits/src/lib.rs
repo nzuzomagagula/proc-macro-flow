@@ -141,7 +141,11 @@ pub mod vocab;
  * could not combine with a sibling's. ID(syntax/custom-reason) is still unanswered and is overdue:
  * it said 'decide before ID(reason) is written', and ID(reason) is now mostly written"
  *
- * TODO[x](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "The reflection const each derive emits. This one table pays for 'expected one of ..', 'did you mean ..' and 'colour is a list here, not a name-value'. It is what makes STRICT MATCHING, LENIENT SUGGESTIONS possible - resolution stays case-sensitive while the did-you-mean search is not, so leniency sits in diagnostics where a wrong guess is free rather than in resolution where it costs a canonical form"
+ * TODO[x](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "DONE, in proc_macro_flow_traits::node, with all four fields - name, aliases, shapes, children - plus ARITY, which this item did not ask for and which turns out to be the thing that makes it useful: the framework can answer `what is missing` without the caller restating requiredness.
+ *
+ * The shape it landed in is the one NOTE(#keys/one-table) argues for: Ty(Node) is a VIEW DERIVED FROM Tr(Keys), not a second declaration, so it cannot advertise a key the walker would reject. It replaced M(meta_list)'s `const KEYS: &[&str]`, which was exactly the rival list this collapse removes. Nothing resolves against a Ty(Node) - resolution is Tr(Keys)::resolve and only that - which is why the strings in it do not contradict ID(type-backed).
+ *
+ * ID(reason)'s open half and ID(diagnostics) were both blocked on this and are now merely unwritten"
  *
  * TODO[ ](#diagnostics): C[Tr(Diagnostics).F(message).R(String)], "Author-overridable RENDERING, blanket default provided. Scoped to rephrasing and never to construction: the framework keeps the span and the tree position, so the worst an author can do is bad prose in the right place. The case that earns it is domain vocabulary - a DSL wants 'unknown column option', which the framework cannot know and which should not cost the author spans or did-you-mean to obtain"
  *

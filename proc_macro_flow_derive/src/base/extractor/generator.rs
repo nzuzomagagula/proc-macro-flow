@@ -13,7 +13,8 @@
 //! rule exists to prevent. A stub that type-checks buys silence downstream so the real diagnostic
 //! is the only thing the user reads"
 
-use syn::{parse_quote, DeriveInput, ItemImpl};
+use quote::quote;
+use syn::{parse2, DeriveInput, ItemImpl};
 
 use crate::base::extractor::processor::ProcessedStruct;
 use crate::base::syntax::extractor::SyntaxHelper;
@@ -44,7 +45,7 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
     /// generator's output without either side lowering to tokens.
     type Output = ItemImpl;
 
-    fn generate(input: Self) -> ItemImpl {
+    fn generate(input: Self) -> syn::Result<ItemImpl> {
         let name = &input.item.ident;
         let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
 
@@ -68,24 +69,28 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
                 .unwrap_or_default()
         });
 
-        parse_quote! {
+        // `parse2(..)?` and not `parse_quote!`: the latter PANICS on malformed tokens, and a
+        // panic here lands in the AUTHOR'S compile as an opaque macro failure with no span. The
+        // validation is the same; only the failure mode differs. See
+        // DEPRECATED(#generator/parse-quote-panics).
+        parse2(quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 pub const FIELDS: &'static [&'static str] = &[ #(#names),* ];
                 pub const SHAPES: &'static [&'static str] = &[ #(#shapes),* ];
             }
-        }
+        })
     }
 
-    fn stub(subject: &'ast DeriveInput) -> ItemImpl {
+    fn stub(subject: &'ast DeriveInput) -> syn::Result<ItemImpl> {
         let name = &subject.ident;
         let (impl_generics, type_generics, where_clause) = subject.generics.split_for_impl();
 
-        parse_quote! {
+        parse2(quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 pub const FIELDS: &'static [&'static str] = &[];
                 pub const SHAPES: &'static [&'static str] = &[];
             }
-        }
+        })
     }
 }
 

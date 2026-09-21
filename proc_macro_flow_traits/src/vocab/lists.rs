@@ -189,14 +189,15 @@ macro_rules! meta_list {
                     $crate::meta_list!(@missing $req errors, $field, $key, body);
                 )*
 
-                if errors.is_empty() {
-                    ::std::result::Result::Ok($name {
-                        $( $field: $crate::meta_list!(@take $req $field, $key), )*
-                    })
-                } else {
-                    ::std::result::Result::Err(
-                        errors.finish().err().expect("not empty"),
-                    )
+                // `errors.finish()` is CONSUMED to decide, rather than tested with is_empty and
+                // then unwrapped. The old shape called `.err().expect("not empty")` in the else
+                // arm - a panic standing on an invariant two lines apart, in code that runs in the
+                // AUTHOR'S compile. See NOTE(#vocab/no-panics-in-generated-code).
+                match errors.finish() {
+                    ::std::result::Result::Ok(()) => ::std::result::Result::Ok($name {
+                        $( $field: $crate::meta_list!(@take $req $field, $key, body)?, )*
+                    }),
+                    ::std::result::Result::Err(error) => ::std::result::Result::Err(error),
                 }
             }
         }
@@ -218,10 +219,24 @@ macro_rules! meta_list {
     };
     (@missing optional $errors:ident, $field:ident, $key:literal, $body:ident) => {};
 
-    (@take required $field:ident, $key:literal) => {
-        $field.expect(::std::concat!("`", $key, "` was checked present"))
+    // BUBBLES rather than panics. Reaching the None arm would mean @missing and @take disagree,
+    // which is a framework bug and not bad user input - but a diagnostic naming it beats a panic
+    // in the middle of expansion, which is all the author would otherwise see.
+    (@take required $field:ident, $key:literal, $body:ident) => {
+        match $field {
+            ::std::option::Option::Some(value) => ::std::result::Result::Ok(value),
+            ::std::option::Option::None => ::std::result::Result::Err(::syn::Error::new_spanned(
+                $body,
+                ::std::concat!(
+                    "internal: `", $key, "` passed the required check and then was not present. \
+                     This is a proc_macro_flow bug, not a mistake in this attribute."
+                ),
+            )),
+        }
     };
-    (@take optional $field:ident, $key:literal) => { $field };
+    (@take optional $field:ident, $key:literal, $body:ident) => {
+        ::std::result::Result::<_, ::syn::Error>::Ok($field)
+    };
 }
 
 #[cfg(test)]

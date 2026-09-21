@@ -10,7 +10,9 @@ rectangle "StructExtraction\n<&'ast DeriveInput>" as S #E8F4EA
 rectangle "FieldExtraction\n<&'ast Field>" as F #E8F4EA
 rectangle "SyntaxFieldAttributeExtraction\n<&'ast Attribute>" as Y #E8F4EA
 
-rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants!\nnames! vocabulary! + walk" as V #FFF4E5
+rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants! keys!\nnames! vocabulary! + typed walk" as V #E8F4EA
+
+rectangle """#[derive(Syntax)]""\n""#[shape]"" ""#[alias]"" + heck\nNode table + FromMeta + shape bound" as DS #E8F4EA
 
 rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
 rectangle "Generator\nProcessedStruct -> syn::ItemImpl\nstub() REQUIRED, typed Output" as G #E8F4EA
@@ -39,6 +41,7 @@ Y ..> V : SyntaxHelper (vocabulary!)
 DE ..> S : generates (proved\nin the facade)
 DP ..> P : generates
 DV ..> S : generates
+DS --> V : drives at\nexpansion time
 
 note bottom of F
   **Now wired**, on two counts: the processor
@@ -128,8 +131,15 @@ note as Gap
   already IS source order.
   (#render/traversal-is-source-order)
 
-  What remains: the VOCAB SUITE is still not on
-  the path. The syntax EXTRACTOR now is.
+  The VOCAB SUITE is on a macro path too, as of
+  ""#[derive(Syntax)]"" — a grammar type declared
+  with it runs the suite at expansion time. Note
+  this is the SYNTAX derive's path, not the
+  ExtractorPipeline's; the two stages still meet
+  only through a field's attributes.
+
+  What remains: ""#resolve"" (suffix matching),
+  ""#entry"", ""#diagnostics"".
 end note
 
 Gap .. R

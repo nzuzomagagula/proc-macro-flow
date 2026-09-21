@@ -235,11 +235,23 @@ macro_rules! variants {
         let exprs = $body.positional(arity, $key)?;
         let mut taken = exprs.into_iter();
 
+        // BUBBLES. `positional` already checked the count, so None is unreachable - but an
+        // unreachable panic in the AUTHOR'S compile is still a panic, and a diagnostic naming the
+        // framework costs nothing. See NOTE(#vocab/no-panics-in-generated-code).
         ::std::result::Result::Ok($name::$v(
             $(
-                <$t as $crate::vocab::leaves::FromExpr>::from_expr(
-                    &taken.next().expect("arity was checked"),
-                )?
+                <$t as $crate::vocab::leaves::FromExpr>::from_expr(&match taken.next() {
+                    ::std::option::Option::Some(expr) => expr,
+                    ::std::option::Option::None => {
+                        return ::std::result::Result::Err(::syn::Error::new(
+                            $span,
+                            ::std::concat!(
+                                "internal: `", $key, "` passed its arity check and then ran out \
+                                 of arguments. This is a proc_macro_flow bug."
+                            ),
+                        ));
+                    }
+                })?
             ),+
         ))
     }};
@@ -288,7 +300,18 @@ macro_rules! variants {
 
         match errors.finish() {
             ::std::result::Result::Ok(()) => ::std::result::Result::Ok($name::$v {
-                $( $f: $f.expect("checked present") ),+
+                $( $f: match $f {
+                    ::std::option::Option::Some(value) => value,
+                    ::std::option::Option::None => {
+                        return ::std::result::Result::Err(::syn::Error::new(
+                            $span,
+                            ::std::concat!(
+                                "internal: `", ::std::stringify!($f), "` passed the required \
+                                 check and then was not present. This is a proc_macro_flow bug."
+                            ),
+                        ));
+                    }
+                } ),+
             }),
             ::std::result::Result::Err(error) => ::std::result::Result::Err(error),
         }

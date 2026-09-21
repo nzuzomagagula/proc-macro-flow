@@ -10,13 +10,12 @@
 //! thing should not be opt-in; making it one would just be a way to forget it, and a forgotten
 //! Tr(Diagnose) is a silently unreachable subtree rather than a compile error"
 
-use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Fields, Result, Type};
+use syn::{Item, Data, DeriveInput, Error, Fields, ItemImpl, Result, Type, parse2};
 
-use super::{expr_arg, find_one, Arity, Child};
+use super::{Arity, Child, expr_arg, find_one, named_ident};
 
-pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
     let source = source_type(&input)?;
 
@@ -37,7 +36,7 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
     let mut assignments = Vec::new();
     let mut visits = Vec::new();
     for field in &fields.named {
-        let ident = field.ident.as_ref().expect("named");
+        let ident = named_ident(field)?;
         let from = find_one(&field.attrs, "from")?;
         let with = find_one(&field.attrs, "with")?;
 
@@ -99,7 +98,7 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
             )
         })?;
 
-    Ok(quote! {
+    let extractor = parse2::<ItemImpl>(quote! {
         impl #impl_generics ::proc_macro_flow_traits::extractor::Extractor<#lifetime>
             for #name #type_generics #where_clause
         {
@@ -141,8 +140,14 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
             }
         }
 
-        // Where the children are, and nothing else - the `Extracted` around each one renders its
-        // reasons, because it holds the node they span against (ID(render/who-renders)).
+    })?;
+
+    // Where the children are, and nothing else - the `Extracted` around each one renders its
+    // reasons, because it holds the node they span against (ID(render/who-renders)).
+    //
+    // Parsed SEPARATELY: `parse2::<ItemImpl>` consumes its whole input, so two impls in one call
+    // is an error rather than two items. See NOTE(#derive/expansion-is-typed-items).
+    let diagnose = parse2::<ItemImpl>(quote! {
         impl #impl_generics ::proc_macro_flow_traits::render::Diagnose
             for #name #type_generics #where_clause
         {
@@ -150,7 +155,9 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<TokenStream> {
                 #(#visits)*
             }
         }
-    })
+    })?;
+
+    Ok(vec![Item::Impl(extractor), Item::Impl(diagnose)])
 }
 
 /// The syn node this extraction reads, from `#[source(Ty)]`.

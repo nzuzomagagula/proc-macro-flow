@@ -329,6 +329,26 @@ mod grammar {
         assert!(error.to_string().contains("times"), "{error}");
     }
 
+    #[derive(Syntax)]
+    pub struct TwoRequired {
+        #[allow(dead_code)]
+        first: LitInt,
+        #[allow(dead_code)]
+        second: LitInt,
+    }
+
+    #[test]
+    fn every_missing_key_is_reported_not_just_the_first() {
+        // ID(no-result), through the derive. The generated reader used to return as soon as it
+        // found one missing key - and reach for `.err().expect("not empty")` to do it, a panic in
+        // the author's compile.
+        let error = TwoRequired::from_meta(&meta("two_required()"))
+            .err()
+            .expect("both keys are missing");
+
+        assert_eq!(error.into_iter().count(), 2, "only one missing key was reported");
+    }
+
     #[test]
     fn the_node_table_is_emitted_with_arity() {
         let node = <Retry as Described>::NODE;

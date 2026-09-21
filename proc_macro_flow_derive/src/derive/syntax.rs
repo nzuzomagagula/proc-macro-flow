@@ -16,9 +16,9 @@
 use heck::{ToKebabCase, ToLowerCamelCase, ToSnakeCase};
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Data, DeriveInput, Error, Fields, Result};
+use syn::{parse2, Data, DeriveInput, Error, Fields, Item, ItemImpl, Result};
 
-use super::{find_one, unwrap_generic, Arity};
+use super::{find_one, unwrap_generic, Arity, named_ident};
 
 /// One declared child of a grammar node.
 struct Field<'ast> {
@@ -33,7 +33,7 @@ struct Field<'ast> {
     shape: Option<syn::Path>,
 }
 
-pub(crate) fn derive_syntax(input: DeriveInput) -> Result<TokenStream> {
+pub(crate) fn derive_syntax(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
 
     let Data::Struct(data) = &input.data else {
@@ -63,28 +63,34 @@ pub(crate) fn derive_syntax(input: DeriveInput) -> Result<TokenStream> {
 
     let node = node_const(&entry, &fields);
     let reader = reader(name, &fields);
-    let bounds = shape_bounds(&fields);
+    let bounds = shape_bounds(&fields)?;
 
-    Ok(quote! {
+    // Each item parsed on its own, so a malformed one names the generator that built it rather
+    // than arriving in the author's crate - NOTE(#derive/expansion-is-typed-items).
+    let described = parse2::<ItemImpl>(quote! {
         impl #impl_generics ::proc_macro_flow_traits::node::Described
             for #name #type_generics #where_clause
         {
             #node
         }
+    })?;
 
+    let reader = parse2::<ItemImpl>(quote! {
         impl #impl_generics ::proc_macro_flow_traits::vocab::leaves::FromMeta
             for #name #type_generics #where_clause
         {
             #reader
         }
+    })?;
 
-        #bounds
-    })
+    let mut items = vec![Item::Impl(described), Item::Impl(reader)];
+    items.extend(bounds);
+    Ok(items)
 }
 
 /// Read one field's declaration.
 fn read_field(field: &syn::Field) -> Result<Field<'_>> {
-    let ident = field.ident.as_ref().expect("named");
+    let ident = named_ident(field)?;
     let canonical = ident.to_string().to_snake_case();
 
     // `#[alias]` with no arguments asks for the standard case set; `#[alias("x", "y")]` adds
@@ -183,22 +189,42 @@ fn reader(name: &syn::Ident, fields: &[Field<'_>]) -> TokenStream {
         }
     });
 
+    // EVERY missing key is reported, not just the first. The earlier shape returned as soon as it
+    // found one, which is the sibling-dropping ID(no-result) exists to prevent - and it reached
+    // for `.err().expect("not empty")` to do it, a panic in the AUTHOR'S compile standing on an
+    // invariant established two lines away.
+    let missing = fields.iter().filter(|field| field.arity != Arity::Maybe).map(|field| {
+        let ident = field.ident;
+        let key = &field.key;
+        quote! {
+            if #ident.is_none() {
+                errors.push(::syn::Error::new_spanned(
+                    meta,
+                    ::std::concat!("missing required key `", #key, "`"),
+                ));
+            }
+        }
+    });
+
     let takes = fields.iter().map(|field| {
         let ident = field.ident;
         let key = &field.key;
         match field.arity {
             Arity::Maybe => quote!( #ident: #ident ),
+            // Reached only inside the Ok arm, where the check above has already passed - so None
+            // would be a FRAMEWORK bug. It bubbles a diagnostic saying so rather than panicking;
+            // see NOTE(#derive/no-panics).
             _ => quote! {
                 #ident: match #ident {
                     ::std::option::Option::Some(value) => value,
                     ::std::option::Option::None => {
-                        errors.push(::syn::Error::new_spanned(
+                        return ::std::result::Result::Err(::syn::Error::new_spanned(
                             meta,
-                            ::std::concat!("missing required key `", #key, "`"),
+                            ::std::concat!(
+                                "internal: `", #key, "` passed the required check and then was \
+                                 not present. This is a proc_macro_flow bug."
+                            ),
                         ));
-                        return ::std::result::Result::Err(
-                            errors.finish().err().expect("not empty"),
-                        );
                     }
                 }
             },
@@ -233,7 +259,14 @@ fn reader(name: &syn::Ident, fields: &[Field<'_>]) -> TokenStream {
                 ::std::result::Result::Ok(())
             }));
 
-            ::std::result::Result::Ok(#name { #(#takes),* })
+            #(#missing)*
+
+            match errors.finish() {
+                ::std::result::Result::Err(error) => ::std::result::Result::Err(error),
+                ::std::result::Result::Ok(()) => {
+                    ::std::result::Result::Ok(#name { #(#takes),* })
+                }
+            }
         }
     }
 }
@@ -267,21 +300,21 @@ fn inner_type(field: &Field<'_>) -> TokenStream {
 ///
 /// The runtime check is untouched and still correct. The two answer different questions -
 /// NOTE(#shape/two-facts) - and this is the half that had never been exercised"
-fn shape_bounds(fields: &[Field<'_>]) -> TokenStream {
+fn shape_bounds(fields: &[Field<'_>]) -> Result<Vec<Item>> {
     let assertions = fields.iter().filter_map(|field| {
         let path = field.shape.as_ref()?;
         let inner = inner_type(field);
         let span = path.segments.last().map(|s| s.ident.span())?;
 
-        Some(quote::quote_spanned! { span =>
+        Some(parse2::<Item>(quote::quote_spanned! { span =>
             const _: () = {
                 const fn assert_shape<S: ::proc_macro_flow_traits::meta::Shape>() {}
                 assert_shape::<#path>();
                 const fn assert_readable<T: ::proc_macro_flow_traits::vocab::leaves::FromMeta>() {}
                 assert_readable::<#inner>();
             };
-        })
+        }))
     });
 
-    quote!( #(#assertions)* )
+    assertions.collect()
 }

@@ -61,14 +61,16 @@ use quote::ToTokens;
  * The payoff is that a malformed piece fails where it was BUILT, naming the generator that built
  * it, instead of arriving in the author's crate as a parse error in code they never wrote"
  *
- * NOTE(#generator/parse-quote-panics): V[M(parse_quote).panics], "parse_quote! panics when the
- * tokens do not parse as the target type, and that is the RIGHT signal here, which is worth saying
- * because panicking in a proc macro is usually wrong. The distinction is whose mistake it is: these
- * tokens are ones WE built, so a failure is a FRAMEWORK bug and never bad user input, and a panic
- * naming the construction site beats the same bug arriving downstream as an inscrutable rustc
- * error about generated code. The escape hatch if that ever stops being acceptable is
- * syn::parse2 plus an internal-error stub, which keeps the macro alive and reports the framework
- * bug as a diagnostic - noted so it does not have to be rediscovered"
+ * DEPRECATED(#generator/parse-quote-panics):R[M(parse_quote) -> F(parse2)], "SUPERSEDED, and the
+ * escape hatch it named is now the rule. It argued parse_quote!'s panic was the RIGHT signal here,
+ * because these tokens are ones WE built so a failure is a framework bug rather than bad input.
+ * The premise is still true; the conclusion was wrong for one reason it did not weigh: a panic in
+ * a proc macro happens during the AUTHOR'S compile and reports as an opaque macro failure with no
+ * span, so the person who sees it is the one person who cannot act on it.
+ *
+ * F(generate) and F(stub) return syn::Result now, and Tr(Pipeline)::run degrades: generate fails ->
+ * try the stub, stub fails -> emit the error alone. The framework bug still reaches someone, as a
+ * diagnostic they can report rather than a crash they cannot read"
  *
  * NOTE(#typed-output/not-the-carriers): V[S(Unresolved).T(TokenStream) && S(ListBody).T(TokenStream)],
  * "Recorded so the TODOs above are not read as 'replace every TokenStream'. Unresolved and ListBody
@@ -119,14 +121,14 @@ pub trait Generator: Sized {
     /// ImplItem in its own ItemImpl and the tree stays typed all the way down"
     type Output: ToTokens;
 
-    fn generate(input: Self::Input) -> Self::Output;
+    fn generate(input: Self::Input) -> syn::Result<Self::Output>;
 
     /// The same output, vacant.
     ///
     /// Same associated items as a successful generation, none of the content. NOT an empty stream:
     /// that leaves every use site reporting a missing item on top of the real diagnostic, which is
     /// the cascade the whole rule exists to prevent.
-    fn stub(subject: Self::Subject) -> Self::Output;
+    fn stub(subject: Self::Subject) -> syn::Result<Self::Output>;
 }
 
 #[cfg(test)]
@@ -143,19 +145,19 @@ mod tests {
         type Subject = &'static str;
         type Output = ItemImpl;
 
-        fn generate(input: &'static str) -> ItemImpl {
+        fn generate(input: &'static str) -> syn::Result<ItemImpl> {
             let body = syn::LitStr::new(input, proc_macro2::Span::call_site());
-            parse_quote!(impl Thing for T { const NAME: &'static str = #body; })
+            Ok(parse_quote!(impl Thing for T { const NAME: &'static str = #body; }))
         }
 
-        fn stub(_: &'static str) -> ItemImpl {
-            parse_quote!(impl Thing for T { const NAME: &'static str = ""; })
+        fn stub(_: &'static str) -> syn::Result<ItemImpl> {
+            Ok(parse_quote!(impl Thing for T { const NAME: &'static str = ""; }))
         }
     }
 
     #[test]
     fn a_generator_builds_a_typed_item() {
-        let item = Tiny::generate("thing");
+        let item = Tiny::generate("thing").expect("well formed");
         // it is an ItemImpl, so the SHAPE is inspectable rather than a string to grep
         assert_eq!(item.items.len(), 1);
     }
@@ -165,8 +167,8 @@ mod tests {
         // THE rule, now enforced structurally. Both arms return ItemImpl with the same associated
         // items, so a use site finds NAME either way and never reports a missing item on top of
         // the real diagnostic. Previously this could only be asserted by string-matching a stream.
-        let full = Tiny::generate("thing");
-        let vacant = Tiny::stub("thing");
+        let full = Tiny::generate("thing").expect("well formed");
+        let vacant = Tiny::stub("thing").expect("well formed");
 
         assert_eq!(full.items.len(), vacant.items.len());
         // syn types carry no PartialEq without `extra-traits`, so compare the rendered type
@@ -180,7 +182,7 @@ mod tests {
     fn nothing_malformed_can_leave_a_generator() {
         // parse_quote! validated the tokens as an ItemImpl at construction. A mistake is a panic
         // HERE, not a mystery error in the author's crate - NOTE(#generator/parse-quote-panics).
-        let item = Tiny::generate("thing");
+        let item = Tiny::generate("thing").expect("well formed");
         assert!(item.trait_.is_some(), "the impl lost its trait");
     }
 }

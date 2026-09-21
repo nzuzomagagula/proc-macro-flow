@@ -16,6 +16,7 @@
 //! Deriving what you want generated and hand-writing the rest is ordinary Rust and needs no opt-out
 //! attribute, which is the same reasoning ID(processor/optionality) already settled"
 
+pub(crate) mod ext;
 mod extractor;
 mod syntax;
 mod processor;
@@ -26,6 +27,7 @@ pub(crate) use syntax::derive_syntax;
 pub(crate) use processor::derive_processor;
 pub(crate) use validate::derive_validate;
 
+use ext::TypeExt;
 use syn::{spanned::Spanned, Attribute, Error, GenericArgument, PathArguments, Result, Type};
 
 /// How many children a field declares, read off its written type.
@@ -33,6 +35,7 @@ use syn::{spanned::Spanned, Attribute, Error, GenericArgument, PathArguments, Re
 /// This is `#from/arity-from-type`, and it is where a proc macro beats `macro_rules!`: the type is
 /// *parsed*, so `std::option::Option<T>` and `Option<T>` are the same thing here, where a
 /// declarative macro could only match the tokens it was handed.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Arity {
     /// `Extracted<T, I>` — exactly one.
     One,
@@ -52,13 +55,13 @@ pub(crate) struct Child {
 
 impl Child {
     pub(crate) fn of(ty: &Type) -> Result<Self> {
-        if let Some(inner) = unwrap_generic(ty, "Vec") {
+        if let Some(inner) = ty.unwrap_generic("Vec") {
             return Ok(Child {
                 arity: Arity::Many,
                 extractor: extractor_of(inner)?,
             });
         }
-        if let Some(inner) = unwrap_generic(ty, "Option") {
+        if let Some(inner) = ty.unwrap_generic("Option") {
             return Ok(Child {
                 arity: Arity::Maybe,
                 extractor: extractor_of(inner)?,
@@ -73,7 +76,7 @@ impl Child {
 
 /// The `T` in `Extracted<T, I>`.
 fn extractor_of(ty: &Type) -> Result<Type> {
-    unwrap_generic(ty, "Extracted").cloned().ok_or_else(|| {
+    ty.unwrap_generic("Extracted").cloned().ok_or_else(|| {
         Error::new(
             ty.span(),
             "expected `Extracted<T, I>`, optionally inside `Vec` or `Option` - a field with \
@@ -82,60 +85,6 @@ fn extractor_of(ty: &Type) -> Result<Type> {
     })
 }
 
-/// The first generic argument of `Name<..>`, when the type's last segment is `Name`.
-///
-/// `pub(crate)` because ID(syntax/derive) reads arity the same way and must not write a second
-/// reader. It cannot reuse F(Child::of), which is extraction-specific - that one requires
-/// `Extracted<T, I>` and a grammar field is not one - but the LEAF MATCH is the shared part, and
-/// it is the part that matters: `segments.last()` is what makes `std::option::Option<T>` work
-/// where M(meta_list)'s token matching cannot. See NOTE(#syntax-derive/parses-the-type).
-pub(crate) fn unwrap_generic<'ty>(ty: &'ty Type, name: &str) -> Option<&'ty Type> {
-    let Type::Path(path) = ty else { return None };
-    let segment = path.path.segments.last()?;
 
-    if segment.ident != name {
-        return None;
-    }
 
-    let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return None;
-    };
 
-    args.args.iter().find_map(|arg| match arg {
-        GenericArgument::Type(inner) => Some(inner),
-        _ => None,
-    })
-}
-
-/// Read the single expression out of `#[name(expr)]`.
-///
-/// NOTE(#derive/list-not-name-value): V[Attr(from).list], "`#[from(expr)]` and NOT
-/// `#[from = expr]`, and this is forced rather than chosen. VERIFIED: rustc rejects the name-value
-/// form with `attribute value must be a literal` - after `=` a derive helper attribute may carry a
-/// literal and nothing else, so `#[from = source.fields.iter()]` never reaches the macro at all.
-/// The LIST form takes arbitrary tokens, which is the same property the whole design already rests
-/// on: MetaList::tokens is raw and unparsed (ID(openings)). So the one place the framework needs to
-/// carry an un-inspected expression is the one place syn's grammar leaves open for it"
-pub(crate) fn expr_arg(attr: &Attribute) -> Result<syn::Expr> {
-    attr.parse_args::<syn::Expr>().map_err(|_| {
-        Error::new(
-            attr.span(),
-            "expected `(<expression>)` - the expression is spliced verbatim and never inspected",
-        )
-    })
-}
-
-/// Find at most one attribute with the given head.
-pub(crate) fn find_one<'a>(attrs: &'a [Attribute], name: &str) -> Result<Option<&'a Attribute>> {
-    let mut found = attrs.iter().filter(|a| a.path().is_ident(name));
-    let first = found.next();
-
-    if let Some(extra) = found.next() {
-        return Err(Error::new(
-            extra.span(),
-            format!("`{name}` is written more than once"),
-        ));
-    }
-
-    Ok(first)
-}
