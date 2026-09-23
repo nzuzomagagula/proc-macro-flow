@@ -295,13 +295,8 @@ impl<T, I: ToTokens> Extracted<T, I> {
 // THE EXTRACTION CONTRACT
 // ===========================================================================
 
-// Answer(#pipeline/validity-scope):A[ID(pipeline/validity-error) ==? this], "The trait was never
-// vestigial, it was UNDEFINED - which is why all three impls are Ok(input) and why deleting it kept
-// looking tempting. Its job is SURFACE-LEVEL validation and nothing more: does this exist where it is
-// required, is this value within some bound - the questions answerable by looking at a node without
-// interpreting it. It must NOT parse and it must not read grammar; a node's meaning belongs to the
-// processor. That also settles the sibling question at ID(pipeline/validity-error): failures here
-// become a Reason on the node, because a surface check has a span and a cause and nothing else"
+// NOTE(#pipeline/validity-scope): F(validate) is a SURFACE check - is this node one of ours, and what
+// does it narrow to. It interprets no tokens; that is the reader's job.
 /* @group(#multi-source)
  *
  * ONE extraction pipeline, SEVERAL source node kinds. The motivating case is a grammar that must
@@ -372,15 +367,9 @@ pub trait Validate<'ast> {
     /// NOTE(#pipeline/source-is-associated).
     type Source: Visitable<'ast>;
 
-    // Answer(#pipeline/validity-error):A[ID(syntax/reason) == this], "DONE, and the answer was the
-    // one predicted: ValidityError should not be bounded by std::error::Error, it should stop
-    // being an associated type at all. A proc macro only ever EMITS an error - it never handles
-    // one - so a per-type error buys nothing and cannot combine with a sibling's, which is what
-    // accumulation needs. VERIFIED before removing it: the associated type was written by five
-    // impls and read by ZERO - every Err arm in the crate discarded it - and three of the five
-    // already set it to `()` because there was nothing meaningful to name. A parameter that most
-    // implementors fill with the unit type is not carrying information; it is asking every author
-    // to invent a name for 'no'. See ID(extractor/error)"
+    // NOTE(#pipeline/validity-error): a validity failure is a E(Reason) - a span and a cause - and never a
+    // per-type error. A proc macro only ever EMITS an error, so a taxonomy buys nothing and cannot
+    // combine with a sibling's.
     type Valid;
 
     /// Narrow the source, or say why it could not be.
@@ -401,13 +390,9 @@ pub trait Validate<'ast> {
 pub trait Extractor<'ast>: Sized + Validate<'ast> {
     /// What the processor receives.
     ///
-    /// TODO[x](#extractor/output-bound):C[Ty(Output).bound], "RESOLVED, and the answer is that no
-    /// bound belongs here. It was left open waiting for Tr(Processor) to exist so the honest bound
-    /// - 'something a processor can consume' - could be written. Processor now exists, and writing
-    /// it would be wrong: an extractor does not know which processor will consume it, and nothing
-    /// makes the relation one-to-one. The agreement is declared from the OTHER side, where a
-    /// Processor names its Input. A bound here would assert a coupling that does not exist.
-    /// See NOTE(#processor/output-needs-no-bound)"
+    /// NOTE(#extractor/output-bound): Ty(Output) carries NO bound. An extractor does not know which
+    /// processor will consume it; the agreement is declared from Tr(Pipeline), where the stages are named
+    /// together.
     type Output;
 
     // `Self::Source` is the BORROWED node type (`&'ast DeriveInput`, not `DeriveInput`), which is

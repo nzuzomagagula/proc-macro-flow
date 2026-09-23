@@ -6,23 +6,10 @@ use syn::{Attribute, Field};
 
 use crate::base::syntax::extractor::SyntaxFieldAttributeExtraction;
 
-// DEPRECATED(#attribute/generic-grammar):D[S(TransformationExtraction)], "Deleted, and the
-// annotations that went with it were wrong in a way worth not rediscovering. They called it 'parse
-// this attribute against grammar type G' - a bespoke Meta matcher waiting on the syntax stage. It
-// is not that. It held the AUTHOR'S TRANSFORMATION EXPRESSION: how to reach a value from their
-// source, as a field path, a closure or a function pointer. That is Attr(from), it belongs on the
-// field it describes, and a separate extraction node for it was a category error. The `expression:
-// &'ast Expr` placeholder was the tell - it could hold a value but could not say what produced it,
-// because nothing was supposed to produce it here at all"
-// TODO[x](#field/children):C[S(FieldExtraction).P], "DONE: a field's children are its ATTRIBUTES.
-// Two corrections to what this asked for. It said 'empty until the DERIVE gives it fields declared
-// with Attr(from)' - which could never happen, because FieldExtraction lives in the proc-macro
-// crate and ID(derive/cannot-self-host) means it can never carry the derive where it sits. So the
-// stated unblocking condition was impossible, not merely pending. And the real question was never
-// which mechanism fills the struct, but WHAT A FIELD'S CHILDREN ARE.
-//
-// They are the helper attributes written on it, each its own extraction. That is also what first
-// puts the syntax stage on the macro path - see Fix[x](#syntax/not-driven)"
+// NOTE(#attribute/generic-grammar): a field's Attr(from) expression is NOT a child node. It says how
+// to reach a value, which belongs on the field, not in an extraction of its own.
+// NOTE(#field/children): a field's children are its ATTRIBUTES, each its own extraction. This is what
+// puts the syntax stage on the macro path.
 pub(crate) struct FieldExtraction<'ast> {
     /// One child per attribute written on the field, grammar or not.
     ///

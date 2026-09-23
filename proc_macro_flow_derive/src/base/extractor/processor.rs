@@ -2,22 +2,9 @@
 //! The concrete processor for the extractor stage: narrowing an extraction into what the
 //! generator wants.
 //!
-//! Answer(#processor/base-scope):A[ID(processor/base-scope) ==? S(ProcessedStruct)], "The question
-//! was what a base processor should VALIDATE or TRANSFORM before generation. Now answered by a real
-//! one. It validates NOTHING - by the time an extraction arrives its reasons are recorded, and
-//! re-checking would duplicate a test it cannot improve on while discarding the spans that make the
-//! result diagnosable. It TRANSFORMS: Extracted<StructExtraction, &DeriveInput> becomes
-//! ProcessedStruct, which holds the two things code generation actually needs - the item to name,
-//! and its fields. Everything the extraction carried that generation does not need is dropped here,
-//! which is the whole job"
-//!
-//! NOTE(#processor/needs-the-source): V[F(process).uses(F(Extracted::source))], "This is the
-//! clearest demonstration of why the source rides on the OUTPUT. FieldExtraction currently carries
-//! NO data at all - its value is an empty struct - so everything ProcessedField knows comes from
-//! `input.source()`, the node the extraction was read from. Had the pipeline unwrapped Extracted
-//! between stages, or had the source lived on the value through Tr(Sourced), a processor would have
-//! nothing to work with the moment an extraction failed. It is available here precisely because it
-//! never depended on the value existing"
+//! NOTE(#processor/base-scope): a processor VALIDATES NOTHING and TRANSFORMS ONLY. By the time an
+//! extraction arrives its reasons are recorded, and re-checking would discard the spans that make them
+//! diagnosable.
 
 use proc_macro2::TokenStream;
 use proc_macro_flow_traits::{
@@ -248,9 +235,6 @@ mod tests {
 
     #[test]
     fn processing_narrows_and_does_not_resolve() {
-        // Answer(#processor/base-scope): the typestate and the Unresolved wrapper are DROPPED,
-        // the tokens are carried UNREAD. If this stage ever starts reading them it has taken
-        // generation's job and broken ID(no-parse).
         let out = processed("pub struct Thing { #[alias(colours)] a: u8 }");
         let value = out.value.unwrap();
 

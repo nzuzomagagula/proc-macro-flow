@@ -1,17 +1,9 @@
 // @review [ ]
 //! The concrete generator for the extractor stage.
 //!
-//! Answer(#generator/base-scope):A[ID(generator/base-scope) ==? F(stub)], "The question was whether
-//! a base generator emits just the ItemImpl shape or the full body. Answered by building one: it
-//! emits the FULL body when there is a value, and a STUB with the same shape when there is not.
-//! Both are the same impl block from a use site's point of view, which is the whole requirement -
-//! ID(generator/stub-alongside-errors) needs the item to exist, not to be complete"
-//!
-//! NOTE(#generator/stub-is-not-empty): V[F(stub).emits(Impl)], "The stub is an impl with the same
-//! associated items as a successful one, just vacant - NOT an empty token stream. An empty one
-//! would leave every use site reporting 'no associated item named FIELDS', which is the cascade the
-//! rule exists to prevent. A stub that type-checks buys silence downstream so the real diagnostic
-//! is the only thing the user reads"
+//! NOTE(#generator/base-scope): a generator emits the FULL body when there is a value and a STUB of the
+//! same type when there is not. Both are the same item from a use site's view, which is all
+//! ID(generator/stub-is-not-empty) needs.
 
 use quote::quote;
 use syn::{parse2, DeriveInput, ItemImpl};
@@ -62,7 +54,6 @@ impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast
         // `parse2(..)?` and not `parse_quote!`: the latter PANICS on malformed tokens, and a
         // panic here lands in the AUTHOR'S compile as an opaque macro failure with no span. The
         // validation is the same; only the failure mode differs. See
-        // DEPRECATED(#generator/parse-quote-panics).
         parse2(quote! {
             impl #impl_generics #name #type_generics #where_clause {
                 pub const FIELDS: &'static [&'static str] = &[ #(#names),* ];

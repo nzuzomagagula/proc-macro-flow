@@ -78,35 +78,9 @@ pub mod vocab;
  *
  * NOTE(#placement): V[root.has(N(syntax))] && V[ID(pipeline/relocate-traits) ==? this], "Step zero, and the same problem #pipeline/relocate-traits already names. VERIFIED: rustc refuses a proc-macro crate that declares ANY pub non-macro item, so the shape traits, Reason, Extraction and Node cannot live in the derive crate - this is a language constraint, not a preference. A PRIVATE grammar type does parse fine there, so expansion-time resolution would work either way; pub in this crate is what puts the grammar in cargo doc and what lets a re-emitted path resolve downstream. Everything below is blocked on this"
  *
- * Answer(#traits):A[ID(traits) == Tr(Shape) + Tr(FromMeta)], "SUPERSEDED, not built, and the
- * substitution is worth recording because the original is still the better-sounding design. It
- * asked for ONE TRAIT PER SHAPE - FromPath, FromMetaList, FromNameValue - so that Attr(shape)
- * lowers to a trait BOUND rather than a runtime match, and a type never declared parsable in a
- * given shape fails in the AUTHOR's crate. That goal was met; the decomposition was not.
- *
- * What shipped is Tr(Shape) - `type Input<'ast>` plus `const KIND` - with the three shapes as
- * ZSTs, and ONE Tr(FromMeta) that reads a node out of whichever variant it was written as. The
- * reason for the swap is ID(openings): syn::Meta already HAS exactly three variants, so three
- * traits would have been a second three-valued vocabulary sitting beside rustc's own, free to
- * disagree with it. Tr(Shape) names the variant instead of duplicating the choice.
- *
- * The bound still exists and still fails in the author's crate - it is `T: FromMeta` plus the
- * shape's Ty(Input) - so nothing about ID(no-runtime-shape-match) was given up. See
- * NOTE(#leaves/uniform-field-read) for why there is deliberately no blanket
- * `impl<T: FromExpr> FromMeta for T`"
- *
- * TODO[x](#node-table): C[S(Node).P(name)] && C[S(Node).P(aliases)] && C[S(Node).P(shapes)] && C[S(Node).P(children)], "DONE, in proc_macro_flow_traits::node, with all four fields - name, aliases, shapes, children - plus ARITY, which this item did not ask for and which turns out to be the thing that makes it useful: the framework can answer `what is missing` without the caller restating requiredness.
- *
- * The shape it landed in is the one NOTE(#keys/one-table) argues for: Ty(Node) is a VIEW DERIVED FROM Tr(Keys), not a second declaration, so it cannot advertise a key the walker would reject. It replaced M(meta_list)'s `const KEYS: &[&str]`, which was exactly the rival list this collapse removes. Nothing resolves against a Ty(Node) - resolution is Tr(Keys)::resolve and only that - which is why the strings in it do not contradict ID(type-backed).
- *
- * ID(reason)'s open half and ID(diagnostics) were both blocked on this and are now merely unwritten"
- *
- * TODO[ ](#diagnostics): C[Tr(Diagnostics).F(message).R(String)], "Author-overridable RENDERING, blanket default provided. Scoped to rephrasing and never to construction: the framework keeps the span and the tree position, so the worst an author can do is bad prose in the right place. The case that earns it is domain vocabulary - a DSL wants 'unknown column option', which the framework cannot know and which should not cost the author spans or did-you-mean to obtain"
- *
- * --- PARSING ENTRY POINTS --------------------------------------------------
- *
- * TODO[ ](#entry): C[F(from_body).A(\1).T(TokenStream)] && C[F(from_attributes).A(\1).T(&[Attribute])] && C[F(from_args).A(\1).T(TokenStream)], "from_body does the work; the other two are thin adapters. Every attribute-bearing syn node exposes .attrs, so &[Attribute] is the universal entry and POSITION (item / field / variant) never needs modelling at all. A proc_macro_attribute hands its args over already unwrapped, so that path is less work, not different work. Document the one real asymmetry: empty args have no span, and #[a] is indistinguishable from #[a()] there, so a bare-flag grammar ROOT works under a derive only"
- *
- * TODO[ ](#resolve): C[F(resolve).R(Extraction<Self>)], "Type-directed: gather the expected type's candidates, match exactly, accept any SUFFIX of a canonical path, allow a ZST field to be written as key OR value, then zero matches -> 'not accepted here, expected one of ..' and several -> 'ambiguous, qualify'. Suffix matching is free for every node and needs nothing declared, and mirroring rustc's own import semantics means the rule is one users already hold. Keys are idents and values are paths, exactly the asymmetry Rust has in `Foo { bar: Baz::Qux }` - fields are not items, so there is no `configuration::colour` to resolve and the qualified key form is dropped"
- *
- */
+* NOTE(#traits): the three attribute shapes are ONE Tr(Shape) (`type Input` + `const KIND`) plus one
+* Tr(FromMeta), not three traits. syn::Meta already has exactly three variants, so a second
+* three-valued vocabulary beside rustc's own could only disagree with it.
+* NOTE(#node-table): Ty(Node) is a VIEW DERIVED FROM Tr(Keys), never a second declaration - so it
+* cannot advertise a key the walker would reject. Nothing resolves against a Ty(Node); it decides
+* only how a failure reads.

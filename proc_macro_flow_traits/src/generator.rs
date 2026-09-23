@@ -19,23 +19,9 @@ use quote::ToTokens;
 
 /* @group(#typed-output)
  *
- * DEPRECATED(#generator/parse-quote-panics):R[M(parse_quote) -> F(parse2)], "SUPERSEDED, and the
- * escape hatch it named is now the rule. It argued parse_quote!'s panic was the RIGHT signal here,
- * because these tokens are ones WE built so a failure is a framework bug rather than bad input.
- * The premise is still true; the conclusion was wrong for one reason it did not weigh: a panic in
- * a proc macro happens during the AUTHOR'S compile and reports as an opaque macro failure with no
- * span, so the person who sees it is the one person who cannot act on it.
- *
- * F(generate) and F(stub) return syn::Result now, and Tr(Pipeline)::run degrades: generate fails ->
- * try the stub, stub fails -> emit the error alone. The framework bug still reaches someone, as a
- * diagnostic they can report rather than a crash they cannot read"
- *
- * NOTE(#typed-output/not-the-carriers): V[S(Unresolved).T(TokenStream) && S(ListBody).T(TokenStream)],
- * "Recorded so the TODOs above are not read as 'replace every TokenStream'. Unresolved and ListBody
- * hold raw tokens BECAUSE they are unparsed - ID(no-parse) and ID(openings) exist to keep them that
- * way, and typing them would defeat the deferral the whole design rests on. The rule is: type what
- * WE build, leave what the USER wrote alone until someone asks it a question"
- */
+* NOTE(#generator/parse-quote-panics): generation may FAIL rather than panic. `parse_quote!` is
+* banned here - a panic in a proc macro lands in the AUTHOR'S compile as an opaque failure with no
+* span. Use `parse2(..)?`; Tr(Pipeline)::run degrades to the stub, then to the error alone.
 
 /// Build a typed item from a processed value.
 ///

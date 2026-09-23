@@ -13,15 +13,10 @@
 //! to use it"
 //!
 //! NOTE(#pipeline/not-a-description): V[Tr(Pipeline).!restates(S(Extraction))], "Amends
-//! Answer(#extractor/self-hosting), which concluded 'nothing holds a triple, because nothing needs
-//! to'. That OVERREACHED. The evidence supported only the narrower claim - nothing needs a triple
-//! to DESCRIBE the extraction's shape - and that part stands: the field type carries the arity and
-//! Ty(Extracted) carries the source, so a struct restating either would be redundant.
-//!
-//! Owning NORMALISATION is a different job with a different justification, and the original warning
-//! is the guard rail rather than the refutation: if Tr(Pipeline) ever grows a field or a method
-//! that restates what the extraction struct already says, that is the drift the old answer was
-//! right about"
+//! NOTE(#extractor/self-hosting): a grammar declares itself DECLARATIVELY - Attr(source), Attr(from),
+//! Attr(with) read off the extraction type - so nothing holds an extractor/processor/generator triple
+//! to DESCRIBE a pipeline. S(ExtractorPipeline) holds one to own NORMALISATION, which is a different
+//! job; see NOTE(#pipeline/not-a-description).
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;

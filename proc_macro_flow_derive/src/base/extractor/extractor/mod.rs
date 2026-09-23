@@ -1,40 +1,9 @@
 // @review [ ]
-// Answer(#extractor/self-hosting):A[S(ExtractorPipeline) == Attr(derive(Extractor))], "THE SAME
-// FEATURE, ARRIVED AT BY ANOTHER ROUTE. @group(#extractor/self-hosting) asked for a bare
-// ExtractorPipeline struct holding its own extractor/processor/generator triple, an expand() over
-// it, and that expansion wired into the macro entry point - 'the extractor stage becomes
-// self-hosting'. What shipped answers the same question declaratively: Attr(source) names the syn
-// node, Attr(from)/Attr(with) name where each child comes from, and Attr(derive(Extractor)) reads
-// them off the extraction type itself. Nothing holds a triple, because nothing needs to: the field
-// TYPE already carries the arity (ID(from/arity-from-type)) and Ty(Extracted) already carries the
-// source, so a struct assembled to describe a pipeline would only be restating what the extraction
-// struct says. The three below are closed against this answer, not abandoned.
-//
-// AMENDED, and the amendment matters more than the answer. The sentence 'nothing holds a triple,
-// because nothing needs to' OVERREACHED: the evidence supported only the narrower claim, that
-// nothing needs a triple to DESCRIBE the extraction's shape. That part stands and is why the
-// derive replaced ExtractorPipeline-as-a-description.
-//
-// It said nothing about owning NORMALISATION - run order, the render walk, the stub decision,
-// lowering, helper-attribute declaration - which is a different job with no home but the entry
-// point, where it was hand-written and would have been copy-pasted at every macro. S(ExtractorPipeline)
-// now exists for exactly that (ID(pipeline/owns-normalisation)), carrying the name this answer said
-// would not be needed.
-//
-// The original reasoning is kept because it is the GUARD RAIL, not the refutation: the failure it
-// warns against - a type restating what the extraction struct already says - is precisely the
-// drift S(ExtractorPipeline) must not take. It names the three stages so the BOUNDS make them
-// agree, and holds no data of its own"
-//
-// TODO[x](#extractor/pipeline):C[S(ExtractorPipeline)], "CLOSED by ID(extractor/self-hosting) - and
-// the type is deliberately NOT built. Its job was to be the thing a macro expands; the derive
-// expands the extraction struct instead, which is one fewer type declaring the same shape twice"
-// TODO[x](#extractor/macro-wiring):U[F(field_names)], "CLOSED by ID(extractor/self-hosting). There
-// is no expand() to wire, and the target it named moved: lib.rs::extractor is now F(field_names),
-// while F(extractor) is the DERIVE. VERIFIED that the rename was forced rather than chosen - two
-// Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]: the name Extractor is defined
-// multiple times`. Recorded because this annotation resolved cleanly to the wrong function for a
-// while, which is worse than dangling"
+// NOTE(#extractor/pipeline): S(ExtractorPipeline) names the three stages so the BOUNDS make them
+// agree, and holds no data of its own. If it ever grows a field restating the extraction, that is the
+// drift to undo.
+// NOTE(#extractor/macro-wiring): the entry point is F(field_names); F(extractor) is the DERIVE. Two
+// Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]`, which forced the split.
 use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
@@ -45,7 +14,8 @@ use crate::base::extractor::extractor::field::FieldExtraction;
 
 pub mod field;
 
-//Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"
+// NOTE(#extractor/recursive-source): F(extract_from) descends from its OWN source, never from a
+// child's genesis type. There is no Visit walk.
 
 pub(crate) struct StructExtraction<'ast> {
     pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
@@ -78,18 +48,8 @@ impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
     }
 }
 
-// TODO[x](#extractor/error):R[Ty(Validate::ValidityError) -> E(Reason)], "DONE. The answer was the
-// one predicted - meaning comes from a closed Reason set, not a taxonomy of error types - and the
-// three unit structs it named are deleted: StructExtractionValidityError, FieldExtractionError and
-// SyntaxFieldAttributeError. A fourth, TransformationExtractionError, had already gone with
-// ID(attribute/generic-grammar), so the annotation was describing a type that no longer existed.
-//
-// What made the case unarguable was evidence rather than argument. The associated type was written
-// by five impls and read by ZERO - every Err arm discarded it - while three of the five already set
-// it to `()`. Two things fell out of removing it that were not the point but are worth more than
-// the tidying: validate now builds its reason WHERE THE CAUSE IS KNOWN, so this extraction reports
-// against the offending ident instead of extract_from hardcoding WrongShape against the whole item;
-// and the derive stopped failing SILENTLY (ID(derive/silent-validate))"
+// NOTE(#extractor/error): meaning comes from the closed E(ReasonKind) set, not a taxonomy of error
+// types. Ty(Validate::ValidityError) is gone - it was written by five impls and read by none.
 
 impl<'ast> Validate<'ast> for StructExtraction<'ast> {
     type Source = &'ast DeriveInput;
