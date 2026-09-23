@@ -30,6 +30,9 @@ pub(crate) trait TypeExt {
 
     /// What a field of this type reads: `Option<T>` and `Vec<T>` read a `T`, anything else itself.
     fn inner(&self) -> &Type;
+
+    /// The `T` of `Extracted<T, I>` — the extractor that produced this child.
+    fn extractor(&self) -> Result<Type>;
 }
 
 impl TypeExt for Type {
@@ -65,6 +68,36 @@ impl TypeExt for Type {
         self.unwrap_generic("Option")
             .or_else(|| self.unwrap_generic("Vec"))
             .unwrap_or(self)
+    }
+
+    fn extractor(&self) -> Result<Type> {
+        self.unwrap_generic("Extracted").cloned().ok_or_else(|| {
+            Error::new_spanned(
+                self,
+                "expected `Extracted<T, I>`, optionally inside `Vec` or `Option` - a field with \
+                 `#[from]` holds what its child extractor produced",
+            )
+        })
+    }
+}
+
+/// Reading the item a derive was applied to.
+pub(crate) trait DeriveInputExt {
+    /// The syn node this extraction reads, from `#[source(Ty)]`.
+    fn source_type(&self) -> Result<Type>;
+}
+
+impl DeriveInputExt for syn::DeriveInput {
+    fn source_type(&self) -> Result<Type> {
+        let attr = self.attrs.find_one("source")?.ok_or_else(|| {
+            Error::new_spanned(
+                &self.ident,
+                "`#[source(Ty)]` names the syn node this reads - without it a `#[from]` \
+                 expression has no typed `source` to be written against",
+            )
+        })?;
+
+        attr.parse_args::<Type>()
     }
 }
 

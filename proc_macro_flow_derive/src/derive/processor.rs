@@ -7,21 +7,14 @@
 //! opt-out attribute.
 
 use quote::quote;
-use syn::{parse2, DeriveInput, Error, Item, ItemImpl, Result, Type};
+use syn::{DeriveInput, Error, Item, ItemImpl, Result, parse2};
 
-use super::find_one;
+use super::ext::DeriveInputExt;
 
 pub(crate) fn derive_processor(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
 
-    let attr = find_one(&input.attrs, "source")?.ok_or_else(|| {
-        Error::new_spanned(
-            &input.ident,
-            "`#[derive(Processor)]` needs `#[source(Ty)]` - the identity processor's Input is the \
-             matching extractor's Output, which names that type",
-        )
-    })?;
-    let source: Type = attr.parse_args()?;
+    let source = input.source_type()?;
 
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
     let lifetime = input

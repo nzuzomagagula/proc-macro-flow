@@ -7,20 +7,14 @@
 //! there is nothing to check; write it by hand when there is.
 
 use quote::quote;
-use syn::{parse2, DeriveInput, Error, Item, ItemImpl, Result, Type};
+use syn::{DeriveInput, Error, Item, ItemImpl, Result, parse2};
 
-use super::find_one;
+use super::ext::DeriveInputExt;
 
 pub(crate) fn derive_validate(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
 
-    let attr = find_one(&input.attrs, "source")?.ok_or_else(|| {
-        Error::new_spanned(
-            &input.ident,
-            "`#[derive(Validate)]` needs `#[source(Ty)]` to know what it is validating",
-        )
-    })?;
-    let source: Type = attr.parse_args()?;
+    let source = input.source_type()?;
 
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
     let lifetime = input

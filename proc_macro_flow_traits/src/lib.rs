@@ -122,7 +122,12 @@ pub mod vocab;
  * Answer(#traits) replaced - but the substance is unchanged and is exactly the thing nobody should
  * later 'fix' as an apparent conflict"
  *
- * TODO[ ](#forwarding): C[Impl(Option<T>).impl(FromMetaList)] && C[Impl(Vec<T>).impl(FromMetaList)] && C[Impl(Box<T>).impl(FromMetaList)], "Adapters for Option<T>, Vec<T>, NonEmpty<T>, Punctuated<T, Sep>, Box<T> and Spanned<T>. This is where requiredness and arity are enforced, which keeps 'how many' in exactly one place - the field type - instead of smeared across the shape traits. Box<T> is what makes a recursive grammar terminate; Spanned<T> is the opt-in span boundary that lets every other grammar type stay plain data. Sep is contingent on ID(syntax/separator)"
+ * TODO[ ](#forwarding): C[Impl(Option<T>).impl(FromMetaList)] && C[Impl(Vec<T>).impl(FromMetaList)] && C[Impl(Box<T>).impl(FromMetaList)], "Adapters for Option<T>, Vec<T>, NonEmpty<T>, Punctuated<T, Sep>, Box<T> and Spanned<T>. This is where requiredness and arity are enforced, which keeps 'how many' in exactly one place - the field type - instead of smeared across the shape traits. Box<T> is what makes a recursive grammar terminate; Spanned<T> is the opt-in span boundary that lets every other grammar type stay plain data. Sep is contingent on ID(syntax/separator)
+ *
+ * CONSTRAINED since this was written: Option<T> must NEVER get one. See
+ * NOTE(#forwarding/no-option) - its absence is what keeps a mis-read arity a compile error rather
+ * than a silent change of meaning, and it is VERIFIED, not argued. Vec<T> and Box<T> are unaffected;
+ * only Option carries arity."
  *
  * --- ERRORS AS DATA --------------------------------------------------------
  *

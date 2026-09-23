@@ -252,8 +252,9 @@ impl<'ast> ListBody<'ast> {
     ///
     /// The closure receives a Ty(Written) - the typed name AND the token that spelled it - so a
     /// caller's match is exhaustive and every error it raises already has the author's span. That
-    /// is the whole difference from F(walk_keys) below, which hands back a `&str` and leaves both
-    /// to the caller.
+    /// is the whole difference from the string-shaped `walk_keys` this REPLACED, which handed back
+    /// a `&str` and left both to the caller. That function is deleted rather than deprecated -
+    /// keeping both is how the two vocabularies grow back apart.
     ///
     /// Owns unknown-key and duplicate-key reporting; the closure only reads the element it was
     /// handed. Missing required keys are NOT reported here - which are required is written in the

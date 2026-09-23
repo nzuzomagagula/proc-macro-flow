@@ -18,17 +18,17 @@
 
 pub(crate) mod ext;
 mod extractor;
-mod syntax;
 mod processor;
+mod syntax;
 mod validate;
 
 pub(crate) use extractor::derive_extractor;
-pub(crate) use syntax::derive_syntax;
 pub(crate) use processor::derive_processor;
+pub(crate) use syntax::derive_syntax;
 pub(crate) use validate::derive_validate;
 
 use ext::TypeExt;
-use syn::{spanned::Spanned, Attribute, Error, GenericArgument, PathArguments, Result, Type};
+use syn::{Result, Type};
 
 /// How many children a field declares, read off its written type.
 ///
@@ -58,33 +58,18 @@ impl Child {
         if let Some(inner) = ty.unwrap_generic("Vec") {
             return Ok(Child {
                 arity: Arity::Many,
-                extractor: extractor_of(inner)?,
+                extractor: inner.extractor()?,
             });
         }
         if let Some(inner) = ty.unwrap_generic("Option") {
             return Ok(Child {
                 arity: Arity::Maybe,
-                extractor: extractor_of(inner)?,
+                extractor: inner.extractor()?,
             });
         }
         Ok(Child {
             arity: Arity::One,
-            extractor: extractor_of(ty)?,
+            extractor: ty.extractor()?,
         })
     }
 }
-
-/// The `T` in `Extracted<T, I>`.
-fn extractor_of(ty: &Type) -> Result<Type> {
-    ty.unwrap_generic("Extracted").cloned().ok_or_else(|| {
-        Error::new(
-            ty.span(),
-            "expected `Extracted<T, I>`, optionally inside `Vec` or `Option` - a field with \
-             `#[from]` holds what its child extractor produced",
-        )
-    })
-}
-
-
-
-

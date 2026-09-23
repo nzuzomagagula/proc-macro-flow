@@ -11,13 +11,14 @@
 //! Tr(Diagnose) is a silently unreachable subtree rather than a compile error"
 
 use quote::quote;
-use syn::{Item, Data, DeriveInput, Error, Fields, ItemImpl, Result, Type, parse2};
+use syn::{Data, DeriveInput, Error, Fields, Item, ItemImpl, Result, parse2};
 
-use super::{Arity, Child, expr_arg, find_one, named_ident};
+use super::ext::{AttributeExt, AttributesExt, DeriveInputExt, FieldExt};
+use super::{Arity, Child};
 
 pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
     let name = &input.ident;
-    let source = source_type(&input)?;
+    let source = input.source_type()?;
 
     let Data::Struct(data) = &input.data else {
         return Err(Error::new_spanned(
@@ -36,9 +37,9 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
     let mut assignments = Vec::new();
     let mut visits = Vec::new();
     for field in &fields.named {
-        let ident = named_ident(field)?;
-        let from = find_one(&field.attrs, "from")?;
-        let with = find_one(&field.attrs, "with")?;
+        let ident = field.named_ident()?;
+        let from = field.attrs.find_one("from")?;
+        let with = field.attrs.find_one("with")?;
 
         let reach = match (from, with) {
             (Some(_), Some(other)) => {
@@ -50,11 +51,11 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
             }
             // Spliced verbatim, never inspected. A bad one is rustc's error at the author's span.
             (Some(from), None) => {
-                let expr = expr_arg(from)?;
+                let expr = from.expr_arg()?;
                 quote!(#expr)
             }
             (None, Some(with)) => {
-                let expr = expr_arg(with)?;
+                let expr = with.expr_arg()?;
                 quote!((#expr)(source))
             }
             (None, None) => {
@@ -158,17 +159,4 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
     })?;
 
     Ok(vec![Item::Impl(extractor), Item::Impl(diagnose)])
-}
-
-/// The syn node this extraction reads, from `#[source(Ty)]`.
-fn source_type(input: &DeriveInput) -> Result<Type> {
-    let attr = find_one(&input.attrs, "source")?.ok_or_else(|| {
-        Error::new_spanned(
-            &input.ident,
-            "`#[derive(Extractor)]` needs `#[source(Ty)]` naming the syn node it reads - without \
-             it a `#[from]` expression has no typed `source` to be written against",
-        )
-    })?;
-
-    attr.parse_args::<Type>()
 }
