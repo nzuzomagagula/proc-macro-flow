@@ -29,10 +29,6 @@
 // TODO[x](#extractor/pipeline):C[S(ExtractorPipeline)], "CLOSED by ID(extractor/self-hosting) - and
 // the type is deliberately NOT built. Its job was to be the thing a macro expands; the derive
 // expands the extraction struct instead, which is one fewer type declaring the same shape twice"
-// TODO[x](#extractor/expansion):C[F(expand)], "CLOSED by ID(extractor/self-hosting). The split it
-// insisted on - inner macro-of-a-macro first, outer traversal second - stopped applying when the
-// outer traversal went away: ID(extractor/recursive-source) deleted the Visit walk, so extract_from
-// descends from its own source and there is no second pass to conflate with"
 // TODO[x](#extractor/macro-wiring):U[F(field_names)], "CLOSED by ID(extractor/self-hosting). There
 // is no expand() to wire, and the target it named moved: lib.rs::extractor is now F(field_names),
 // while F(extractor) is the DERIVE. VERIFIED that the rename was forced rather than chosen - two
@@ -52,11 +48,6 @@ pub mod field;
 //Fix[x](#extractor/recursive-source):D[Impl(Visit<'ast> for ExtractionState<StructExtraction<'ast>>)], "RESOLVED by deletion, not by rewiring. The objection was that a macro should traverse from its OWN source type and find its children from there, never from a child's genesis syn type - and extract_from now does exactly that: it takes the DeriveInput, validates it to a DataStruct, and maps its fields. The Visit impl walked from Fields, could not name a source, and only ever reached the right node by falling through syn's default traversal. Two further reasons not to keep it: Extraction lives in proc_macro_flow_traits now, so impl Visit for it is an orphan-rule violation, and the visitor could not satisfy Sourced. The OUTER-vs-Meta/Expr distinction the note drew still holds and is ID(extractor/expansion)'s business"
 
 pub(crate) struct StructExtraction<'ast> {
-    // Fix[x](#extraction/unconsumed):D[Attr(allow(dead_code))], "RESOLVED. The children used to be
-    // extracted and then never looked at, which is why this field carried a suppression and a
-    // warning named after it. Two readers arrived: ID(pipeline/base-processor) narrows them for
-    // generation, and ID(syntax/render) walks them for their reasons. The allow comes off - if
-    // either reader is ever removed the warning should come back rather than stay silenced"
     pub(crate) fields: Vec<Extracted<FieldExtraction<'ast>, &'ast Field>>,
 }
 

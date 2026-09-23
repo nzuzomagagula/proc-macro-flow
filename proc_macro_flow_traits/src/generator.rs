@@ -19,48 +19,6 @@ use quote::ToTokens;
 
 /* @group(#typed-output)
  *
- * TODO[x](#typed-output/generate): U[Tr(Generator).F(generate).R(TokenStream) -> R(Ty(Output))],
- * "DONE. The distinction it drew is the one that shipped: CARRIER vs PRODUCT. Raw tokens stay
- * correct wherever the content is deliberately un-interpreted - Unresolved and ListBody, which did
- * NOT change, because the whole point there is that nobody has read them. A generator is the
- * opposite end: WE produce the content and know its shape, so it now returns a typed item.
- *
- * Both costs it named are paid. (1) `parse_quote!` validates what we built AT CONSTRUCTION, so a
- * malformed item is a panic naming the generator rather than a rustc error in the author's crate -
- * see NOTE(#generator/parse-quote-panics). (2) ID(typed-output/spans) is no longer impossible; it
- * is merely not done.
- *
- * ONE CORRECTION to what it asked for. It wanted `R(syn::Item)` - 'ItemImpl for the usual case,
- * Item where a generator emits more than one kind'. That would have been wrong: a FIXED return type
- * cannot nest, because the levels differ - a module holds Item, an impl holds ImplItem, a struct
- * holds Field - so any generator emitting below item level would have had to lower to tokens early,
- * which is the exact thing typing it was meant to stop. Ty(Output) is an ASSOCIATED type instead.
- * See NOTE(#typed-output/level-is-associated) and NOTE(#generator/nested-items)"
- *
- * TODO[ ](#typed-output/spans): U[Tr(Generator).Ty(Output).spans], "RESTATED - its old target,
- * F(emit), no longer exists. Lowering moved to Tr(Pipeline)::run
- * (NOTE(#generator/lowering-is-not-ours)), and with it the `node` argument this item was written
- * against, so the work now belongs to the GENERATOR and its Ty(Output) rather than to the emission
- * step.
- *
- * The substance is unchanged and is now UNBLOCKED by ID(typed-output/generate). Errors about
- * generated code are still spanned against whatever node Tr(Pipeline)::run was handed - the whole
- * subject - which says 'something in here is wrong'. Holding a typed Ty(Output) means a generator
- * can point at the PART: the ImplItem whose associated type could not be filled, the Field whose
- * value never arrived. Same argument ID(reason/span-not-node) makes one level down - a reason that
- * points at one token is exact, one that points at everything is a shrug.
- *
- * syn 3's Error::new_range (error.rs:267) spans a cursor range and is the precise tool for 'this
- * part of what we built'. Nothing uses it yet"
- *
- * NOTE(#generator/nested-items): V[Ty(Output).composes], "Generators NEST like extractors and
- * processors: a parent's Ty(Output) holds its children's, typed the whole way down, so a tree of
- * generated code is assembled from checked pieces rather than concatenated as text. That is what
- * Ty(Output) being an associated type buys - see NOTE(#typed-output/level-is-associated) - because
- * the levels genuinely differ: a module holds Item, an impl holds ImplItem, a struct holds Field.
- * The payoff is that a malformed piece fails where it was BUILT, naming the generator that built
- * it, instead of arriving in the author's crate as a parse error in code they never wrote"
- *
  * DEPRECATED(#generator/parse-quote-panics):R[M(parse_quote) -> F(parse2)], "SUPERSEDED, and the
  * escape hatch it named is now the rule. It argued parse_quote!'s panic was the RIGHT signal here,
  * because these tokens are ones WE built so a failure is a framework bug rather than bad input.

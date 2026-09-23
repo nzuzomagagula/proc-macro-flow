@@ -85,11 +85,6 @@ impl Node {
 
 /// A type that can describe itself.
 ///
-/// TODO[x](#node-table/derive-emits-it): DONE. Attr(derive(Syntax)) emits this for every grammar
-/// type, alongside M(meta_list)'s hand-written impl - so ID(diagnostics) and the Node half of
-/// ID(reason) are unblocked and merely unwritten. What is NOT yet emitted is a child's `shapes`
-/// where no Attr(shape) was written: the field stays empty, meaning "every shape its type
-/// implements", which is ID(shape-attr)'s absent-is-additive rule and not a gap.
 pub trait Described {
     const NODE: Node;
 }

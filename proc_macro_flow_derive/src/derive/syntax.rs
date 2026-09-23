@@ -72,7 +72,6 @@ pub(crate) fn derive_syntax(input: DeriveInput) -> Result<Vec<Item>> {
     let grammar = Grammar {
         name,
         // heck at EXPANSION time, so the entry head is a literal and matching stays exact -
-        // Answer(#vocabulary/heck-scope).
         entry: name.to_string().to_snake_case(),
         fields: named.named.iter().map(Field::read).collect::<Result<_>>()?,
         generics: &input.generics,

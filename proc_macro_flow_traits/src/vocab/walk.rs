@@ -13,26 +13,6 @@
 //! that aborts is a body that will not parse as a meta list AT ALL - there are no siblings to lose
 //! when there are no siblings"
 //!
-//! Fix[x](#walk/suffix):R[F(walk).requires(Ident)], "SETTLED, and it settled a CONTRADICTION rather
-//! than a preference. This note used to say a key is matched on its LAST PATH SEGMENT, so `colour`
-//! and `some::colour` were the same key, justified as ID(vocab/match-or-splice)'s cost in its
-//! narrowest form.
-//!
-//! ID(resolve) says the opposite, in as many words: `Keys are idents and values are paths - exactly
-//! the asymmetry Rust already has in Foo { bar: Baz::Qux }. Fields are not items, so there is no
-//! configuration::colour to resolve and THE QUALIFIED KEY FORM IS DROPPED`. Both were written down;
-//! only one can be true of the walker.
-//!
-//! ID(resolve) wins, and F(walk) enforces it: a key must be a bare Ident (`path().get_ident()`), so
-//! a qualified key is now an unknown key rather than a silently accepted one. That is also the
-//! ID(type-backed) answer - `get_ident` is a type-level question with a yes/no answer, where
-//! last-segment matching was a string operation that quietly discarded what the author wrote.
-//!
-//! VALUES still match by suffix. That is ID(resolve)'s other half and is untouched here"
-//! `colour` and `some::colour` are the same key. That is ID(vocab/match-or-splice)'s documented
-//! cost in its narrowest form: we match a name because the caller needs a VALUE, and the price is
-//! that a renamed import is not seen. For KEYS the price is near zero - a key is a name we invented
-//! and nobody imports it"
 
 use syn::{Error, Meta, Result};
 
@@ -432,8 +412,6 @@ mod tests {
 
     #[test]
     fn a_qualified_key_is_not_a_key() {
-        // Fix[x](#walk/suffix). `some::colour` used to resolve as `colour` by last-segment match;
-        // ID(resolve) says the qualified key form is DROPPED, and this walker enforces it.
         let error = with_body("#[t(some::colour(a))]", |body| {
             body.walk::<Key, _>(|_, _| Ok(()))
         })

@@ -398,28 +398,6 @@ pub trait Validate<'ast> {
     fn validate(input: Self::Source) -> Result<Self::Valid, Reason>;
 }
 
-// TODO[x](#cleanup):R[E(ExtractionState) -> S(Extraction)], "RESOLVED, and now LANDED in
-// proc_macro_flow_traits::extractor - not as a typestate. The answer is { value: Option<T>,
-// reasons: Vec<Reason> }: a typestate cannot express 'this node extracted fine AND has a complaint
-// of its own', which is what an unknown key is - a failure of the PARENT to consume its input, with
-// the value still perfectly good. Two states could not carry a reason at all. Note the CONTRAST
-// with resolution::Stage, which IS a typestate precisely because resolved/unresolved has no such
-// second axis"
-// TODO[x](#extractor/no-result):U[F(extract_from)], "extract_from returns Extraction<Self> and no
-// longer a Result, so there is no `?`, no early return, and no way to drop a sibling on the way
-// out. The per-type ExtractionError associated types went with it - a proc macro only ever EMITS
-// an error, so a taxonomy of error structs bought nothing and actively fought accumulation"
-// NOTE(#extractor/two-questions): V[Tr(Extractor).sup(Visitable) && S(Extracted).P(source)], "The
-// stage still answers exactly two questions - what is the SOURCE of this extraction, and how do we
-// GET THERE - but only one of them is a supertrait now. `I: Visitable` answers the second. The
-// first is answered STRUCTURALLY by Extracted, which cannot be built without a source, rather than
-// by Tr(Sourced), which required every implementor to store one and hand it back honestly.
-// VERIFIED that the trait earned nothing: it had a single real caller, in a test, while
-// Extracted::source covered every other site AND survived a failed extraction, where there is no
-// Self to ask. Storing the node as well was a second answer to one question.
-// There is still deliberately no third question about how to PARSE the node - an extractor may hand
-// on a raw TokenStream and leave understanding it to the processor, which is why Ty(Output) below
-// is unconstrained"
 pub trait Extractor<'ast>: Sized + Validate<'ast> {
     /// What the processor receives.
     ///
@@ -468,50 +446,4 @@ pub trait Extractor<'ast>: Sized + Validate<'ast> {
  * on Tr(Extractor) ABOVE - see NOTE(#pipeline/no-free-functions). A group header that points at
  * nothing is worse than none, because it reads as current.
  *
- * Fix[x](#from/names-its-target):R[F(extract_each) -> M(Extractor::extract_each)], "RESOLVED by
- * objectification, and the note that stood here was pessimistic. It said call sites must carry a
- * turbofish and 'cannot avoid it', because Vec<T::Output> is not injective so rustc cannot work
- * backwards from the field type to the extractor. The DIAGNOSIS was right and the CONCLUSION was
- * wrong: nothing has to be inferred if the extractor is NAMED, and as a provided method on
- * Tr(Extractor) the receiver path names it. `extract_each::<FieldExtraction, _, _>(it)` becomes
- * `FieldExtraction::extract_each(it)`. Ty(Output) stays free-form, so none of the flexibility the
- * processor stage was promised is spent buying this. The general rule it is an instance of is
- * NOTE(#pipeline/no-free-functions)"
- *
- * NOTE(#from/arity-from-type): V[T(Vec) => F(extract_each)] && V[T(Option) => F(extract_maybe)],
- * "Which helper a #[from] lowers to is read off the field's type, never off the attribute. That is
- * the same rule the grammar already uses for requiredness and repetition - T required, Option<T>
- * optional, Vec<T> repeated - and it is what stops #[from] growing a second vocabulary for arity
- * that could disagree with the type it sits on"
- *
- * TODO[x](#from/attribute):C[Attr(from)], "DONE, in proc_macro_flow_derive::derive::extractor, and
- * the bargain held: the expression is spliced verbatim, so a bad one is rustc's error at the
- * AUTHOR's span in the author's own crate - ID(no-parse)'s deal for Attr(shape), taken again.
- *
- * TWO THINGS THIS ASKED FOR ARE NOT WHAT SHIPPED. The syntax is `#[from(expr)]`, not
- * `#[from = expr]`: VERIFIED that rustc rejects the name-value form with `attribute value must be
- * a literal`, so the expression never reaches the macro at all (ID(derive/list-not-name-value)).
- * And the two FORMS split into two ATTRIBUTES. A field path evaluates TO a value while a closure
- * is APPLIED to one, and telling `(expr)` from `(expr)(source)` apart requires inspecting the
- * expression - which is exactly what the splice bargain forbids. So the distinction moved to the
- * attribute NAME, which is ours to match and needs no parsing: Attr(from) evaluates, Attr(with)
- * applies"
- *
- * NOTE(#from/not-total): V[Attr(from).optional], "#[from] is CONVENIENCE and is not required to be
- * sufficient. Extraction that needs real logic - correlating two sources, conditioning on something
- * the path cannot see - writes extract_from by hand, which stays fully available and is what every
- * extractor in this crate does today. The attribute exists so the easy majority stops being written
- * out longhand, not so the hard minority becomes expressible in an attribute. Resist growing it a
- * vocabulary for the latter; that is the darling failure mode in a different costume"
- *
- * Query(#from/native-and-custom): Q[Ty(Source).T(custom) ??], "RESTATED against the current shape -
- * the old wording said 'generic over I: Visitable', and `I` no longer exists: the source became an
- * ASSOCIATED TYPE in NOTE(#pipeline/source-is-associated). The substance is unchanged. A syn node
- * works as a Ty(Source) today. A CUSTOM grammar node needs Tr(Visitable) generalised over the
- * visitor family - PROVEN to work (one walk() drove a syn node and a grammar node in the same
- * shape) but not landed, because nothing has needed it.
- *
- * Note that this is the SAME question @group(#multi-source) asks from the other side: 'several
- * sources for one extraction' and 'our own nodes as sources' are both answered by what Ty(Source)
- * is allowed to be. Decide them together"
  */

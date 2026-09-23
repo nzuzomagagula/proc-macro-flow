@@ -28,21 +28,6 @@ pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
 
 #[proc_macro_derive(FieldNames)]
 pub fn field_names(input: TokenStream) -> TokenStream {
-    // RENAMED(#extractor/macro):R[F(extractor) -> F(field_names)], "FORCED, not chosen: two
-    // Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]: the name Extractor is
-    // defined multiple times` (VERIFIED), and the derives needed the name. CORRECTION to what this
-    // note said first - it claimed this function never generated extraction logic and so had no
-    // claim on the name. That was wrong. Its expansion was 'a stub until ExtractorPipeline::expand
-    // exists', so it was the PLACEHOLDER for exactly that feature. The question it dodged - one
-    // feature or two - is now settled as ONE by ID(extractor/self-hosting): the derive is that
-    // feature, reached declaratively. So the name moved to the thing that earned it, and what this
-    // emits - `const FIELDS` - is what it has always emitted, which the name now says"
-    //
-    // Fix[x](#extractor/macro):U[F(field_names)], "This function used to BE the pipeline: run
-    // order, the render walk, the stub decision and the error append, written out. All of it is
-    // normalisation, identical for every macro, and it now lives on Tr(Pipeline) - see
-    // NOTE(#pipeline/owns-normalisation). What is left is the only part that is genuinely this
-    // entry point's business: parse, and hand over."
     let derive_input = parse_macro_input!(input as DeriveInput);
 
     ExtractorPipeline::run(&derive_input).into()

@@ -336,7 +336,6 @@ mod tests {
 
     #[test]
     fn a_body_can_be_read_with_a_custom_separator() {
-        // Answer(#separator), exercised end to end rather than only probed.
         let item: syn::ItemStruct =
             syn::parse_str("#[t(a; b; c)]\npub struct T;").expect("the attribute parses");
         let attribute = item.attrs.first().expect("one attribute");

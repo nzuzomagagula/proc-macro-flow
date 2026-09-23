@@ -20,16 +20,6 @@ use crate::base::extractor::processor::ProcessedStruct;
 use crate::base::syntax::extractor::SyntaxHelper;
 
 // TODO(#generator/macro):C[F(generator)], "Proc-macro entry point for the generator stage, alongside lib.rs::field_names (ID(extractor/macro-wiring))"
-// TODO[x](#typed-output/generate):U[F(generate).R(TokenStream) -> R(syn::ItemImpl)], "DONE. Both
-// functions return ItemImpl, built with parse_quote!, so nothing malformed leaves this file -
-// a mistake is a panic HERE rather than a mystery rustc error in the author's crate. See
-// NOTE(#generator/parse-quote-panics) for why panicking is the right signal for this specific
-// failure. ID(typed-output/spans) now has a specific item to point at and stays open"
-// NOTE(#generator/shapes-is-a-probe): V[C(SHAPES).proves(cascade)], "SHAPES is not a feature. It
-// exists to demonstrate that a THIRD-LEVEL value - an attribute's carried tokens - reaches
-// generation, which was false until ProcessedField stopped dropping its attrs. It is the assertion
-// that would have failed before the cascade, written as generated code. Decide the real product
-// with the finished pipeline in view, and delete this if it is not part of it"
 
 impl<'ast> proc_macro_flow_traits::generator::Generator for ProcessedStruct<'ast> {
     type Input = Self;

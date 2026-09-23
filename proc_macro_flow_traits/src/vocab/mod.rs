@@ -48,17 +48,6 @@
 //! a proc macro can call heck::ToSnakeCase at expansion time and emit the literal, making the
 //! spelling optional here and explicit only where it differs"
 //!
-//! Answer(#vocabulary/heck-scope):A[T(heck) == derive_only], "ANSWERED by building it. heck is a
-//! dependency of proc_macro_flow_derive and of NOTHING ELSE - the traits crate never sees it,
-//! exactly as this query reasoned. It is spent on two translations, both at expansion time: a
-//! grammar type's name becomes its entry attribute head (`Configuration` -> `configuration`), and
-//! Attr(alias) with no arguments becomes the standard case set. Both emit LITERALS, so matching
-//! stays exact per ID(vocabulary/exact) - the conversion is a convention applied once at
-//! generation, never a normalisation rule applied at match time. ORIGINAL:
-//! - it is the derive's OWN translations, where a grammar type's name becomes its entry attribute
-//! head (`Configuration` -> `configuration`, UpperCamel -> snake). That conversion has no home yet
-//! because ID(syntax/derive) does not exist. Adding the dependency before something calls it would
-//! be premature, so it is named here and not in any Cargo.toml"
 
 //! NOTE(#vocab/match-or-splice): V[M(vocab).matches <=> value.required], "THE rule the whole suite
 //! sits on, and the one that resolves an apparent contradiction with ID(no-type-alias). MATCH NAMES

@@ -123,13 +123,6 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
                     Ok(source) => ::proc_macro_flow_traits::extractor::Extraction::value(Self {
                         #(#assignments),*
                     }),
-                    // Fix[x](#derive/silent-validate): this arm used to be
-                    // `Extraction::default()` - no value AND NO REASONS - so a derived extractor
-                    // whose validate failed emitted the stub and NOTHING ELSE. The author saw an
-                    // impl with no explanation of why it was vacant. It went unnoticed because the
-                    // proof test asserted only that the value was absent, never that a reason was
-                    // recorded. A derive always records, per
-                    // NOTE(#validate/reason-is-offered-not-imposed).
                     Err(reason) => {
                         ::proc_macro_flow_traits::extractor::Extraction::failed(reason)
                     }
