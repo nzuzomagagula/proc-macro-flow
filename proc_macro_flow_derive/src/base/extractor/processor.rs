@@ -40,11 +40,6 @@ pub(crate) struct ProcessedField<'ast> {
 
 /// What the generator consumes per helper attribute.
 ///
-/// A genuine narrowing, which is what Answer(#processor/base-scope) says this stage is for. Three
-/// things are DROPPED here because generation cannot use them: the `Stage` typestate, the
-/// `Unresolved<T>` wrapper, and the distinction between which Rust type the payload will eventually
-/// resolve to. What survives is what generation can act on - which helper was written, and the
-/// tokens to splice.
 pub(crate) struct ProcessedAttribute<'ast> {
     // NOTE(#processed-attribute/no-unread-node): V[!S(ProcessedAttribute).P(attribute)], "This
     // struct deliberately does NOT carry its `&'ast Attribute`. It did for one commit, on the

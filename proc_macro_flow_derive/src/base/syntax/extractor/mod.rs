@@ -34,17 +34,6 @@ proc_macro_flow_traits::vocabulary! {
 /// One helper attribute on a grammar field.
 ///
 /// NOTE(#syntax/resolution-is-deferred-not-dead): V[M(resolve).tested && !M(resolve).on_macro_path],
-/// "Fix[x](#syntax/not-driven) promised that anything still warning once the allow came off was
-/// 'genuinely dead and should go'. That condition is WRONG for the three items below, and acting on
-/// it would have deleted the typestate. VERIFIED: `kind`, `resolve` and the `attribute` field are
-/// driven by base/syntax/worked.rs, so they are not unused - they are unused BY THE LIB TARGET,
-/// which is a different thing.
-///
-/// The reason is by design. Only EXTRACTION was wired to the macro path; RESOLUTION deliberately
-/// was not, because on the compiler-checked path the selector is spliced and rustc resolves it -
-/// `resolve` exists for a stage that must INSPECT. So the suppression is narrowed from the module
-/// to exactly these three items, each of which is a deferral with a reason rather than a leftover.
-///
 /// TODO[ ](#syntax/attribute-duplicates-source): `attribute` is read in ONE place - `resolve`,
 /// moving it into the Parsed value - and otherwise duplicates Extracted::source(). It survives only
 /// because `resolve` returns a bare Extraction with no Extracted wrapper to ask. Making resolution

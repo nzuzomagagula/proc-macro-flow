@@ -125,13 +125,6 @@ mod derives {
 
     #[test]
     fn a_failing_validate_says_why() {
-        // REGRESSION for Fix[x](#derive/silent-validate). The derived `extract_from` used to emit
-        // `Extraction::default()` here - no value AND NO REASONS - so a derived extractor that
-        // rejected its input produced a vacant impl and not one word explaining it.
-        //
-        // This went unseen because the test ABOVE is the one that covered this path, and it asks
-        // only whether the value is absent. An empty extraction passes that assertion perfectly.
-        // So the missing assertion is the whole point of this test.
         let input = item("pub enum Thing { A }");
         let extracted = DerivedStruct::extract_from(&input);
 
@@ -397,5 +390,121 @@ mod grammar {
         let node = <Narrowed as Described>::NODE;
 
         assert_eq!(node.child("nested").unwrap().shapes, &[ShapeKind::List]);
+    }
+}
+
+/// The generator derive, proved where it can be — same reason as
+/// NOTE(#facade/hosts-the-proof): the derive crate cannot use its own derives.
+#[cfg(test)]
+mod generation {
+    use proc_macro_flow_derive::Generator;
+    use proc_macro_flow_traits::{
+        extractor::{Extraction, Reason, ReasonKind},
+        generator::Generator,
+    };
+    // Through the facade's re-exports, exactly as an author would: a grammar crate depends on
+    // proc_macro_flow and NOTHING ELSE. If this test needed `quote` in its own Cargo.toml, the
+    // generated code would need it in the author's too.
+    use proc_macro_flow_traits::proc_macro2;
+    use proc_macro_flow_traits::quote::{quote, ToTokens};
+    use syn::{parse2, ImplItem, ItemImpl};
+
+    /// A LEAF that always succeeds.
+    pub struct Good(ImplItem);
+    /// A LEAF that always fails, so per-child isolation is observable.
+    pub struct Bad(ImplItem);
+
+    impl ToTokens for Good {
+        fn to_tokens(&self, t: &mut proc_macro2::TokenStream) {
+            self.0.to_tokens(t)
+        }
+    }
+    impl ToTokens for Bad {
+        fn to_tokens(&self, t: &mut proc_macro2::TokenStream) {
+            self.0.to_tokens(t)
+        }
+    }
+    // Block's is DERIVED - see the impl the derive emits.
+
+    impl Generator for Good {
+        type Input = ();
+        type Subject = ();
+        type Output = Self;
+        fn generate(_: ()) -> Extraction<Self> {
+            match parse2(quote!(const GOOD: u8 = 1;)) {
+                Ok(item) => Extraction::value(Good(item)),
+                Err(error) => Extraction::failed(Reason::new(ReasonKind::Internal(error))),
+            }
+        }
+        fn stub(_: ()) -> syn::Result<Self> {
+            parse2(quote!(const GOOD: u8 = 0;)).map(Good)
+        }
+    }
+
+    impl Generator for Bad {
+        type Input = ();
+        type Subject = ();
+        type Output = Self;
+        fn generate(_: ()) -> Extraction<Self> {
+            // fails the way a real leaf would: tokens that are not an ImplItem
+            match parse2::<ImplItem>(quote!(this is not an impl item)) {
+                Ok(item) => Extraction::value(Bad(item)),
+                Err(error) => Extraction::failed(Reason::new(ReasonKind::Internal(error))),
+            }
+        }
+        fn stub(_: ()) -> syn::Result<Self> {
+            parse2(quote!(const BAD: u8 = 0;)).map(Bad)
+        }
+    }
+
+    /// The PARENT, entirely derived except for the two assembly functions.
+    #[derive(Generator)]
+    #[generator(from = (), subject = ())]
+    #[generates(
+        good: Good = (),
+        bad: Bad = (),
+    )]
+    pub struct Block(ItemImpl);
+
+    impl Block {
+        fn assemble(_: &(), good: Good, bad: Bad) -> syn::Result<Self> {
+            parse2(quote!(impl Thing { #good #bad })).map(Block)
+        }
+        fn assemble_stub(_: (), good: Good, bad: Bad) -> syn::Result<Self> {
+            parse2(quote!(impl Thing { #good #bad })).map(Block)
+        }
+    }
+
+    #[test]
+    fn a_failed_child_does_not_cost_its_siblings() {
+        // THE assertion the newtypes exist for, and the one `Result` structurally could not
+        // support. `bad` fails; `good` still reaches the output; the block is still assembled.
+        let generated = Block::generate(());
+
+        let block = generated.value.expect("the block is still assembled");
+        let out = block.0.to_token_stream().to_string();
+
+        assert!(out.contains("GOOD"), "the good child was lost: {out}");
+        assert!(out.contains("BAD"), "the failed child was not stubbed: {out}");
+    }
+
+    #[test]
+    fn the_failure_is_kept_and_attributed() {
+        let generated = Block::generate(());
+
+        assert_eq!(generated.reasons.len(), 1, "exactly one child failed");
+        assert!(
+            generated.reasons[0].is_internal(),
+            "tokens WE assembled are ours, never the author's",
+        );
+    }
+
+    #[test]
+    fn a_stub_uses_every_childs_vacant_form() {
+        let block = Block::stub(()).expect("the stub assembles");
+        let out = block.0.to_token_stream().to_string();
+
+        assert!(out.contains("GOOD"), "{out}");
+        assert!(out.contains("BAD"), "{out}");
     }
 }

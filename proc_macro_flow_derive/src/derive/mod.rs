@@ -18,11 +18,13 @@
 
 pub(crate) mod ext;
 mod extractor;
+mod generator;
 mod processor;
 mod syntax;
 mod validate;
 
 pub(crate) use extractor::derive_extractor;
+pub(crate) use generator::derive_generator;
 pub(crate) use processor::derive_processor;
 pub(crate) use syntax::derive_syntax;
 pub(crate) use validate::derive_validate;

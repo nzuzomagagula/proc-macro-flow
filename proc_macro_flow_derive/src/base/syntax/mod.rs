@@ -150,6 +150,23 @@
  *
  * NOTE(#positional): V[S(ConfigName).T(LitStr)], "Tuple struct = all positional, named struct = all named, no mixing. Rust has no named function arguments, so a mixed form has no analogue to borrow intuition from - forbid it rather than invent a rule nobody can predict. ConfigName stands as the newtype case"
  *
+ * TODO[~](#shape-attr): C[Attr(shape)], "REGISTERED and LOWERED TO A BOUND, which was the whole
+ * point - VERIFIED that `#[shape(AttributeKind::MetaList)] nope: u8` fails with
+ * `the trait bound u8: FromMeta is not satisfied` at the AUTHOR's field, not inside the macro. The
+ * selector also reaches Ty(Node) as a E(ShapeKind). STILL OPEN: narrowing is not yet ENFORCED at
+ * read time - a type implementing several shapes is not restricted to the listed ones, because
+ * that needs the runtime half (`opening.kind() == S::KIND`) wired into the generated reader. See
+ * TODO[~](#alias-attr): C[Attr(alias)], "ON A FIELD: done. Attr(alias) with no arguments emits the
+ * standard case set via heck, Attr(alias(\"x\")) emits exactly what it names, and both land in
+ * Ty(Node) as literals. STILL OPEN, and recorded because it is a real gap rather than polish: the
+ * aliases are visible to DIAGNOSTICS but not yet to Tr(Keys)::resolve, because M(keys) accepts one
+ * spelling per variant - so an alias is advertised and then rejected. See
+ * ID(syntax-derive/aliases-in-keys). On a TYPE or VARIANT (adding a segment for suffix matching)
+ * is untouched and deferred with suffix matching itself. ORIGINAL: "On a field it adds keys; on a type or variant it adds a SEGMENT that joins suffix matching, so #[alias(Colour)] on ColourSetting makes Colour::Red resolve too. Single idents, since an alias substitutes for one segment. With exact matching chosen this is the only bridging mechanism, so watch for authors writing piles of case aliases - that, and not before, is the signal a normalisation policy is worth its opinion"
+ *
+ * TODO[ ](#scratch): V[N(scratch).has(S(Configuration))] && V[N(scratch).has(E(ColourSetting))], "The maximal grammar at the foot of this file - every shape, arity rule and resolution rule in one pair of items, and the thing to check any behaviour change against. It is GATED behind #[cfg(any())] and does not compile, deliberately: Syntax, SomeDerive and the proc_macro_flow_traits::syntax support types are all still unwritten, so the errors it raises are a live checklist of what ID(syntax/traits), ID(syntax/forwarding) and ID(syntax/derive) still owe it. The attribute BODIES are verified to parse as Meta spine plus Expr leaves, so any parse failure here is a regression and not a missing feature. Mapping table and rejection cases in SCRATCH.md. NOTE that a second, SMALLER worked example now lives beside it in worked.rs, whose layer 3 does compile and is asserted - scratch remains the maximal grammar to check behaviour against, worked.rs is the minimal one that actually runs"
+ *
+ * Query(#custom-reason): Q[E(Reason).V(Custom).T(String) != T(Error)], "Should the escape hatch carry a String or a fully-formed syn::Error? String keeps the framework in charge of span and position, which is the property ID(syntax/diagnostics) exists to protect; syn::Error lets an author report something genuinely structural we have no reason for. Leaning String - decide before ID(syntax/reason) is written"
  */
 
 pub mod extractor;

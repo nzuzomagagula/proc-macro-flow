@@ -21,7 +21,7 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 
-use crate::extractor::{Extractor, Validate};
+use crate::extractor::{Extraction, Extractor, Validate};
 use crate::generator::Generator;
 use crate::processor::Processor;
 use crate::render::Diagnose;
@@ -74,24 +74,28 @@ pub trait Pipeline<'ast> {
         // deliberately no path here that emits errors without one.
         //
         // NOTE(#pipeline/generation-degrades): V[F(run).!panics], "Generation can FAIL now rather
-        // than panic (DEPRECATED(#generator/parse-quote-panics)), so this degrades in two steps:
-        // a failed generate falls back to the STUB, and a failed stub emits the errors alone.
-        // The second case is the only one that breaks ID(generator/stub-is-not-empty)'s promise,
-        // and it is the case where keeping it is impossible - the generator could not say what its
-        // vacant form looks like. Either way the author gets a diagnostic instead of a crash"
-        let body = match processed.value {
+        // Generation accumulates like the other two stages now, so the two-level degrade match
+        // this used to carry collapses into F(absorb): a generator that stubbed one child and
+        // succeeded at three others IS an Extraction, and says so.
+        let generated = match processed.value {
             Some(value) => Self::Generator::generate(value),
-            None => Self::Generator::stub(node),
+            None => Extraction::default(),
         };
+        errors.extend(
+            generated
+                .reasons
+                .iter()
+                .map(|reason| reason.to_error(&node, reason.message())),
+        );
 
-        let mut out = match body {
-            Ok(item) => item.into_token_stream(),
-            Err(failure) => match Self::Generator::stub(node) {
-                Ok(vacant) => {
-                    errors.push(failure);
-                    vacant.into_token_stream()
-                }
-                Err(_) => {
+        // The stub is the floor and still fallible - see the correction in
+        // @group(#generation/composition). If even it fails, the errors go out alone, which is the
+        // one case NOTE(#generator/stub-is-not-empty) cannot cover.
+        let mut out = match generated.value {
+            Some(item) => item.into_token_stream(),
+            None => match Self::Generator::stub(node) {
+                Ok(vacant) => vacant.into_token_stream(),
+                Err(failure) => {
                     errors.push(failure);
                     TokenStream::new()
                 }

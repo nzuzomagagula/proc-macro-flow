@@ -62,6 +62,17 @@ pub fn syntax(input: TokenStream) -> TokenStream {
     expand(input, derive::derive_syntax)
 }
 
+/// Declare a generator: what it consumes, and which children it composes.
+///
+/// `#[generator(from = Ty, subject = Ty)]` wires it; `#[generates(name: Ty = expr)]` declares each
+/// child and what the parent feeds it. The author supplies `assemble` and `assemble_stub` — the
+/// derive cannot know what SHAPE the parent's item is. See
+/// NOTE(#generator-derive/plumbing-not-logic).
+#[proc_macro_derive(Generator, attributes(generator, generates))]
+pub fn generator(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_generator)
+}
+
 /// Generate the identity `Processor`. Omit it when the stage does real work.
 #[proc_macro_derive(Processor, attributes(source))]
 pub fn processor(input: TokenStream) -> TokenStream {

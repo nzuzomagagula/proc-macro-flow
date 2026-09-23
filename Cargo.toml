@@ -11,5 +11,6 @@ proc_macro_flow_derive = { path = "proc_macro_flow_derive" }
 proc_macro_flow_traits = { path = "proc_macro_flow_traits" }
 
 [dev-dependencies]
-# only the derive tests need it; the facade itself re-exports rather than uses syn
+# only the derive tests need these; the facade itself re-exports rather than uses them
 syn = { version = "3", features = ["full"] }
+# quote/proc-macro2 deliberately ABSENT - generated code must not need them

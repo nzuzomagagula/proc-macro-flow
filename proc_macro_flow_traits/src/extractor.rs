@@ -66,6 +66,25 @@ pub enum ReasonKind {
     Missing,
     Duplicate,
     Ambiguous,
+
+    /// OURS. A framework failure - malformed tokens we assembled, a contract we broke.
+    ///
+    /// Never re-spanned onto the author's syntax: blaming them for our bug is worse than a vague
+    /// error, because they go looking at correct code. See NOTE(#reason/fault-is-declared).
+    Internal(syn::Error),
+
+    /// A real syn failure attributable to what the AUTHOR wrote.
+    ///
+    /// Almost always their tokens landing somewhere they do not fit - which is common precisely
+    /// because this design SPLICES their input rather than interpreting it (ID(no-parse)).
+    Syntax(syn::Error),
+
+    /// A grammar author's own reason, already worded.
+    ///
+    /// Stays a `String` where the two above hold an error, and that asymmetry is the point: for
+    /// these the framework keeps control of span and position, which is what ID(syntax/diagnostics)
+    /// exists to protect. For ours there is nobody to take control from - the error arrived from
+    /// `parse2` already well formed.
     Custom(String),
 }
 
@@ -113,10 +132,49 @@ impl<T> Default for Extraction<T> {
     }
 }
 
+/// A grammar author's own reason, rendered BY THE FRAMEWORK.
+///
+/// NOTE(#reason/author-writes-meaning-not-errors): V[Tr(AuthorReason).M(message) && !Tr(AuthorReason).R(Error)],
+/// "An author supplies MEANING - what went wrong, in their words - and the framework supplies
+/// everything else: the span, the position in the tree, the rendering, the accumulation. Handing
+/// them `E(ReasonKind)::Custom(String)` and asking them to build an error was the framework
+/// abdicating the half it is actually good at.
+///
+/// This is also how an author gets a REASON TREE without the framework growing a generic. They
+/// declare their own enum, match on it exhaustively in their own code, give it a F(message), and it
+/// converts at the boundary - the same shape M(vocabulary) uses for names. The alternative,
+/// `Reason<K>` generic over an author's kind, would thread a parameter through Ty(Extraction),
+/// Ty(Extracted), Tr(Diagnose) and Tr(Pipeline) to serve an escape hatch.
+///
+/// F(span) has a DEFAULT of None, which is the convenience that matters: an author who has nothing
+/// finer than the node says nothing, and ID(reason/span-not-node)'s fallback does the rest"
+pub trait AuthorReason {
+    /// What went wrong, in the author's words.
+    fn message(&self) -> String;
+
+    /// A finer span than the node this reason will sit on, when the author has one.
+    fn span(&self) -> Option<Span> {
+        None
+    }
+}
+
 impl Reason {
     /// A complaint about the node this reason will sit on.
     pub fn new(kind: ReasonKind) -> Self {
         Self { kind, span: None }
+    }
+
+    /// An author's own reason, converted.
+    ///
+    /// The way in for anything Tr(AuthorReason) describes - and the reason `ReasonKind::Custom`
+    /// should rarely be written by hand. Not a `From` impl: a blanket
+    /// `impl<T: AuthorReason> From<T> for Reason` collides with core's reflexive `From<T> for T`,
+    /// because coherence cannot rule out `Reason: AuthorReason`.
+    pub fn custom(reason: impl AuthorReason) -> Self {
+        Self {
+            kind: ReasonKind::Custom(reason.message()),
+            span: reason.span(),
+        }
     }
 
     /// A complaint about one specific token, which is finer than the node can point at.
@@ -142,11 +200,48 @@ impl Reason {
     ///
     /// Taking the fallback as an argument is the point: a reason cannot render itself, because
     /// position belongs to where it sits in the tree, not to the reason.
+    /// NOTE(#reason/error-is-carried-not-rebuilt): V[F(to_error).returns(held)], "Where the kind
+    /// HOLDS a syn::Error, it is returned as-is rather than rebuilt from its message. Rebuilding
+    /// flattens: `syn::Error::combine` keeps each sub-error's own span, and
+    /// `Error::new_spanned(node, message)` would collapse all of them into one message at one
+    /// span. Returning it preserves every sub-error and every span all the way to
+    /// `to_compile_error`, which is the whole reason the kind carries an error at all.
+    ///
+    /// SPAN PRECEDENCE, so it is written down rather than discovered: a Reason's OWN span wins when
+    /// it has one, because that is the finer pointer ID(reason/span-not-node) describes - a reason
+    /// that points at one token is exact. The held error's spans survive inside it either way"
     pub fn to_error(&self, node: &impl ToTokens, message: impl core::fmt::Display) -> syn::Error {
-        match self.span {
-            Some(span) => syn::Error::new(span, message),
-            None => syn::Error::new_spanned(node, message),
+        match &self.kind {
+            ReasonKind::Internal(error) | ReasonKind::Syntax(error) => match self.span {
+                Some(span) => syn::Error::new(span, error),
+                None => error.clone(),
+            },
+            _ => match self.span {
+                Some(span) => syn::Error::new(span, message),
+                None => syn::Error::new_spanned(node, message),
+            },
         }
+    }
+
+    /// Whether this is OUR failure rather than the author's.
+    ///
+    /// NOTE(#reason/fault-is-declared): V[M(is_internal).!heuristic], "Fault is DECLARED at the
+    /// raise site, never inferred. `parse2` cannot tell 'the author's token did not fit here' from
+    /// 'we assembled this wrong' - both are just a parse failure - so a leaf that splices author
+    /// input raises E(Syntax) and one assembling fixed tokens raises E(Internal). Guessing would be
+    /// worse than asking, because the cost of guessing wrong is pointing an author at their own
+    /// correct code"
+    pub fn is_internal(&self) -> bool {
+        matches!(self.kind, ReasonKind::Internal(_))
+    }
+
+    /// Adopt `span` only if this reason has nothing finer of its own.
+    ///
+    /// ID(reason/span-not-node)'s fallback rule, promoted from prose into a method. It is what lets
+    /// a parent say WHERE a child's failure belongs without overwriting a child that already knew.
+    pub fn or_span(mut self, span: Span) -> Self {
+        self.span = self.span.or(Some(span));
+        self
     }
 }
 
@@ -431,4 +526,14 @@ pub trait Extractor<'ast>: Sized + Validate<'ast> {
  * on Tr(Extractor) ABOVE - see NOTE(#pipeline/no-free-functions). A group header that points at
  * nothing is worse than none, because it reads as current.
  *
+ * Query(#from/native-and-custom): Q[Ty(Source).T(custom) ??], "RESTATED against the current shape -
+ * the old wording said 'generic over I: Visitable', and `I` no longer exists: the source became an
+ * ASSOCIATED TYPE in NOTE(#pipeline/source-is-associated). The substance is unchanged. A syn node
+ * works as a Ty(Source) today. A CUSTOM grammar node needs Tr(Visitable) generalised over the
+ * visitor family - PROVEN to work (one walk() drove a syn node and a grammar node in the same
+ * shape) but not landed, because nothing has needed it.
+ *
+ * Note that this is the SAME question @group(#multi-source) asks from the other side: 'several
+ * sources for one extraction' and 'our own nodes as sources' are both answered by what Ty(Source)
+ * is allowed to be. Decide them together"
  */

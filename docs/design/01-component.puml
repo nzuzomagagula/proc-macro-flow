@@ -25,6 +25,7 @@ package "proc_macro_flow_traits\n(ordinary lib)" as traits {
   [processor] as T_Processor
   [generator] as T_Generator
   [render] as T_Render
+  [node] as T_Node
 
   note right of T_Vocab
     names! vocabulary! flag!
@@ -61,6 +62,8 @@ package "proc_macro_flow_derive\n(proc-macro = true)" as derive {
     [derive_extractor] as D_DE
     [derive_validate] as D_DV
     [derive_processor] as D_DP
+    [derive_syntax] as D_DS
+    [ext: extension traits] as D_EXT
   }
   package "base/extractor" as base_extractor {
     [StructExtraction] as D_Struct
@@ -73,6 +76,7 @@ package "proc_macro_flow_derive\n(proc-macro = true)" as derive {
 }
 
 cloud "external" {
+  [heck] as Heck
   [syn 3] as Syn
   [quote] as Quote
   [proc-macro2] as PM2
@@ -85,6 +89,7 @@ traits ..> Syn
 traits ..> Quote
 traits ..> PM2
 derive ..> Syn
+derive ..> Heck : case conversion at\nEXPANSION time only
 
 note as Constraint
   **Why two crates**

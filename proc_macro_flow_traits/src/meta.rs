@@ -55,11 +55,8 @@ impl<'ast> ListBody<'ast> {
     /// applied to punctuation: what the grammar accepts is written in the type, so nothing can
     /// contradict it and no runtime value has to be threaded to the parse.
     ///
-    /// VERIFIED that the knob is real before building it - see Answer(#separator). rustc accepts
-    /// `#[attr(a; b)]` as an inert derive helper, parses it as Meta::LIST, and hands the tokens
-    /// over verbatim; `a => b, c => d` survives too. Inside the delimiters rustc resolves nothing
-    /// and checks nothing past token-tree balance, which is the same property ID(no-path-head)
-    /// already rests on"
+    /// NOTE(#separator): a custom separator is viable - VERIFIED that rustc accepts `#[attr(a; b)]`
+    /// as an inert derive helper, parses it as Meta::List, and hands the tokens over verbatim.
     pub fn separated<S>(self) -> syn::Result<Punctuated<Meta, S>>
     where
         S: syn::parse::Parse,

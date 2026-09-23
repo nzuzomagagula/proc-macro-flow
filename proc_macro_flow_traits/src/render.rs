@@ -105,6 +105,10 @@ impl ReasonKind {
             ReasonKind::Missing => "required, and not written".to_owned(),
             ReasonKind::Duplicate => "written more than once".to_owned(),
             ReasonKind::Ambiguous => "ambiguous - qualify it".to_owned(),
+            // The held error's own wording. Only the FIRST of a combined error appears here -
+            // the rest survive in the error itself, which F(to_error) returns whole.
+            ReasonKind::Internal(error) => format!("internal: {error}"),
+            ReasonKind::Syntax(error) => error.to_string(),
             ReasonKind::Custom(message) => message.clone(),
         }
     }
@@ -256,5 +260,145 @@ mod tests {
         assert!(tree.render().is_empty());
         assert!(tree.rendered().is_none());
         let _ = quote!(); // keep the import honest
+    }
+
+    // ---- ReasonKind carrying a syn::Error -------------------------------------------------
+
+    fn combined_error() -> Error {
+        let mut first = Error::new(proc_macro2::Span::call_site(), "first complaint");
+        first.combine(Error::new(proc_macro2::Span::call_site(), "second complaint"));
+        first
+    }
+
+    #[test]
+    fn a_carried_error_is_not_flattened() {
+        // THE property that justifies the kind holding a syn::Error rather than a String.
+        // `Error::combine` keeps each sub-error's own span; rebuilding from `.to_string()` would
+        // collapse both into one message at one span. See NOTE(#reason/error-is-carried-not-rebuilt).
+        let tree = Extracted::new(
+            Extraction::value(Parent {
+                children: vec![child(
+                    "a",
+                    vec![Reason::new(ReasonKind::Syntax(combined_error()))],
+                )],
+            }),
+            ident("root"),
+        );
+
+        let errors = tree.render();
+        assert_eq!(errors.len(), 1, "one reason");
+        // ...but that ONE reason still carries BOTH complaints
+        assert_eq!(errors[0].clone().into_iter().count(), 2);
+        assert_eq!(errors[0].to_compile_error().to_string().matches("compile_error").count(), 2);
+    }
+
+    #[test]
+    fn a_reasons_own_span_still_wins_over_a_carried_error() {
+        // ID(reason/span-not-node)'s precedence, now that there are two possible span sources.
+        let token = ident("colur");
+        let reason = Reason::at(ReasonKind::Syntax(combined_error()), &token);
+
+        assert!(reason.span().is_some(), "the finer pointer is kept");
+    }
+
+    #[test]
+    fn internal_is_distinguishable_from_the_authors_fault() {
+        // The one bit fail-upward is gated on - NOTE(#reason/fault-is-declared).
+        let ours = Reason::new(ReasonKind::Internal(combined_error()));
+        let theirs = Reason::new(ReasonKind::Syntax(combined_error()));
+
+        assert!(ours.is_internal());
+        assert!(!theirs.is_internal());
+        assert!(!Reason::new(ReasonKind::WrongShape).is_internal());
+    }
+
+    #[test]
+    fn an_internal_reason_says_so_in_its_wording() {
+        let ours = Reason::new(ReasonKind::Internal(Error::new(
+            proc_macro2::Span::call_site(),
+            "assembled badly",
+        )));
+        assert!(ours.message().starts_with("internal:"), "{}", ours.message());
+    }
+
+    #[test]
+    fn or_span_adopts_only_when_there_is_nothing_finer() {
+        let token = ident("finer");
+        let coarse = ident("coarse");
+
+        // nothing of its own -> adopts
+        let adopted = Reason::new(ReasonKind::Missing).or_span(coarse.span());
+        assert!(adopted.span().is_some());
+
+        // something finer -> keeps it
+        let kept = Reason::at(ReasonKind::Missing, &token).or_span(coarse.span());
+        assert_eq!(
+            format!("{:?}", kept.span().unwrap()),
+            format!("{:?}", token.span()),
+            "a parent must not overwrite a child that already knew",
+        );
+    }
+
+    // ---- an author's own reason tree ------------------------------------------------------
+
+    /// What a grammar author writes: an exhaustive enum of their own, and the meaning of each.
+    enum ColourReason {
+        NotAColour { written: String },
+        TooManyChannels,
+    }
+
+    impl crate::extractor::AuthorReason for ColourReason {
+        fn message(&self) -> String {
+            match self {
+                // exhaustive, in the AUTHOR's code - which is the point of them having a type
+                ColourReason::NotAColour { written } => {
+                    format!("`{written}` is not a colour")
+                }
+                ColourReason::TooManyChannels => "a colour takes three channels".to_owned(),
+            }
+        }
+    }
+
+    #[test]
+    fn an_author_reason_renders_through_the_framework() {
+        let reason = Reason::custom(ColourReason::NotAColour {
+            written: "chartreuse".into(),
+        });
+
+        assert_eq!(reason.message(), "`chartreuse` is not a colour");
+        // the author said nothing about position, so the framework's fallback owns it
+        assert!(reason.span().is_none());
+    }
+
+    #[test]
+    fn an_author_reason_falls_back_to_the_node_it_sits_on() {
+        // ID(reason/span-not-node), reached without the author having to know it exists.
+        let tree = Extracted::new(
+            Extraction::value(Parent {
+                children: vec![child("a", vec![Reason::custom(ColourReason::TooManyChannels)])],
+            }),
+            ident("root"),
+        );
+
+        let errors = tree.render();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].to_string(), "a colour takes three channels");
+    }
+
+    #[test]
+    fn an_author_may_still_point_at_one_token() {
+        struct Precise(proc_macro2::Span);
+        impl crate::extractor::AuthorReason for Precise {
+            fn message(&self) -> String {
+                "here".to_owned()
+            }
+            fn span(&self) -> Option<proc_macro2::Span> {
+                Some(self.0)
+            }
+        }
+
+        let token = ident("chartreuse");
+        let reason = Reason::custom(Precise(token.span()));
+        assert!(reason.span().is_some(), "an author with something finer keeps it");
     }
 }
