@@ -71,7 +71,15 @@ use crate::extractor::Extraction;
 /// It validates nothing: by the time an extraction arrives its reasons are already recorded, and
 /// re-checking would duplicate a test it cannot improve on while discarding the spans that make the
 /// result diagnosable. TRANSFORM only.
-pub trait Processor: Sized {
+/// NOTE(#pipeline/one-shape-per-stage): V[Tr(Extractor)<'ast> && Tr(Processor)<'ast> && Tr(Generator)<'ast>],
+/// "Every stage carries 'ast, and the symmetry is the point rather than tidiness. Without it a
+/// stage cannot name a BORROWED Ty(Input) unless the implementing type happens to carry the
+/// lifetime itself - which forced the generator's leaves to take OWNED data, which in turn left
+/// them with no source node to point a failure at.
+///
+/// So the missing lifetime was not a cosmetic asymmetry: it was why generation could not attribute
+/// a failure to the author's syntax. One shape per stage, and a stage can borrow what produced it"
+pub trait Processor<'ast>: Sized {
     /// An extractor's `Output`, whole.
     type Input;
 
@@ -110,7 +118,7 @@ mod tests {
     struct Child(u8);
     struct ChildProcessed(u8);
 
-    impl Processor for Child {
+    impl<'ast> Processor<'ast> for Child {
         type Input = Extracted<Child, ()>;
         type Output = ChildProcessed;
 
@@ -126,13 +134,13 @@ mod tests {
     struct Parent;
     struct ParentProcessed(u8);
 
-    impl Processor for Parent {
+    impl<'ast> Processor<'ast> for Parent {
         type Input = Vec<Extracted<Child, ()>>;
         type Output = ParentProcessed;
 
         fn process(input: Self::Input) -> Extraction<Self::Output> {
             // Children FIRST, then combine - the whole point of ID(processor/cascade-is-a-helper).
-            let children = Child::process_each(input);
+            let children = <Child as Processor<'_>>::process_each(input);
             ORDER.with(|o| o.borrow_mut().push("parent"));
 
             let total = children
@@ -162,7 +170,7 @@ mod tests {
 
     #[test]
     fn process_each_keeps_one_result_per_child() {
-        let out = Child::process_each(vec![extracted(3), extracted(4)]);
+        let out = <Child as Processor<'_>>::process_each(vec![extracted(3), extracted(4)]);
         let values: Vec<_> = out
             .into_iter()
             .filter_map(|c| c.value)
@@ -175,7 +183,7 @@ mod tests {
     fn a_child_that_produced_nothing_still_occupies_its_place() {
         // Absence is not silence: the slot survives so position in the tree is not lost.
         let empty: Extracted<Child, ()> = Extracted::new(Extraction::default(), ());
-        let out = Child::process_each(vec![extracted(1), empty]);
+        let out = <Child as Processor<'_>>::process_each(vec![extracted(1), empty]);
 
         assert_eq!(out.len(), 2);
         assert!(out[1].value.is_none());
@@ -183,7 +191,7 @@ mod tests {
 
     #[test]
     fn process_maybe_passes_absence_through() {
-        assert!(Child::process_maybe(None).is_none());
-        assert!(Child::process_maybe(Some(extracted(5))).is_some());
+        assert!(<Child as Processor<'_>>::process_maybe(None).is_none());
+        assert!(<Child as Processor<'_>>::process_maybe(Some(extracted(5))).is_some());
     }
 }

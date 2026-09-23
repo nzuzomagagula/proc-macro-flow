@@ -72,7 +72,6 @@ pub(crate) fn derive_extractor(input: DeriveInput) -> Result<Vec<Item>> {
 
         // Arity picks the method, read off the field's TYPE and never off the attribute. These
         // are provided methods on Tr(Extractor), so the extractor NAMES itself and no turbofish is
-        // needed - see Fix[x](#from/names-its-target).
         let call = match child.arity {
             Arity::One => quote!( <#extractor>::extract_from(#reach) ),
             Arity::Many => quote!( <#extractor>::extract_each(#reach) ),

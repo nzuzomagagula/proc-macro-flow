@@ -126,8 +126,8 @@ package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> 
     +type Subject
     +type Output: ToTokens
     --
-    +generate(Input) -> Output
-    +stub(Subject) -> Output
+    +generate(Input) -> Result<Output>
+    +stub(Subject) -> Result<Output>
   }
 
   interface "Pipeline<'ast>" as Pipeline <<(T,#F5CBA7) trait>> {
@@ -136,6 +136,24 @@ package "contracts — what each stage must provide" as CONTRACTS <<Rectangle>> 
     +type Generator
     ..provided..
     +run(Source) -> TokenStream
+  }
+
+  interface Keys <<(T,#F5CBA7) trait>> {
+    +type Written
+    +const ALL
+    --
+    +canonical() -> &str
+    +spellings() -> &[&str]
+    +resolve(&Written) -> Option<Self>
+  }
+
+  class "Node / Child" as NodeTable <<(S,#AED6F1) struct>> {
+    +name, +children
+    +key, +aliases, +arity, +shapes
+    --
+    +candidates() -> String
+    +child(&str) -> Option<&Child>
+    +missing(&[&str]) -> impl Iterator
   }
 
   interface Diagnose <<(T,#F5CBA7) trait>> {
@@ -319,6 +337,14 @@ note bottom of Generator
   SHAPE; the pipeline decides WHEN to use it.
   (#generator/lowering-is-not-ours)
 
+  **Generation may FAIL rather than panic.**
+  ""parse_quote!"" is banned here: it panics, and a
+  panic in a proc macro reaches the AUTHOR as an
+  opaque failure with no span — the one person who
+  cannot act on it. ""parse2(..)?"" validates the
+  same tokens and bubbles.
+  (#generator/parse-quote-panics)
+
   It used to be four lines every entry point wrote
   by hand — match the value, generate or stub, then
   append the errors — and getting it wrong in one
@@ -389,6 +415,34 @@ note right of Pipeline
   process names its EXTRACTOR as its Processor,
   which extraction types already implement.
   (#pipeline/no-processor-is-the-extractor)
+
+  It DEGRADES rather than panics: a failed generate
+  falls back to the stub, a failed stub emits the
+  errors alone. (#pipeline/generation-degrades)
+end note
+
+note right of Keys
+  **The one place a spelling is compared.**
+  A table CANNOT be typed tokens: ""Ident::new"" and
+  ""Span::call_site"" are not const, so
+  ""const SPELLINGS: &[Ident]"" cannot exist. So the
+  string lives HERE and nowhere else, and it
+  allocates nothing — ""Ident: PartialEq<str>"".
+
+  Everything downstream carries the typed variant
+  plus ""Written"", the author's own token, so an
+  error underlines what they wrote instead of a
+  span rebuilt afterwards.
+  (#keys/table-is-strings-the-rest-is-not)
+end note
+
+note right of NodeTable
+  A VIEW DERIVED FROM ""Keys"", never a second
+  declaration — so it cannot advertise a key the
+  walker would reject. Nothing RESOLVES against
+  it; it decides only how a failure reads, which
+  is why strings are correct here.
+  (#keys/one-table, #node-table)
 end note
 
 note bottom of Processor

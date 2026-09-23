@@ -18,17 +18,44 @@
 
 pub(crate) mod ext;
 mod extractor;
+mod generator;
 mod processor;
 mod syntax;
 mod validate;
 
 pub(crate) use extractor::derive_extractor;
+pub(crate) use generator::derive_generator;
 pub(crate) use processor::derive_processor;
 pub(crate) use syntax::derive_syntax;
 pub(crate) use validate::derive_validate;
 
 use ext::TypeExt;
-use syn::{Result, Type};
+use syn::{DeriveInput, Result, Type};
+
+/// The lifetime a stage impl is written against, and the generics to declare it with.
+///
+/// NOTE(#derive/lifetime-is-introduced-when-absent): V[F(stage_lifetime).introduces], "Every stage
+/// trait carries 'ast (NOTE(#pipeline/one-shape-per-stage)), but not every stage TYPE needs one - a
+/// generator leaf wrapping a `syn::ImplItem` borrows nothing. So the derive uses the type's own
+/// lifetime when it has one and INTRODUCES `'ast` when it does not, which is legal because the
+/// trait reference constrains it. Requiring authors to declare a lifetime they never use would be
+/// the derive making its own convenience their problem"
+pub(crate) fn stage_lifetime(input: &DeriveInput) -> (syn::Generics, syn::Lifetime) {
+    match input.generics.lifetimes().next() {
+        Some(def) => (input.generics.clone(), def.lifetime.clone()),
+        None => {
+            let lifetime = syn::Lifetime::new("'ast", proc_macro2::Span::call_site());
+            // A real Ty(Generics) rather than the tokens that would print as one - so the caller
+            // splits it the same way it splits any other, and nothing malformed can be spliced.
+            let mut generics = input.generics.clone();
+            generics.params.insert(
+                0,
+                syn::GenericParam::Lifetime(syn::LifetimeParam::new(lifetime.clone())),
+            );
+            (generics, lifetime)
+        }
+    }
+}
 
 /// How many children a field declares, read off its written type.
 ///

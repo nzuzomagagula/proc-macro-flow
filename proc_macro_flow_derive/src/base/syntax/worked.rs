@@ -48,7 +48,6 @@
 //!
 //! `TransformationExtraction` is GONE. It was never a node: it held the author's transformation
 //! expression - a field path, a closure, a function pointer - which is `#[from]` on the field that
-//! needs it. See DEPRECATED(#attribute/generic-grammar) in base/extractor/extractor/field.rs.
 
 // ---------------------------------------------------------------------------
 // LAYER 1 - what the grammar author declares

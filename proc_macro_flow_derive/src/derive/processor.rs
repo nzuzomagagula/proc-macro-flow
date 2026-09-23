@@ -25,7 +25,7 @@ pub(crate) fn derive_processor(input: DeriveInput) -> Result<Vec<Item>> {
         .ok_or_else(|| Error::new_spanned(&input.ident, "expected a lifetime parameter"))?;
 
     let item = parse2::<ItemImpl>(quote! {
-        impl #impl_generics ::proc_macro_flow_traits::processor::Processor
+        impl #impl_generics ::proc_macro_flow_traits::processor::Processor<#lifetime>
             for #name #type_generics #where_clause
         {
             type Input = ::proc_macro_flow_traits::extractor::Extracted<

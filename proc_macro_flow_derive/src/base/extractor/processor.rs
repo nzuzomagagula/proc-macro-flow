@@ -40,12 +40,14 @@ pub(crate) struct ProcessedField<'ast> {
 
 /// What the generator consumes per helper attribute.
 ///
-/// A genuine narrowing, which is what Answer(#processor/base-scope) says this stage is for. Three
-/// things are DROPPED here because generation cannot use them: the `Stage` typestate, the
-/// `Unresolved<T>` wrapper, and the distinction between which Rust type the payload will eventually
-/// resolve to. What survives is what generation can act on - which helper was written, and the
-/// tokens to splice.
 pub(crate) struct ProcessedAttribute<'ast> {
+    /// The attribute this came from, kept so a GENERATION failure can point at it.
+    ///
+    /// Removed once, with the note that ID(typed-output/spans) could "add the node back WITH a
+    /// reader". This is that reader: a generator leaf fed this attribute spans its failure against
+    /// `attribute`, which is the author's syntax rather than a token we assembled. The removal was
+    /// right then and the restoration is right now - that is the test the note set for itself.
+    pub(crate) attribute: &'ast Attribute,
     // NOTE(#processed-attribute/no-unread-node): V[!S(ProcessedAttribute).P(attribute)], "This
     // struct deliberately does NOT carry its `&'ast Attribute`. It did for one commit, on the
     // reasoning that ID(typed-output/spans) will eventually want a node to span generated errors
@@ -67,11 +69,12 @@ pub(crate) struct ProcessedAttribute<'ast> {
 /// Lives here rather than beside the extraction in `base/syntax` because what it produces is
 /// consumed by THIS pipeline's generator - it is the extractor pipeline's third level, not a
 /// separate stage. The orphan rule permits either; cohesion picks this one.
-impl<'ast> Processor for SyntaxFieldAttributeExtraction<'ast, Raw> {
+impl<'ast> Processor<'ast> for SyntaxFieldAttributeExtraction<'ast, Raw> {
     type Input = Extracted<Self, &'ast Attribute>;
     type Output = ProcessedAttribute<'ast>;
 
     fn process(input: Self::Input) -> Extraction<Self::Output> {
+        let attribute = *input.source();
         let extraction = input.into_extraction();
 
         Extraction {
@@ -83,14 +86,18 @@ impl<'ast> Processor for SyntaxFieldAttributeExtraction<'ast, Raw> {
                     SyntaxFieldAttributeKind::Alias(alias) => (SyntaxHelper::Alias, alias.tokens()),
                 };
 
-                ProcessedAttribute { helper, tokens }
+                ProcessedAttribute {
+                    attribute,
+                    helper,
+                    tokens,
+                }
             }),
             reasons: extraction.reasons,
         }
     }
 }
 
-impl<'ast> Processor for FieldExtraction<'ast> {
+impl<'ast> Processor<'ast> for FieldExtraction<'ast> {
     type Input = Extracted<FieldExtraction<'ast>, &'ast Field>;
     type Output = ProcessedField<'ast>;
 
@@ -113,7 +120,7 @@ impl<'ast> Processor for FieldExtraction<'ast> {
         // is what the pipeline was missing: the attributes were extracted and walked for reasons,
         // then dropped on the way to generation by a `.map(|_| ..)` that ignored the value.
         let mut attrs = Vec::new();
-        for child in SyntaxFieldAttributeExtraction::process_each(value.attrs) {
+        for child in <SyntaxFieldAttributeExtraction<'ast, Raw> as Processor<'ast>>::process_each(value.attrs) {
             if let Some(attr) = out.absorb(child) {
                 attrs.push(attr);
             }
@@ -124,7 +131,7 @@ impl<'ast> Processor for FieldExtraction<'ast> {
     }
 }
 
-impl<'ast> Processor for StructExtraction<'ast> {
+impl<'ast> Processor<'ast> for StructExtraction<'ast> {
     type Input = Extracted<StructExtraction<'ast>, &'ast DeriveInput>;
     type Output = ProcessedStruct<'ast>;
 
@@ -146,7 +153,7 @@ impl<'ast> Processor for StructExtraction<'ast> {
         // CHILDREN FIRST, then combine. `absorb` takes each child's reasons across whether or not
         // it produced a value, so a bad field cannot silently remove its siblings' complaints.
         let mut fields = Vec::new();
-        for child in FieldExtraction::process_each(value.fields) {
+        for child in <FieldExtraction<'ast> as Processor<'ast>>::process_each(value.fields) {
             if let Some(field) = out.absorb(child) {
                 fields.push(field);
             }

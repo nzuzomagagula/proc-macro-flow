@@ -14,9 +14,8 @@
 //! a question the AST can answer"
 
 use heck::{ToKebabCase, ToLowerCamelCase, ToSnakeCase};
-use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Fields, Item, ItemImpl, Result, parse2};
+use syn::{Data, DeriveInput, Error, Fields, ImplItem, Item, ItemImpl, Result, parse2};
 
 use super::Arity;
 use super::ext::{AttributesExt, FieldExt, TypeExt};
@@ -79,8 +78,8 @@ pub(crate) fn derive_syntax(input: DeriveInput) -> Result<Vec<Item>> {
 
     let (impl_generics, type_generics, where_clause) = grammar.generics.split_for_impl();
 
-    let node = grammar.node();
-    let reader = grammar.reader();
+    let node = grammar.node()?;
+    let reader = grammar.reader()?;
     let bounds = grammar.bounds()?;
 
     // Each item parsed on its own, so a malformed one names the generator that built it rather
@@ -161,7 +160,7 @@ impl Field<'_> {
 
 impl<'ast> Grammar<'ast> {
     /// The reflection table this node emits.
-    fn node(&self) -> TokenStream {
+    fn node(&self) -> Result<ImplItem> {
         let (entry, fields) = (&self.entry, &self.fields);
         let children = fields.iter().map(|field| {
             let key = &field.key;
@@ -188,18 +187,18 @@ impl<'ast> Grammar<'ast> {
             }
         });
 
-        quote! {
+        parse2(quote! {
             const NODE: ::proc_macro_flow_traits::node::Node =
                 ::proc_macro_flow_traits::node::Node {
                     name: #entry,
                     children: &[ #(#children),* ],
                 };
-        }
+        })
     }
 
     /// The `from_meta` body: walk the list, read each field, then check what was required.
     /// The `from_meta` body: walk the list, read each field, then check what was required.
-    fn reader(&self) -> TokenStream {
+    fn reader(&self) -> Result<ImplItem> {
         let (name, fields) = (self.name, &self.fields);
         let idents: Vec<&syn::Ident> = fields.iter().map(|field| field.ident).collect();
         let keys: Vec<&String> = fields.iter().map(|field| &field.key).collect();
@@ -264,7 +263,7 @@ impl<'ast> Grammar<'ast> {
             }
         });
 
-        quote! {
+        parse2(quote! {
             fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
                 let list = meta.require_list()?;
                 let body = ::proc_macro_flow_traits::meta::ListBody(&list.tokens);
@@ -301,7 +300,7 @@ impl<'ast> Grammar<'ast> {
                     }
                 }
             }
-        }
+        })
     }
 
     /// Step 6: the selector becomes a BOUND.

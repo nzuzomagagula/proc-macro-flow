@@ -1,6 +1,6 @@
 // @review [~]
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{DeriveInput, Item, parse_macro_input};
 
 use proc_macro_flow_traits::pipeline::Pipeline;
@@ -10,27 +10,12 @@ use crate::base::extractor::pipeline::ExtractorPipeline;
 mod base;
 mod derive;
 
-#[proc_macro_derive(HelloMacro)]
-pub fn hello_macro_derive(input: TokenStream) -> TokenStream {
-    let ast = parse_macro_input!(input as DeriveInput);
-    let name = ast.ident;
-
-    let expanded = quote! {
-        impl #name {
-            pub fn hello_macro() {
-                println!("Hello, Macro! My name is {}!", stringify!(#name));
-            }
-        }
-    };
-
-    expanded.into()
-}
-
 #[proc_macro_derive(FieldNames)]
 pub fn field_names(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);
 
-    ExtractorPipeline::run(&derive_input).into()
+    // The only lowering in the whole crate that is not rustc's own signature.
+    ExtractorPipeline::run(&derive_input).to_token_stream().into()
 }
 
 // ===========================================================================
@@ -52,6 +37,21 @@ pub fn validate(input: TokenStream) -> TokenStream {
     expand(input, derive::derive_validate)
 }
 
+/// Wire a pipeline, and generate the macro entry point for it.
+///
+/// `#[pipeline(derive = Name)]` over a module of `#[extractor]` / `#[processor]` / `#[generator]`
+/// components emits the module back, its `Pipeline` impl, and the `#[proc_macro_*]` function.
+/// `entry = manual` omits the last of those.
+///
+/// MUST SIT AT THE CRATE ROOT. VERIFIED: `functions tagged with #[proc_macro_derive] must currently
+/// reside in the root of the crate`, and the entry point is emitted as a SIBLING of this module -
+/// see NOTE(#pipeline/entry-is-a-sibling). The macro cannot check where it was invoked, so a
+/// misplaced one fails with rustc's own message, which at least says exactly what is wrong.
+#[proc_macro_attribute]
+pub fn pipeline(attr: TokenStream, item: TokenStream) -> TokenStream {
+    crate::base::pipeline::expand(attr.into(), item.into()).into()
+}
+
 /// Declare a grammar node: a struct of fields becomes something readable from a `syn::Meta`.
 ///
 /// `#[shape(AttributeKind::MetaList)]` narrows which openings a field accepts and lowers to a
@@ -60,6 +60,17 @@ pub fn validate(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Syntax, attributes(shape, alias))]
 pub fn syntax(input: TokenStream) -> TokenStream {
     expand(input, derive::derive_syntax)
+}
+
+/// Declare a generator: what it consumes, and which children it composes.
+///
+/// `#[generator(from = Ty, subject = Ty)]` wires it; `#[generates(name: Ty = expr)]` declares each
+/// child and what the parent feeds it. The author supplies `assemble` and `assemble_stub` — the
+/// derive cannot know what SHAPE the parent's item is. See
+/// NOTE(#generator-derive/plumbing-not-logic).
+#[proc_macro_derive(Generator, attributes(generator, generates))]
+pub fn generator(input: TokenStream) -> TokenStream {
+    expand(input, derive::derive_generator)
 }
 
 /// Generate the identity `Processor`. Omit it when the stage does real work.

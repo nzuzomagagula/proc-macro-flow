@@ -15,7 +15,7 @@ rectangle "vocab suite\nflag! name_value! leaf!\nmeta_list! variants! keys!\nnam
 rectangle """#[derive(Syntax)]""\n""#[shape]"" ""#[alias]"" + heck\nNode table + FromMeta + shape bound" as DS #E8F4EA
 
 rectangle "Processor\nStructExtraction -> ProcessedStruct\nFieldExtraction  -> ProcessedField" as P #E8F4EA
-rectangle "Generator\nProcessedStruct -> syn::ItemImpl\nstub() REQUIRED, typed Output" as G #E8F4EA
+rectangle "Generator\nProcessedStruct -> Result<syn::ItemImpl>\nstub() REQUIRED, typed + fallible" as G #E8F4EA
 
 rectangle "ExtractorPipeline\nPipeline::run - the macro boundary\nthe ONLY lowering to TokenStream" as PL #E8F4EA
 
@@ -88,6 +88,16 @@ note bottom of P
   knows comes from ""input.source()"". Unwrap
   between stages and there is nothing to
   process. (#processor/needs-the-source)
+end note
+
+note top of G
+  **No panics on this path.** Every derive returns
+  ""Result<Vec<syn::Item>>"", each item validated by
+  ""parse2(..)?"" where it was built, so a malformed
+  one names the generator instead of arriving in
+  the author's crate. Zero ""unwrap"" / ""expect"" /
+  ""parse_quote!"" remain in production code.
+  (#derive/expansion-is-typed-items)
 end note
 
 note bottom of G

@@ -21,10 +21,79 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 
-use crate::extractor::{Extractor, Validate};
+use crate::extractor::{Extraction, Extractor, Validate};
 use crate::generator::Generator;
 use crate::processor::Processor;
 use crate::render::Diagnose;
+
+/// What a pipeline produced: the item, and everything that went wrong building it.
+///
+/// NOTE(#pipeline/expansion-is-typed): V[S(Expansion).P(T) && !R(Vec<Item>)], "Ty(T) is the
+/// GENERATOR'S OWN Ty(Output), so the return type names exactly what this macro emits - not
+/// `Vec<syn::Item>`, which says 'some items' when we know precisely which. A generator whose output
+/// is `struct XExpansion(ItemImpl, ItemImpl)` promises TWO IMPLS and the compiler checks it; a Vec
+/// promises nothing and checks nothing.
+///
+/// A bare tuple cannot do this - VERIFIED that quote implements Tr(ToTokens) for no tuple - but a
+/// TUPLE STRUCT can, which is why ID(generation/newtype-per-item) allows N fields rather than one.
+///
+/// Its Tr(ToTokens) emits the item and then one compile_error! per error, which is what makes an
+/// entry function a single line and keeps Ty(TokenStream) at rustc's boundary and nowhere else"
+pub struct Expansion<T> {
+    item: Option<T>,
+    errors: Vec<syn::Error>,
+}
+
+impl<T> Expansion<T> {
+    pub fn new(item: Option<T>, errors: Vec<syn::Error>) -> Self {
+        Self { item, errors }
+    }
+
+    /// What was built, if anything survived.
+    pub fn item(&self) -> Option<&T> {
+        self.item.as_ref()
+    }
+
+    pub fn errors(&self) -> &[syn::Error] {
+        &self.errors
+    }
+}
+
+impl<T: ToTokens> ToTokens for Expansion<T> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        // The item FIRST, whatever happened - NOTE(#generator/stub-is-not-empty). Without it the
+        // missing impl cascades into 'does not implement' at every use site.
+        if let Some(item) = &self.item {
+            item.to_tokens(tokens);
+        }
+        for error in &self.errors {
+            error.to_compile_error().to_tokens(tokens);
+        }
+    }
+}
+
+/// An attribute macro's output: the item it was applied to, AND what the pipeline built.
+///
+/// NOTE(#pipeline/attribute-re-emits): V[S(Reemission).P(item)], "An attribute macro REPLACES the
+/// item it annotates, so anything it does not emit is deleted. A derive is the opposite - it adds
+/// beside an item rustc keeps. That difference is why F(run_attribute) exists rather than F(run)
+/// growing a flag: one shape that sometimes re-emits is exactly the either-ness
+/// NOTE(#generator/one-input-shape) argues against putting into a signature.
+///
+/// Typed rather than a TokenStream pair, so the item and the expansion both stay inspectable up to
+/// the moment the entry function lowers them"
+pub struct Reemission<S, T> {
+    item: S,
+    expansion: Expansion<T>,
+}
+
+impl<S: ToTokens, T: ToTokens> ToTokens for Reemission<S, T> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        // The author's item FIRST - deleting it would be a far worse failure than any diagnostic.
+        self.item.to_tokens(tokens);
+        self.expansion.to_tokens(tokens);
+    }
+}
 
 /// The three stages, run as one.
 pub trait Pipeline<'ast> {
@@ -39,11 +108,12 @@ pub trait Pipeline<'ast> {
     /// EXTRACTOR here, because an extraction type may implement both - which is already what
     /// StructExtraction and FieldExtraction do. So 'two or three stages' is expressed by naming
     /// the same type twice rather than by a branch in the type system"
-    type Processor: Processor<Input = <Self::Extractor as Extractor<'ast>>::Output>;
+    type Processor: Processor<'ast, Input = <Self::Extractor as Extractor<'ast>>::Output>;
 
     /// Builds the typed output.
     type Generator: Generator<
-            Input = <Self::Processor as Processor>::Output,
+            'ast,
+            Input = <Self::Processor as Processor<'ast>>::Output,
             Subject = <Self::Extractor as Validate<'ast>>::Source,
         >;
 
@@ -52,7 +122,9 @@ pub trait Pipeline<'ast> {
     /// The order is not arbitrary. `render` takes the tree BORROWED and must happen before
     /// `process` consumes it, which is the whole reason the walk returns a collection rather than
     /// a stream (NOTE(#render/who-renders)).
-    fn run(node: <Self::Extractor as Validate<'ast>>::Source) -> TokenStream
+    fn run(
+        node: <Self::Extractor as Validate<'ast>>::Source,
+    ) -> Expansion<<Self::Generator as Generator<'ast>>::Output>
     where
         <Self::Extractor as Extractor<'ast>>::Output: Diagnose,
         <Self::Extractor as Validate<'ast>>::Source: Copy + ToTokens,
@@ -74,45 +146,96 @@ pub trait Pipeline<'ast> {
         // deliberately no path here that emits errors without one.
         //
         // NOTE(#pipeline/generation-degrades): V[F(run).!panics], "Generation can FAIL now rather
-        // than panic (DEPRECATED(#generator/parse-quote-panics)), so this degrades in two steps:
-        // a failed generate falls back to the STUB, and a failed stub emits the errors alone.
-        // The second case is the only one that breaks ID(generator/stub-is-not-empty)'s promise,
-        // and it is the case where keeping it is impossible - the generator could not say what its
-        // vacant form looks like. Either way the author gets a diagnostic instead of a crash"
-        let body = match processed.value {
+        // Generation accumulates like the other two stages now, so the two-level degrade match
+        // this used to carry collapses into F(absorb): a generator that stubbed one child and
+        // succeeded at three others IS an Extraction, and says so.
+        let generated = match processed.value {
             Some(value) => Self::Generator::generate(value),
-            None => Self::Generator::stub(node),
+            None => Extraction::default(),
         };
+        errors.extend(
+            generated
+                .reasons
+                .iter()
+                .map(|reason| reason.to_error(&node, reason.message())),
+        );
 
-        let mut out = match body {
-            Ok(item) => item.into_token_stream(),
-            Err(failure) => match Self::Generator::stub(node) {
-                Ok(vacant) => {
+        // The stub is the floor and still fallible - see the correction in
+        // @group(#generation/composition). If even it fails, the errors go out alone, which is the
+        // one case NOTE(#generator/stub-is-not-empty) cannot cover.
+        // The stub is the floor and is still fallible - see the correction in
+        // @group(#generation/composition). If even it fails, the errors go out alone.
+        let item = match generated.value {
+            Some(item) => Some(item),
+            None => match Self::Generator::stub(node) {
+                Ok(vacant) => Some(vacant),
+                Err(failure) => {
                     errors.push(failure);
-                    vacant.into_token_stream()
-                }
-                Err(_) => {
-                    errors.push(failure);
-                    TokenStream::new()
+                    None
                 }
             },
         };
 
-        out.extend(errors.into_iter().map(|error| error.to_compile_error()));
-        out
+        Expansion::new(item, errors)
+    }
+
+    /// The same run, for an ATTRIBUTE macro: the annotated item comes back beside the output.
+    fn run_attribute(
+        node: <Self::Extractor as Validate<'ast>>::Source,
+    ) -> Reemission<
+        <Self::Extractor as Validate<'ast>>::Source,
+        <Self::Generator as Generator<'ast>>::Output,
+    >
+    where
+        <Self::Extractor as Extractor<'ast>>::Output: Diagnose,
+        <Self::Extractor as Validate<'ast>>::Source: Copy + ToTokens,
+    {
+        Reemission {
+            item: node,
+            expansion: Self::run(node),
+        }
     }
 }
 
-// TODO[ ](#pipeline/helpers-are-syntactic):C[Tr(Pipeline).C(HELPERS)], "Helper attributes should be
-// declared ONCE, by the extractor that reads them, and queried from here - nothing should restate
-// the list. The obstacle is syntactic: `#[proc_macro_derive(Name, attributes(a, b))]` takes LITERAL
-// IDENTS at the macro's definition site, so a const cannot feed it. Single-source-of-truth is
-// therefore reachable two ways - generate the entry point from the const, or keep the list written
-// and assert agreement with it - and the choice is worth making deliberately. Until then the list
-// stays hand-synced, and a missed name fails at the USER's site with no clue why, which is exactly
-// the cost this item exists to remove"
-// TODO[ ](#pipeline/macro-kind):C[Tr(Pipeline).A(kind)], "Only the DERIVE shape is built: take a
-// node, return new items. An attribute macro must also RE-EMIT the item it was applied to, and a
-// function-like macro takes tokens rather than a parsed node - both change what F(run) accepts and
-// returns. Adapting is the pipeline's job by ID(pipeline/owns-normalisation), so it belongs here
-// rather than in each entry point"
+// Answer(#pipeline/helpers-are-syntactic): GENERATE the entry point, which is the first of the two
+// routes that item weighed and the one that removes the hand-sync rather than policing it.
+//
+// The obstacle was real and has not gone away: `#[proc_macro_derive(Name, attributes(a, b))]` takes
+// LITERAL IDENTS at the definition site, so no const can feed it. What changed is who writes the
+// definition site. Attr(pipeline) reads the vocabulary named by `helpers = ..` and splices its
+// spellings into the Attr(proc_macro_derive) it emits, so the list exists once - in the vocabulary
+// the extractor already reads - and the syntactic requirement is met by construction.
+//
+// NOTE(#pipeline-macro/helpers-are-idents) records what the splice costs: spellings are stored as
+// Ty(LitStr) and `attributes(..)` wants idents, so one spelling in a hundred - `not-an-ident` -
+// cannot be registered and is reported instead of panicked on.
+// NOTE(#pipeline/entry-is-a-sibling): V[Attr(proc_macro_derive).at_root] && V[Attr(proc_macro_attribute).emits_siblings],
+// "Two facts, both VERIFIED by probe before the design leaned on them, because together they decide
+// the whole shape of Attr(pipeline).
+//
+// (1) `functions tagged with #[proc_macro_derive] must currently reside in the root of the crate` -
+// rustc's words. So Attr(pipeline) on a module can NOT emit the entry point inside it.
+//
+// (2) An attribute macro returns a stream REPLACING the annotated item, and that stream may hold
+// several items - so it can emit `mod x { .. }` PLUS a sibling `#[proc_macro_derive] pub fn`, and
+// when the module sits at the crate root so does the sibling. Probed end to end across two crates.
+//
+// The requirement this leaves is one the macro CANNOT check, because it does not know where it was
+// invoked: Attr(pipeline) must sit at the crate root. Violating it is rustc's error from (1), which
+// at least says exactly what is wrong."
+// Answer(#pipeline/macro-kind): all three shapes, and the adapting stayed here as
+// ID(pipeline/owns-normalisation) required.
+//
+// DERIVE is F(run): parse a Ty(DeriveInput), return new items beside it. ATTRIBUTE is
+// F(run_attribute), which wraps the same run in S(Reemission) so the annotated item goes back out -
+// see NOTE(#pipeline/attribute-re-emits) for why that is a second method rather than a flag on the
+// first. FUNCTION-LIKE is F(run) again with `Source = &TokenStream`, which is expressible because
+// Ty(TokenStream) is Tr(Visitable) (VERIFIED, visitable.rs:41).
+//
+// What the three DO NOT share is the entry signature rustc fixes for each, and that is precisely
+// what Attr(pipeline) generates from E(MacroKind). So the branch lives in the macro that writes the
+// entry point, once, and never in a pipeline.
+//
+// The honest gap, recorded rather than papered over: a function-like macro has no meaningful
+// Tr(Validate) - there is no node to narrow, so `Valid = Source` and the impl accepts everything.
+// No check was invented to make the shape look uniform.

@@ -125,13 +125,6 @@ mod derives {
 
     #[test]
     fn a_failing_validate_says_why() {
-        // REGRESSION for Fix[x](#derive/silent-validate). The derived `extract_from` used to emit
-        // `Extraction::default()` here - no value AND NO REASONS - so a derived extractor that
-        // rejected its input produced a vacant impl and not one word explaining it.
-        //
-        // This went unseen because the test ABOVE is the one that covered this path, and it asks
-        // only whether the value is absent. An empty extraction passes that assertion perfectly.
-        // So the missing assertion is the whole point of this test.
         let input = item("pub enum Thing { A }");
         let extracted = DerivedStruct::extract_from(&input);
 
@@ -397,5 +390,241 @@ mod grammar {
         let node = <Narrowed as Described>::NODE;
 
         assert_eq!(node.child("nested").unwrap().shapes, &[ShapeKind::List]);
+    }
+}
+
+/// The generator derive, proved where it can be — same reason as
+/// NOTE(#facade/hosts-the-proof): the derive crate cannot use its own derives.
+#[cfg(test)]
+mod generation {
+    use proc_macro_flow_derive::Generator;
+    use proc_macro_flow_traits::{
+        extractor::{Extraction, Reason, ReasonKind},
+        generator::Generator,
+    };
+    // Through the facade's re-exports, exactly as an author would: a grammar crate depends on
+    // proc_macro_flow and NOTHING ELSE. If this test needed `quote` in its own Cargo.toml, the
+    // generated code would need it in the author's too.
+    use proc_macro_flow_traits::proc_macro2;
+    use proc_macro_flow_traits::quote::{quote, ToTokens};
+    use syn::{parse2, ImplItem, ItemImpl};
+
+    /// A LEAF that always succeeds.
+    pub struct Good(ImplItem);
+    /// A LEAF that always fails, so per-child isolation is observable.
+    pub struct Bad(ImplItem);
+
+    impl ToTokens for Good {
+        fn to_tokens(&self, t: &mut proc_macro2::TokenStream) {
+            self.0.to_tokens(t)
+        }
+    }
+    impl ToTokens for Bad {
+        fn to_tokens(&self, t: &mut proc_macro2::TokenStream) {
+            self.0.to_tokens(t)
+        }
+    }
+    // Block's is DERIVED - see the impl the derive emits.
+
+    impl<'ast> Generator<'ast> for Good {
+        type Input = ();
+        type Subject = ();
+        type Output = Self;
+        fn generate(_: ()) -> Extraction<Self> {
+            match parse2(quote!(const GOOD: u8 = 1;)) {
+                Ok(item) => Extraction::value(Good(item)),
+                Err(error) => Extraction::failed(Reason::new(ReasonKind::Internal(error))),
+            }
+        }
+        fn stub(_: ()) -> syn::Result<Self> {
+            parse2(quote!(const GOOD: u8 = 0;)).map(Good)
+        }
+    }
+
+    impl<'ast> Generator<'ast> for Bad {
+        type Input = ();
+        type Subject = ();
+        type Output = Self;
+        fn generate(_: ()) -> Extraction<Self> {
+            // fails the way a real leaf would: tokens that are not an ImplItem
+            match parse2::<ImplItem>(quote!(this is not an impl item)) {
+                Ok(item) => Extraction::value(Bad(item)),
+                Err(error) => Extraction::failed(Reason::new(ReasonKind::Internal(error))),
+            }
+        }
+        fn stub(_: ()) -> syn::Result<Self> {
+            parse2(quote!(const BAD: u8 = 0;)).map(Bad)
+        }
+    }
+
+    /// The PARENT, entirely derived except for the two assembly functions.
+    #[derive(Generator)]
+    #[generator(from = (), subject = ())]
+    #[generates(
+        good: Good = (),
+        bad: Bad = (),
+    )]
+    pub struct Block(ItemImpl);
+
+    impl Block {
+        fn assemble(_: &(), good: Good, bad: Bad) -> syn::Result<Self> {
+            parse2(quote!(impl Thing { #good #bad })).map(Block)
+        }
+        fn assemble_stub(_: (), good: Good, bad: Bad) -> syn::Result<Self> {
+            parse2(quote!(impl Thing { #good #bad })).map(Block)
+        }
+    }
+
+    #[test]
+    fn a_failed_child_does_not_cost_its_siblings() {
+        // THE assertion the newtypes exist for, and the one `Result` structurally could not
+        // support. `bad` fails; `good` still reaches the output; the block is still assembled.
+        let generated = Block::generate(());
+
+        let block = generated.value.expect("the block is still assembled");
+        let out = block.0.to_token_stream().to_string();
+
+        assert!(out.contains("GOOD"), "the good child was lost: {out}");
+        assert!(out.contains("BAD"), "the failed child was not stubbed: {out}");
+    }
+
+    #[test]
+    fn the_failure_is_kept_and_attributed() {
+        let generated = Block::generate(());
+
+        assert_eq!(generated.reasons.len(), 1, "exactly one child failed");
+        assert!(
+            generated.reasons[0].is_internal(),
+            "tokens WE assembled are ours, never the author's",
+        );
+    }
+
+    #[test]
+    fn a_stub_uses_every_childs_vacant_form() {
+        let block = Block::stub(()).expect("the stub assembles");
+        let out = block.0.to_token_stream().to_string();
+
+        assert!(out.contains("GOOD"), "{out}");
+        assert!(out.contains("BAD"), "{out}");
+    }
+}
+
+/// `#[pipeline]` with `entry = manual` — the wiring half, which a NON proc-macro crate can host.
+///
+/// The entry-generating half needs a `proc-macro = true` crate, because that is the only place a
+/// `#[proc_macro_derive]` function may exist at all. See NOTE(#pipeline/entry-is-a-sibling).
+#[cfg(test)]
+mod wiring {
+    use proc_macro_flow_derive::pipeline;
+    use proc_macro_flow_traits::{
+        extractor::{Extracted, Extraction, Extractor, Reason, Validate},
+        generator::Generator,
+        pipeline::Pipeline,
+        processor::Processor,
+        quote::ToTokens,
+        render::Diagnose,
+    };
+    use syn::{parse_str, DeriveInput, ItemImpl};
+
+    #[pipeline(derive = Tiny, entry = manual)]
+    mod tiny {
+        use super::*;
+
+        // ONE type, two roles - NOTE(#pipeline-macro/one-type-many-roles), and the commonest
+        // shape there is: a pipeline with nothing to process names its extractor twice.
+        #[extractor(source = DeriveInput)]
+        #[processor(from = Extraction2)]
+        pub struct Extraction2<'ast>(pub &'ast DeriveInput);
+
+        #[generator(from = Extraction2)]
+        pub struct Processed<'ast>(pub &'ast DeriveInput);
+    }
+
+    use tiny::{Extraction2, Processed};
+
+    impl<'ast> Validate<'ast> for Extraction2<'ast> {
+        type Source = &'ast DeriveInput;
+        type Valid = &'ast DeriveInput;
+        fn validate(input: Self::Source) -> Result<Self::Valid, Reason> {
+            Ok(input)
+        }
+    }
+
+    impl<'ast> Extractor<'ast> for Extraction2<'ast> {
+        type Output = Extracted<Self, &'ast DeriveInput>;
+        fn extract_from(node: &'ast DeriveInput) -> Self::Output {
+            Extracted::new(Extraction::value(Extraction2(node)), node)
+        }
+    }
+
+    impl<'ast> Diagnose for Extraction2<'ast> {
+        fn diagnose(&self, _: &mut Vec<syn::Error>) {}
+    }
+
+    impl<'ast> Processor<'ast> for Extraction2<'ast> {
+        type Input = Extracted<Extraction2<'ast>, &'ast DeriveInput>;
+        type Output = Processed<'ast>;
+        fn process(input: Self::Input) -> Extraction<Self::Output> {
+            // Read through the EXTRACTION, not around it via `source()`. Both reach the same
+            // node here, but only this one proves the extractor's payload survived the wiring -
+            // which is the whole claim this module exists to make.
+            match input.value() {
+                Some(extraction) => Extraction::value(Processed(extraction.0)),
+                None => Extraction::default(),
+            }
+        }
+    }
+
+    /// The generated item, its own type - ID(generation/newtype-per-item).
+    pub struct Block(ItemImpl);
+
+    impl ToTokens for Block {
+        fn to_tokens(&self, t: &mut proc_macro_flow_traits::proc_macro2::TokenStream) {
+            self.0.to_tokens(t)
+        }
+    }
+
+    impl<'ast> Generator<'ast> for Processed<'ast> {
+        type Input = Self;
+        type Subject = &'ast DeriveInput;
+        type Output = Block;
+
+        fn generate(input: Self) -> Extraction<Block> {
+            let name = &input.0.ident;
+            match syn::parse2(proc_macro_flow_traits::quote::quote!(impl #name { const WIRED: bool = true; }))
+            {
+                Ok(item) => Extraction::value(Block(item)),
+                Err(error) => Extraction::failed(Reason::new(
+                    proc_macro_flow_traits::extractor::ReasonKind::Internal(error),
+                )),
+            }
+        }
+
+        fn stub(subject: &'ast DeriveInput) -> syn::Result<Block> {
+            let name = &subject.ident;
+            syn::parse2(proc_macro_flow_traits::quote::quote!(impl #name { const WIRED: bool = false; }))
+                .map(Block)
+        }
+    }
+
+    #[test]
+    fn the_pipeline_impl_is_generated_and_runs() {
+        // The wiring type is named by the macro from the exported name, and it really is a
+        // `Pipeline` - which only compiles if all three associated types line up.
+        let input: DeriveInput = parse_str("pub struct Thing;").expect("parses");
+        let out = TinyWiring::run(&input).to_token_stream().to_string();
+
+        assert!(out.contains("impl Thing"), "{out}");
+        assert!(out.contains("WIRED"), "{out}");
+        assert!(!out.contains("compile_error"), "{out}");
+    }
+
+    #[test]
+    fn entry_manual_emits_no_entry_function() {
+        // The toggle is the shape of the tree - NOTE(#pipeline-macro/entry-is-a-child). If an
+        // entry fn HAD been emitted, this module would not compile: a #[proc_macro_derive] in a
+        // non-proc-macro crate is an error.
+        let input: DeriveInput = parse_str("pub struct Other;").expect("parses");
+        assert!(TinyWiring::run(&input).item().is_some());
     }
 }

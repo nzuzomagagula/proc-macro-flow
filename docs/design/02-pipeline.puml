@@ -248,7 +248,7 @@ note right
   and ""Ambiguous"" stay ours.
 end note
 
-:**Generator::generate** or **::stub**, then **Pipeline::run** lowers
+:**Generator::generate** or **::stub** (both fallible), then **Pipeline::run** lowers
 ----
 in   ""Option<Input>"" + the subject + the errors rendered earlier
 out  a TYPED ""syn::ItemImpl"", then ""TokenStream"" — stub FIRST,
