@@ -25,6 +25,14 @@
 ///
 /// `TryFrom<&Meta>` rejects anything that is not a `Meta::Path`: a flag written as `no_clean(x)` or
 /// `no_clean = 1` has a payload, and a flag by definition has nowhere to put one.
+// TODO[ ](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "M(flag), M(name_value)
+// and M(variants) emitted `::quote::ToTokens` and `::proc_macro2::Span` as BARE PATHS, so a crate
+// using any of them had to depend on quote and proc_macro2 under exactly those names - the same
+// bargain ID(traits/reexport-syn) already closed for syn, and one the derives were fixed for
+// earlier. Routing them through $crate's own re-exports closes it for the declarative half too.
+//
+// It survived because every test imports what it needs directly; only a caller reaching the crate
+// through the facade alone can see it, which is what N(tour) does"
 #[macro_export]
 macro_rules! flag {
     (
@@ -58,7 +66,7 @@ macro_rules! flag {
                     names.join(", ")
                 }
 
-                fn expected(span: ::proc_macro2::Span) -> ::syn::Error {
+                fn expected(span: $crate::proc_macro2::Span) -> ::syn::Error {
                     ::syn::Error::new(
                         span,
                         ::std::format!("expected one of: {}", $name::candidates()),
@@ -74,12 +82,12 @@ macro_rules! flag {
 
             /// Re-emits the CANONICAL spelling, whichever one was written. A flag that round-tripped
             /// its alias would make the generated code depend on how the user spelled it.
-            impl ::quote::ToTokens for $name {
-                fn to_tokens(&self, tokens: &mut ::proc_macro2::TokenStream) {
-                    ::quote::ToTokens::to_tokens(
-                        &::proc_macro2::Ident::new(
+            impl $crate::quote::ToTokens for $name {
+                fn to_tokens(&self, tokens: &mut $crate::proc_macro2::TokenStream) {
+                    $crate::quote::ToTokens::to_tokens(
+                        &$crate::proc_macro2::Ident::new(
                             $name::spelling(),
-                            ::proc_macro2::Span::call_site(),
+                            $crate::proc_macro2::Span::call_site(),
                         ),
                         tokens,
                     );

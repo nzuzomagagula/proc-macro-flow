@@ -111,7 +111,7 @@ macro_rules! variants {
             /// Every variant name this node accepts, in declaration order.
             pub const NAMES: &'static [&'static str] = &[ $($key),* ];
 
-            fn unknown(span: ::proc_macro2::Span) -> ::syn::Error {
+            fn unknown(span: $crate::proc_macro2::Span) -> ::syn::Error {
                 let quoted: ::std::vec::Vec<::std::string::String> = $name::NAMES
                     .iter()
                     .map(|name| ::std::format!("`{}`", name))
@@ -197,7 +197,7 @@ macro_rules! variants {
     };
     (@from_path positional $name:ident $v:ident $($rest:tt)*) => {
         ::std::result::Result::Err(::syn::Error::new(
-            ::proc_macro2::Span::call_site(),
+            $crate::proc_macro2::Span::call_site(),
             ::std::concat!(
                 "`",
                 ::std::stringify!($v),
@@ -209,7 +209,7 @@ macro_rules! variants {
     };
     (@from_path named $name:ident $v:ident $($rest:tt)*) => {
         ::std::result::Result::Err(::syn::Error::new(
-            ::proc_macro2::Span::call_site(),
+            $crate::proc_macro2::Span::call_site(),
             ::std::concat!(
                 "`",
                 ::std::stringify!($v),

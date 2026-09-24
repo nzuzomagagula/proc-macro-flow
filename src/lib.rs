@@ -1015,3 +1015,6 @@ mod wiring {
         assert!(TinyWiring::run(&input).item().is_some());
     }
 }
+
+#[cfg(test)]
+mod tour;

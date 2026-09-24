@@ -92,9 +92,9 @@ macro_rules! name_value {
                 }
             }
 
-            impl ::quote::ToTokens for $name {
-                fn to_tokens(&self, tokens: &mut ::proc_macro2::TokenStream) {
-                    ::quote::ToTokens::to_tokens(&self.0, tokens);
+            impl $crate::quote::ToTokens for $name {
+                fn to_tokens(&self, tokens: &mut $crate::proc_macro2::TokenStream) {
+                    $crate::quote::ToTokens::to_tokens(&self.0, tokens);
                 }
             }
         )+
