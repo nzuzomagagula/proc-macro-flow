@@ -359,6 +359,54 @@ mod annotated {
     }
 }
 
+/// A derive whose ENTRY POINT was generated, used against a real struct.
+///
+/// NOTE(#facade/uses-a-generated-entry): V[Attr(derive(Generated)).from(Attr(pipeline))], "Every
+/// other proof of Attr(pipeline) in this workspace inspects the TOKENS it produces. This one
+/// compiles them: `Generated` is declared in proc_macro_flow_demo as three stages under
+/// `#[pipeline(derive = Generated)]`, with no entry function written by anybody, and what is used
+/// below is the `#[proc_macro_derive]` the macro emitted.
+///
+/// It needed a third crate to exist at all - see NOTE(#demo/why-a-third-crate) - and it found the
+/// bug that had made the whole path uncompilable: the generated wiring marker was `pub`, which a
+/// proc-macro crate forbids (ID(pipeline-macro/wiring-is-private))."
+#[cfg(test)]
+mod generated_entry {
+    use proc_macro_flow_demo::Generated;
+
+    #[derive(Generated)]
+    pub struct Thing {
+        alpha: u8,
+        beta: String,
+    }
+
+    #[derive(Generated)]
+    pub struct Empty {}
+
+    #[test]
+    fn the_generated_derive_produces_its_impl() {
+        // The const below exists only because a macro whose entry function nobody wrote ran over
+        // this struct. If Attr(pipeline) stopped emitting an entry, this would not compile.
+        assert_eq!(Thing::FIELD_NAMES, ["alpha", "beta"]);
+    }
+
+    #[test]
+    fn it_reads_the_fields_in_declaration_order() {
+        assert_eq!(Thing::FIELD_NAMES.first(), Some(&"alpha"));
+        assert_eq!(Thing::FIELD_NAMES.last(), Some(&"beta"));
+    }
+
+    #[test]
+    fn a_struct_with_no_fields_still_gets_the_impl() {
+        assert!(Empty::FIELD_NAMES.is_empty());
+    }
+
+    #[allow(dead_code)]
+    fn the_fields_are_read_not_ignored(thing: &Thing) -> (&u8, &String) {
+        (&thing.alpha, &thing.beta)
+    }
+}
+
 /// Rules a grammar states about itself, and the walk that carries them up.
 ///
 /// NOTE(#facade/hosts-the-rule-proof): same reason as the rest - the derive crate cannot use its

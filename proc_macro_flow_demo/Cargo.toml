@@ -1,0 +1,13 @@
+[package]
+name = "proc_macro_flow_demo"
+version = "0.1.0"
+edition = "2024"
+
+# The whole point of this crate. `#[pipeline]` generates a `#[proc_macro_derive]` function, and
+# that is legal in exactly one kind of crate - see NOTE(#demo/why-a-third-crate).
+[lib]
+proc-macro = true
+
+[dependencies]
+proc_macro_flow_derive = { path = "../proc_macro_flow_derive" }
+proc_macro_flow_traits = { path = "../proc_macro_flow_traits" }

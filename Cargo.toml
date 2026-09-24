@@ -1,5 +1,5 @@
 [workspace]
-members = ["proc_macro_flow_derive", "proc_macro_flow_traits"]
+members = ["proc_macro_flow_derive", "proc_macro_flow_demo", "proc_macro_flow_traits"]
 
 [package]
 name = "proc_macro_flow"
@@ -13,4 +13,6 @@ proc_macro_flow_traits = { path = "proc_macro_flow_traits" }
 [dev-dependencies]
 # only the derive tests need these; the facade itself re-exports rather than uses them
 syn = { version = "3", features = ["full"] }
+# a pipeline whose entry point was GENERATED, so that the generated entry is compiled and used
+proc_macro_flow_demo = { path = "proc_macro_flow_demo" }
 # quote/proc-macro2 deliberately ABSENT - generated code must not need them

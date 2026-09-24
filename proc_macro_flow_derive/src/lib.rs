@@ -10,6 +10,18 @@ use crate::base::extractor::pipeline::ExtractorPipeline;
 mod base;
 mod derive;
 
+// Answer(#extractor/entry-is-generated): this entry STAYS hand-written, and the plan that asked
+// for it to be regenerated with Attr(pipeline) was asking for something rustc forbids.
+//
+// `can't use a procedural macro from the same crate that defines it` - ID(derive/cannot-self-host),
+// already VERIFIED for the derives and true of Attr(pipeline) for exactly the same reason. It is
+// defined here, so it cannot be applied here, and no arrangement of modules changes that.
+//
+// The point of the step was never this function though - it was to compile the entry that
+// Attr(pipeline) GENERATES, which until then had only ever been asserted as tokens under
+// `entry = manual`. That is done, in a crate that can host it: see
+// NOTE(#demo/why-a-third-crate). It found a bug that had made the whole path uncompilable -
+// ID(pipeline-macro/wiring-is-private).
 #[proc_macro_derive(FieldNames)]
 pub fn field_names(input: TokenStream) -> TokenStream {
     let derive_input = parse_macro_input!(input as DeriveInput);

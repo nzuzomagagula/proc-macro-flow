@@ -1,0 +1,20 @@
+# nuts goals - proc_macro_flow_demo
+#
+# The compiled proof. `#[pipeline]` generates a `#[proc_macro_derive]` function, and
+# rustc allows one only in a `proc-macro = true` crate that is NOT the crate defining
+# `#[pipeline]` — see NOTE(#demo/why-a-third-crate) for the two constraints that meet
+# here and leave nowhere else to stand.
+#
+# Nothing in this crate is a feature. It exists so that the entry point every other
+# proof asserts as tokens is handed to rustc at least once, and so that the facade can
+# use a derive nobody wrote the entry for.
+
+[[goal]]
+title  = "Generated entry"
+prefix = "demo"
+done   = "all"
+why    = """
+Prove the generated `#[proc_macro_derive]` compiles, exports, and runs against a
+real struct — the one claim `#[pipeline]` made that no test could reach, because
+every proof of it ran under `entry = manual`.
+"""
