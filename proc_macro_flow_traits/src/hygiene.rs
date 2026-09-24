@@ -1,5 +1,5 @@
 // @review [ ]
-// TODO[ ](#hygiene/scan-for-bare-paths): C[N(hygiene)], "Shipped FOUR times: a generated path
+// TODO[x](#hygiene/scan-for-bare-paths): C[N(hygiene)], "Shipped FOUR times: a generated path
 // naming syn, quote or proc_macro2 resolves at the CALL SITE, where the author has no reason to
 // depend on any of them. Reviewing for it does not work - eighty-nine sites survived four rounds of
 // it. A text scan does"
