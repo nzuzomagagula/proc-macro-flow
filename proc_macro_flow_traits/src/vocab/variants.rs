@@ -111,30 +111,34 @@ macro_rules! variants {
             /// Every variant name this node accepts, in declaration order.
             pub const NAMES: &'static [&'static str] = &[ $($key),* ];
 
-            fn unknown(span: $crate::proc_macro2::Span) -> ::syn::Error {
+            fn unknown(span: $crate::proc_macro2::Span) -> $crate::syn::Error {
                 let quoted: ::std::vec::Vec<::std::string::String> = $name::NAMES
                     .iter()
                     .map(|name| ::std::format!("`{}`", name))
                     .collect();
-                ::syn::Error::new(
+                $crate::syn::Error::new(
                     span,
                     ::std::format!("expected one of: {}", quoted.join(", ")),
                 )
             }
         }
 
+        // Askable, so a grammar holding one can descend into its fields -
+        // NOTE(#assert/leaves-are-askable).
+        impl $crate::assert::Assert for $name {}
+
         impl $crate::vocab::leaves::FromMeta for $name {
-            fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                <$name as ::std::convert::TryFrom<&::syn::Meta>>::try_from(meta)
+            fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
+                <$name as ::std::convert::TryFrom<&$crate::syn::Meta>>::try_from(meta)
             }
         }
 
         /// A unit variant written bare in a value position - `colour(Red)` parses its body as
         /// `Expr`s, so `Red` arrives as a path expression rather than as a `Meta`.
         impl $crate::vocab::leaves::FromExpr for $name {
-            fn from_expr(expr: &::syn::Expr) -> ::syn::Result<Self> {
-                let path = <::syn::Path as $crate::vocab::leaves::FromExpr>::from_expr(expr)?;
-                let span = ::syn::spanned::Spanned::span(&path);
+            fn from_expr(expr: &$crate::syn::Expr) -> $crate::syn::Result<Self> {
+                let path = <$crate::syn::Path as $crate::vocab::leaves::FromExpr>::from_expr(expr)?;
+                let span = $crate::syn::spanned::Spanned::span(&path);
                 let written = $crate::vocab::walk::Named::last_segment(&path)
                     .ok_or_else(|| $name::unknown(span))?;
 
@@ -147,13 +151,13 @@ macro_rules! variants {
             }
         }
 
-        impl ::std::convert::TryFrom<&::syn::Meta> for $name {
-            type Error = ::syn::Error;
+        impl ::std::convert::TryFrom<&$crate::syn::Meta> for $name {
+            type Error = $crate::syn::Error;
 
-            fn try_from(meta: &::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
+            fn try_from(meta: &$crate::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
                 match meta {
-                    ::syn::Meta::Path(path) => {
-                        let span = ::syn::spanned::Spanned::span(path);
+                    $crate::syn::Meta::Path(path) => {
+                        let span = $crate::syn::spanned::Spanned::span(path);
                         let written = $crate::vocab::walk::Named::last_segment(path)
                             .ok_or_else(|| $name::unknown(span))?;
 
@@ -164,8 +168,8 @@ macro_rules! variants {
                             _ => ::std::result::Result::Err($name::unknown(span)),
                         }
                     }
-                    ::syn::Meta::List(list) => {
-                        let span = ::syn::spanned::Spanned::span(&list.path);
+                    $crate::syn::Meta::List(list) => {
+                        let span = $crate::syn::spanned::Spanned::span(&list.path);
                         let written = $crate::vocab::walk::Named::last_segment(&list.path)
                             .ok_or_else(|| $name::unknown(span))?;
                         let body = $crate::meta::ListBody(&list.tokens);
@@ -179,7 +183,7 @@ macro_rules! variants {
                             _ => ::std::result::Result::Err($name::unknown(span)),
                         }
                     }
-                    other => ::std::result::Result::Err(::syn::Error::new_spanned(
+                    other => ::std::result::Result::Err($crate::syn::Error::new_spanned(
                         other,
                         ::std::concat!(
                             ::std::stringify!($name),
@@ -196,7 +200,7 @@ macro_rules! variants {
         ::std::result::Result::Ok($name::$v)
     };
     (@from_path positional $name:ident $v:ident $($rest:tt)*) => {
-        ::std::result::Result::Err(::syn::Error::new(
+        ::std::result::Result::Err($crate::syn::Error::new(
             $crate::proc_macro2::Span::call_site(),
             ::std::concat!(
                 "`",
@@ -208,7 +212,7 @@ macro_rules! variants {
         ))
     };
     (@from_path named $name:ident $v:ident $($rest:tt)*) => {
-        ::std::result::Result::Err(::syn::Error::new(
+        ::std::result::Result::Err($crate::syn::Error::new(
             $crate::proc_macro2::Span::call_site(),
             ::std::concat!(
                 "`",
@@ -222,7 +226,7 @@ macro_rules! variants {
 
     // --- reading a variant written as a list --------------------------------
     (@from_list unit $name:ident $key:literal $body:ident $span:ident { } $v:ident) => {
-        ::std::result::Result::Err(::syn::Error::new(
+        ::std::result::Result::Err($crate::syn::Error::new(
             $span,
             ::std::concat!("`", $key, "` takes no arguments"),
         ))
@@ -243,7 +247,7 @@ macro_rules! variants {
                 <$t as $crate::vocab::leaves::FromExpr>::from_expr(&match taken.next() {
                     ::std::option::Option::Some(expr) => expr,
                     ::std::option::Option::None => {
-                        return ::std::result::Result::Err(::syn::Error::new(
+                        return ::std::result::Result::Err($crate::syn::Error::new(
                             $span,
                             ::std::concat!(
                                 "internal: `", $key, "` passed its arity check and then ran out \
@@ -285,7 +289,7 @@ macro_rules! variants {
 
         $(
             if $f.is_none() {
-                errors.push(::syn::Error::new(
+                errors.push($crate::syn::Error::new(
                     $span,
                     ::std::concat!(
                         "missing required key `",
@@ -303,7 +307,7 @@ macro_rules! variants {
                 $( $f: match $f {
                     ::std::option::Option::Some(value) => value,
                     ::std::option::Option::None => {
-                        return ::std::result::Result::Err(::syn::Error::new(
+                        return ::std::result::Result::Err($crate::syn::Error::new(
                             $span,
                             ::std::concat!(
                                 "internal: `", ::std::stringify!($f), "` passed the required \

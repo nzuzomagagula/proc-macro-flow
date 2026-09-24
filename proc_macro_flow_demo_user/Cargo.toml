@@ -1,0 +1,11 @@
+[package]
+name = "proc_macro_flow_demo_user"
+version = "0.1.0"
+edition = "2024"
+
+# THE WHOLE POINT OF THIS MANIFEST is what is NOT in it. A user of a macro built with
+# proc_macro_flow depends on that macro and nothing else - no syn, no quote, no proc-macro2,
+# and not even proc_macro_flow itself. If any of those were needed, the generated code would be
+# reaching for a crate its reader never asked for. See NOTE(#user/the-dependency-list-is-the-proof).
+[dependencies]
+proc_macro_flow_demo = { path = "../proc_macro_flow_demo" }

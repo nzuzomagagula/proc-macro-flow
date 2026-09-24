@@ -43,6 +43,20 @@ mod tests {
     }
 
     #[test]
+    fn the_generated_key_set_cannot_shadow_a_type_the_author_named() {
+        // REGRESSION for NOTE(#syntax-derive/the-key-set-cannot-shadow). The reader declares its
+        // key enum INSIDE its own body, and calling it `Key` shadowed any type the author had of
+        // that name - including one used as a field's type in the same grammar. The failure named
+        // a path nobody wrote: `<Column as FromBody>::from_body::Key: FromMeta is not satisfied`.
+        let out = expand("struct Column { key: Option<Key>, name: LitStr }");
+
+        assert!(out.contains("__ColumnKeys"), "the key set is still called Key: {out}");
+        assert!(!out.contains("enum Key "), "{out}");
+        // The author's own `Key` survives as the field's type.
+        assert!(out.contains("Option < Key >") || out.contains("Key as"), "{out}");
+    }
+
+    #[test]
     fn a_grammar_with_no_rules_still_gets_an_assert_that_descends() {
         // The descent is what carries a NESTED grammar's rules up, so it is emitted whether or not
         // this type states any of its own.

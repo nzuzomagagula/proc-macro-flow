@@ -55,30 +55,35 @@ macro_rules! name_value {
             }
 
             impl $crate::vocab::leaves::FromExpr for $name {
-                fn from_expr(expr: &::syn::Expr) -> ::syn::Result<Self> {
+                fn from_expr(expr: &$crate::syn::Expr) -> $crate::syn::Result<Self> {
                     <$leaf as $crate::vocab::leaves::FromExpr>::from_expr(expr).map($name)
                 }
             }
 
+            // Askable, so a grammar holding one can descend into its fields -
+            // NOTE(#assert/leaves-are-askable). It states no rules; what matters is that it can
+            // be asked.
+            impl $crate::assert::Assert for $name {}
+
             impl $crate::vocab::leaves::FromMeta for $name {
-                fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
+                fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
                     <$name as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
                 }
             }
 
-            impl ::std::convert::TryFrom<&::syn::Expr> for $name {
-                type Error = ::syn::Error;
+            impl ::std::convert::TryFrom<&$crate::syn::Expr> for $name {
+                type Error = $crate::syn::Error;
 
-                fn try_from(expr: &::syn::Expr) -> ::std::result::Result<Self, Self::Error> {
+                fn try_from(expr: &$crate::syn::Expr) -> ::std::result::Result<Self, Self::Error> {
                     <$name as $crate::vocab::leaves::FromExpr>::from_expr(expr)
                 }
             }
 
-            impl ::std::convert::TryFrom<&::syn::MetaNameValue> for $name {
-                type Error = ::syn::Error;
+            impl ::std::convert::TryFrom<&$crate::syn::MetaNameValue> for $name {
+                type Error = $crate::syn::Error;
 
                 fn try_from(
-                    nv: &::syn::MetaNameValue,
+                    nv: &$crate::syn::MetaNameValue,
                 ) -> ::std::result::Result<Self, Self::Error> {
                     <$name as $crate::vocab::leaves::FromExpr>::from_expr(&nv.value)
                 }

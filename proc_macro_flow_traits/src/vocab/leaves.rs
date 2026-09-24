@@ -127,9 +127,9 @@ pub trait FromBody: Sized {
 macro_rules! leaf {
     ( $( $ty:ident = $variant:ident ),+ $(,)? ) => {
         $(
-            impl $crate::vocab::leaves::FromMeta for ::syn::$ty {
-                fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                    <::syn::$ty as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
+            impl $crate::vocab::leaves::FromMeta for $crate::syn::$ty {
+                fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
+                    <$crate::syn::$ty as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
                 }
             }
 
@@ -137,17 +137,17 @@ macro_rules! leaf {
             // descend into its fields at all. Emitted from the same list that already decides what
             // a leaf IS, so there is no second set of names to keep in step -
             // NOTE(#assert/leaves-are-askable).
-            impl $crate::assert::Assert for ::syn::$ty {}
+            impl $crate::assert::Assert for $crate::syn::$ty {}
 
-            impl $crate::vocab::leaves::FromExpr for ::syn::$ty {
-                fn from_expr(expr: &::syn::Expr) -> ::syn::Result<Self> {
+            impl $crate::vocab::leaves::FromExpr for $crate::syn::$ty {
+                fn from_expr(expr: &$crate::syn::Expr) -> $crate::syn::Result<Self> {
                     match expr {
-                        ::syn::Expr::Lit(::syn::ExprLit {
-                            lit: ::syn::Lit::$variant(value),
+                        $crate::syn::Expr::Lit($crate::syn::ExprLit {
+                            lit: $crate::syn::Lit::$variant(value),
                             ..
                         }) => ::std::result::Result::Ok(value.clone()),
-                        other => ::std::result::Result::Err(::syn::Error::new(
-                            ::syn::spanned::Spanned::span(other),
+                        other => ::std::result::Result::Err($crate::syn::Error::new(
+                            $crate::syn::spanned::Spanned::span(other),
                             ::std::concat!("expected a ", ::std::stringify!($variant), " literal"),
                         )),
                     }

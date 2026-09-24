@@ -130,7 +130,7 @@ macro_rules! vocabulary {
 
         impl $crate::vocab::walk::Keys for $name {
             /// A vocabulary name is written as a bare ident. See Ty(Keys)::Written.
-            type Written = ::syn::Ident;
+            type Written = $crate::syn::Ident;
 
             const ALL: &'static [Self] = $name::ALL;
 
@@ -148,7 +148,7 @@ macro_rules! vocabulary {
             /// directly. F(from_spelling) below takes a `&str` and so forces its callers to build
             /// one - `ident.to_string()` - which is a heap allocation per element per walk, to
             /// answer a question that needed none. See NOTE(#keys/table-is-strings-the-rest-is-not).
-            fn resolve(written: &::syn::Ident) -> ::std::option::Option<Self> {
+            fn resolve(written: &$crate::syn::Ident) -> ::std::option::Option<Self> {
                 $name::ALL
                     .iter()
                     .copied()
@@ -160,32 +160,32 @@ macro_rules! vocabulary {
             }
         }
 
-        impl ::std::convert::TryFrom<&::syn::Ident> for $name {
-            type Error = ::syn::Error;
+        impl ::std::convert::TryFrom<&$crate::syn::Ident> for $name {
+            type Error = $crate::syn::Error;
 
-            fn try_from(ident: &::syn::Ident) -> ::std::result::Result<Self, Self::Error> {
+            fn try_from(ident: &$crate::syn::Ident) -> ::std::result::Result<Self, Self::Error> {
                 match <$name as $crate::vocab::walk::Keys>::resolve(ident) {
                     ::std::option::Option::Some(entry) => ::std::result::Result::Ok(entry),
-                    ::std::option::Option::None => ::std::result::Result::Err(::syn::Error::new(
-                        ::syn::spanned::Spanned::span(ident),
+                    ::std::option::Option::None => ::std::result::Result::Err($crate::syn::Error::new(
+                        $crate::syn::spanned::Spanned::span(ident),
                         ::std::format!("expected one of: {}", $name::candidates()),
                     )),
                 }
             }
         }
 
-        impl ::std::convert::TryFrom<&::syn::Path> for $name {
-            type Error = ::syn::Error;
+        impl ::std::convert::TryFrom<&$crate::syn::Path> for $name {
+            type Error = $crate::syn::Error;
 
             /// A vocabulary name is always a single segment: these are names we own, and we never
             /// invent a module to qualify them with.
-            fn try_from(path: &::syn::Path) -> ::std::result::Result<Self, Self::Error> {
+            fn try_from(path: &$crate::syn::Path) -> ::std::result::Result<Self, Self::Error> {
                 match path.get_ident() {
                     ::std::option::Option::Some(ident) => {
-                        <$name as ::std::convert::TryFrom<&::syn::Ident>>::try_from(ident)
+                        <$name as ::std::convert::TryFrom<&$crate::syn::Ident>>::try_from(ident)
                     }
-                    ::std::option::Option::None => ::std::result::Result::Err(::syn::Error::new(
-                        ::syn::spanned::Spanned::span(path),
+                    ::std::option::Option::None => ::std::result::Result::Err($crate::syn::Error::new(
+                        $crate::syn::spanned::Spanned::span(path),
                         ::std::format!("expected one of: {}", $name::candidates()),
                     )),
                 }

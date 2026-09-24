@@ -372,33 +372,33 @@ mod annotated {
 /// proc-macro crate forbids (ID(pipeline-macro/wiring-is-private))."
 #[cfg(test)]
 mod generated_entry {
-    use proc_macro_flow_demo::Generated;
+    use proc_macro_flow_demo::Columns;
 
-    #[derive(Generated)]
+    #[derive(Columns)]
     pub struct Thing {
         alpha: u8,
         beta: String,
     }
 
-    #[derive(Generated)]
+    #[derive(Columns)]
     pub struct Empty {}
 
     #[test]
     fn the_generated_derive_produces_its_impl() {
         // The const below exists only because a macro whose entry function nobody wrote ran over
         // this struct. If Attr(pipeline) stopped emitting an entry, this would not compile.
-        assert_eq!(Thing::FIELD_NAMES, ["alpha", "beta"]);
+        assert_eq!(Thing::COLUMNS, [("alpha", false), ("beta", false)]);
     }
 
     #[test]
     fn it_reads_the_fields_in_declaration_order() {
-        assert_eq!(Thing::FIELD_NAMES.first(), Some(&"alpha"));
-        assert_eq!(Thing::FIELD_NAMES.last(), Some(&"beta"));
+        assert_eq!(Thing::COLUMNS.first(), Some(&("alpha", false)));
+        assert_eq!(Thing::COLUMNS.last(), Some(&("beta", false)));
     }
 
     #[test]
     fn a_struct_with_no_fields_still_gets_the_impl() {
-        assert!(Empty::FIELD_NAMES.is_empty());
+        assert!(Empty::COLUMNS.is_empty());
     }
 
     #[allow(dead_code)]

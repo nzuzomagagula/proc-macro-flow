@@ -25,6 +25,9 @@
 ///
 /// `TryFrom<&Meta>` rejects anything that is not a `Meta::Path`: a flag written as `no_clean(x)` or
 /// `no_clean = 1` has a payload, and a flag by definition has nowhere to put one.
+// TODO[ ](#vocab/products-are-askable): C[Impl(Assert).for(flag, name_value, meta_list, variants)],
+// "Tr(Assert) is Tr(Diagnose)'s supertrait and a grammar descends into every field, so a vocabulary
+// product used AS a grammar field could not be asked. Only the leaves had it"
 // TODO[x](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "M(flag), M(name_value)
 // and M(variants) emitted `::quote::ToTokens` and `::proc_macro2::Span` as BARE PATHS, so a crate
 // using any of them had to depend on quote and proc_macro2 under exactly those names - the same
@@ -66,8 +69,8 @@ macro_rules! flag {
                     names.join(", ")
                 }
 
-                fn expected(span: $crate::proc_macro2::Span) -> ::syn::Error {
-                    ::syn::Error::new(
+                fn expected(span: $crate::proc_macro2::Span) -> $crate::syn::Error {
+                    $crate::syn::Error::new(
                         span,
                         ::std::format!("expected one of: {}", $name::candidates()),
                     )
@@ -94,10 +97,10 @@ macro_rules! flag {
                 }
             }
 
-            impl ::std::convert::TryFrom<&::syn::Path> for $name {
-                type Error = ::syn::Error;
+            impl ::std::convert::TryFrom<&$crate::syn::Path> for $name {
+                type Error = $crate::syn::Error;
 
-                fn try_from(path: &::syn::Path) -> ::std::result::Result<Self, Self::Error> {
+                fn try_from(path: &$crate::syn::Path) -> ::std::result::Result<Self, Self::Error> {
                     let matched = path
                         .get_ident()
                         .map(|ident| {
@@ -110,30 +113,35 @@ macro_rules! flag {
                         ::std::result::Result::Ok($name)
                     } else {
                         ::std::result::Result::Err($name::expected(
-                            ::syn::spanned::Spanned::span(path),
+                            $crate::syn::spanned::Spanned::span(path),
                         ))
                     }
                 }
             }
 
+            // Askable, so a grammar holding one can descend into its fields -
+            // NOTE(#assert/leaves-are-askable). It states no rules; what matters is that it can
+            // be asked.
+            impl $crate::assert::Assert for $name {}
+
             impl $crate::vocab::leaves::FromMeta for $name {
-                fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                    <$name as ::std::convert::TryFrom<&::syn::Meta>>::try_from(meta)
+                fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
+                    <$name as ::std::convert::TryFrom<&$crate::syn::Meta>>::try_from(meta)
                 }
             }
 
-            impl ::std::convert::TryFrom<&::syn::Meta> for $name {
-                type Error = ::syn::Error;
+            impl ::std::convert::TryFrom<&$crate::syn::Meta> for $name {
+                type Error = $crate::syn::Error;
 
                 /// Only a `Meta::Path` can be a flag - anything else carries a payload a flag has
                 /// nowhere to put.
-                fn try_from(meta: &::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
+                fn try_from(meta: &$crate::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
                     match meta {
-                        ::syn::Meta::Path(path) => {
-                            <$name as ::std::convert::TryFrom<&::syn::Path>>::try_from(path)
+                        $crate::syn::Meta::Path(path) => {
+                            <$name as ::std::convert::TryFrom<&$crate::syn::Path>>::try_from(path)
                         }
-                        other => ::std::result::Result::Err(::syn::Error::new(
-                            ::syn::spanned::Spanned::span(other),
+                        other => ::std::result::Result::Err($crate::syn::Error::new(
+                            $crate::syn::spanned::Spanned::span(other),
                             ::std::format!(
                                 "`{}` takes no arguments - it is a flag, and its presence is the \
                                  whole signal",

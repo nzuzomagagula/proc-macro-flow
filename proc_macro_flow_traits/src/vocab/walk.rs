@@ -85,7 +85,7 @@ macro_rules! keys {
         enum $name { $( $variant ),+ }
 
         impl $crate::vocab::walk::Keys for $name {
-            type Written = ::syn::Ident;
+            type Written = $crate::syn::Ident;
 
             const ALL: &'static [Self] = &[ $( $name::$variant ),+ ];
 
@@ -97,7 +97,7 @@ macro_rules! keys {
                 match self { $( $name::$variant => &[$spelling] ),+ }
             }
 
-            fn resolve(written: &::syn::Ident) -> ::std::option::Option<Self> {
+            fn resolve(written: &$crate::syn::Ident) -> ::std::option::Option<Self> {
                 $( if written == $spelling { return ::std::option::Option::Some($name::$variant); } )+
                 ::std::option::Option::None
             }

@@ -290,24 +290,50 @@ fn read_vocabulary(item: &syn::ItemMacro) -> syn::Result<(syn::Ident, Vec<syn::L
         syn::Error::new_spanned(item, "expected `enum <Name> { .. }` inside the vocabulary")
     })?;
 
-    // Every string literal in the body is an accepted spelling.
-    let spellings = item
+    // NOTE(#pipeline-macro/spellings-follow-an-equals): V[F(read_vocabulary).!reads(doc)], "A
+    // spelling is a literal in a `Variant = \"name\"` position, and finding it needs BOTH halves
+    // of the shape below. Taking every literal inside every top-level group instead - which is
+    // what this did - swallows the text of any doc comment written above the enum: rustc turns
+    // `///` into `#[doc = \"..\"]` even inside a macro invocation, and that bracket is a
+    // top-level group holding a top-level literal.
+    //
+    // The result was a vocabulary whose spellings included whole sentences, which then failed
+    // ID(pipeline-macro/helpers-are-idents) - correctly, and pointing at the doc comment. A
+    // DOCUMENTED vocabulary in a pipeline module simply did not work."
+    let body = item
         .mac
         .tokens
         .clone()
         .into_iter()
-        .filter_map(|tree| match tree {
-            TokenTree::Group(group) => Some(group.stream()),
-            _ => None,
-        })
-        .flat_map(|stream| stream.into_iter())
-        .filter_map(|tree| match tree {
-            TokenTree::Literal(literal) => {
-                syn::parse2::<syn::LitStr>(TokenTree::Literal(literal).into()).ok()
+        .find_map(|tree| match tree {
+            TokenTree::Group(group)
+                if group.delimiter() == proc_macro2::Delimiter::Brace =>
+            {
+                Some(group.stream())
             }
             _ => None,
         })
-        .collect();
+        .unwrap_or_default();
+
+    let mut spellings = Vec::new();
+    let mut assigned = false;
+    for tree in body {
+        match tree {
+            // `=` introduces the canonical spelling, `|` each further one.
+            TokenTree::Punct(punct) if punct.as_char() == '=' || punct.as_char() == '|' => {
+                assigned = true;
+            }
+            TokenTree::Literal(literal) if assigned => {
+                if let Ok(spelling) =
+                    syn::parse2::<syn::LitStr>(TokenTree::Literal(literal).into())
+                {
+                    spellings.push(spelling);
+                }
+                assigned = false;
+            }
+            _ => assigned = false,
+        }
+    }
 
     Ok((name, spellings))
 }
@@ -432,6 +458,33 @@ mod tests {
             .collect();
 
         assert_eq!(names, ["Struct", "Processed", "Block"]);
+    }
+
+    #[test]
+    fn a_documented_vocabulary_does_not_leak_its_prose_into_the_helpers() {
+        // REGRESSION for NOTE(#pipeline-macro/spellings-follow-an-equals). Every literal inside
+        // every top-level group was taken as a spelling, and `///` is `#[doc = ".."]` by the time
+        // a macro sees it - so a documented vocabulary registered its own prose as helper
+        // attributes and then failed for not being idents.
+        let item = module(
+            r#"mod m {
+                #[extractor(source = D, helpers = H)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+
+                vocabulary! {
+                    /// Prose that must not become a spelling.
+                    pub enum H {
+                        Shape = "shape" | "renamed",
+                    }
+                }
+            }"#,
+        );
+        let value = read(&item).into_extraction().value.expect("extracts");
+        let vocab = value.vocabularies.iter().find_map(|v| v.value()).expect("one vocabulary");
+
+        let found: Vec<String> = vocab.spellings.iter().map(|s| s.value()).collect();
+        assert_eq!(found, ["shape", "renamed"], "prose leaked in: {found:?}");
     }
 
     #[test]

@@ -112,23 +112,27 @@ macro_rules! meta_list {
             };
         }
 
+        // Askable, so a grammar holding one can descend into its fields -
+        // NOTE(#assert/leaves-are-askable).
+        impl $crate::assert::Assert for $name {}
+
         impl $crate::vocab::leaves::FromMeta for $name {
-            fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                <$name as ::std::convert::TryFrom<&::syn::Meta>>::try_from(meta)
+            fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
+                <$name as ::std::convert::TryFrom<&$crate::syn::Meta>>::try_from(meta)
             }
         }
 
-        impl ::std::convert::TryFrom<&::syn::Meta> for $name {
-            type Error = ::syn::Error;
+        impl ::std::convert::TryFrom<&$crate::syn::Meta> for $name {
+            type Error = $crate::syn::Error;
 
-            fn try_from(meta: &::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
+            fn try_from(meta: &$crate::syn::Meta) -> ::std::result::Result<Self, Self::Error> {
                 match meta {
-                    ::syn::Meta::List(list) => {
+                    $crate::syn::Meta::List(list) => {
                         <$name as ::std::convert::TryFrom<$crate::meta::ListBody<'_>>>::try_from(
                             $crate::meta::ListBody(&list.tokens),
                         )
                     }
-                    other => ::std::result::Result::Err(::syn::Error::new_spanned(
+                    other => ::std::result::Result::Err($crate::syn::Error::new_spanned(
                         other,
                         ::std::concat!(
                             "expected `",
@@ -141,7 +145,7 @@ macro_rules! meta_list {
         }
 
         impl<'ast> ::std::convert::TryFrom<$crate::meta::ListBody<'ast>> for $name {
-            type Error = ::syn::Error;
+            type Error = $crate::syn::Error;
 
             fn try_from(
                 body: $crate::meta::ListBody<'ast>,
@@ -211,7 +215,7 @@ macro_rules! meta_list {
 
     (@missing required $errors:ident, $field:ident, $key:literal, $body:ident) => {
         if $field.is_none() {
-            $errors.push(::syn::Error::new_spanned(
+            $errors.push($crate::syn::Error::new_spanned(
                 $body,
                 ::std::concat!("missing required key `", $key, "`"),
             ));
@@ -225,7 +229,7 @@ macro_rules! meta_list {
     (@take required $field:ident, $key:literal, $body:ident) => {
         match $field {
             ::std::option::Option::Some(value) => ::std::result::Result::Ok(value),
-            ::std::option::Option::None => ::std::result::Result::Err(::syn::Error::new_spanned(
+            ::std::option::Option::None => ::std::result::Result::Err($crate::syn::Error::new_spanned(
                 $body,
                 ::std::concat!(
                     "internal: `", $key, "` passed the required check and then was not present. \
@@ -235,7 +239,7 @@ macro_rules! meta_list {
         }
     };
     (@take optional $field:ident, $key:literal, $body:ident) => {
-        ::std::result::Result::<_, ::syn::Error>::Ok($field)
+        ::std::result::Result::<_, $crate::syn::Error>::Ok($field)
     };
 }
 

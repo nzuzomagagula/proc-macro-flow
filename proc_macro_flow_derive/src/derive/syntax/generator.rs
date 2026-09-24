@@ -171,6 +171,7 @@ impl<'ast> Grammar<'ast> {
     /// NOTE(#from-body/fallback-is-tokens-not-a-span).
     fn reader(&self) -> Result<ImplItem> {
         let (name, fields) = (self.name, &self.fields);
+        let key_set = quote::format_ident!("__{}Keys", name);
         let idents: Vec<&syn::Ident> = fields.iter().map(|field| field.ident).collect();
         let keys: Vec<&String> = fields.iter().map(|field| &field.key).collect();
         let aliases = fields.iter().map(|field| &field.aliases);
@@ -179,7 +180,7 @@ impl<'ast> Grammar<'ast> {
             let ident = field.ident;
             let inner = field.ty.inner();
             quote! {
-                Key::#ident => {
+                #key_set::#ident => {
                     #ident = ::std::option::Option::Some(
                         <#inner as ::proc_macro_flow_traits::vocab::leaves::FromMeta>::from_meta(
                             element,
@@ -253,9 +254,18 @@ impl<'ast> Grammar<'ast> {
                 // same reason: it needs no unique name and there is no second public name to keep in
                 // step. Unlike meta_list!, aliases are real here, because a proc macro can build the
                 // literals.
+                // TODO[ ](#syntax/key-set-shadowing): U[E(keys).name], "The generated key enum
+                // was called `Key` and shadowed any author type of that name, failing with a path
+                // nobody wrote"
+                // NOTE(#syntax-derive/the-key-set-cannot-shadow): V[E(keys).name.derived], "Named
+                // after the grammar rather than `Key`, because this enum is declared INSIDE the
+                // reader's body and a bare `Key` shadows any type the author happens to have called
+                // that - including one used as a field's own type in this very grammar. The failure
+                // reads `the trait bound <Column as FromBody>::from_body::Key: FromMeta is not
+                // satisfied`, which names a path the author never wrote."
                 ::proc_macro_flow_traits::keys! {
                     #[allow(non_camel_case_types)]
-                    enum Key { #( #idents = #keys ),* }
+                    enum #key_set { #( #idents = #keys ),* }
                 }
                 // The alias spellings the Node table advertises, asserted against the key set so the
                 // two cannot drift. TODO[ ](#syntax-derive/aliases-in-keys): `keys!` accepts one
@@ -266,7 +276,7 @@ impl<'ast> Grammar<'ast> {
                 #( let mut #idents = ::std::option::Option::None; )*
                 let mut errors = ::proc_macro_flow_traits::vocab::walk::Errors::new();
 
-                errors.absorb(body.walk::<Key, _>(|written, element| {
+                errors.absorb(body.walk::<#key_set, _>(|written, element| {
                     // EXHAUSTIVE over the key set - there is no arm to forget.
                     match written.key() { #(#reads)* }
                     ::std::result::Result::Ok(())

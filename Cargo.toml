@@ -1,5 +1,5 @@
 [workspace]
-members = ["proc_macro_flow_derive", "proc_macro_flow_demo", "proc_macro_flow_traits"]
+members = ["proc_macro_flow_derive", "proc_macro_flow_demo", "proc_macro_flow_demo_user", "proc_macro_flow_traits"]
 
 [package]
 name = "proc_macro_flow"

@@ -36,6 +36,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc_macro_flow_demo_user"
+version = "0.1.0"
+dependencies = [
+ "proc_macro_flow_demo",
+]
+
+[[package]]
 name = "proc_macro_flow_derive"
 version = "0.1.0"
 dependencies = [
