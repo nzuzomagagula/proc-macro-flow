@@ -433,7 +433,7 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
 }
 
 /// `#[derive(Syntax)]`, wired.
-// TODO[ ](#syntax/derive-is-a-pipeline): R[F(derive_syntax) -> S(SyntaxWiring)], "The largest
+// TODO[x](#syntax/derive-is-a-pipeline): R[F(derive_syntax) -> S(SyntaxWiring)], "The largest
 // split: extraction carries Attr(alias), Attr(shape) and the rule metas AS WRITTEN, and everything
 // derived - heck's casings, the entry head, arity, and the three rule checks - is processing,
 // which is the only stage that sees every field at once"
