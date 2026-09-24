@@ -200,7 +200,7 @@ fn assert_grammar(input: &ProcessedStage<'_>, args: &Type) -> syn::Result<Assert
 }
 
 /// `#[derive(Validate)]`, wired.
-// TODO[ ](#processor/trivial-derives-are-pipelines): R[F(derive_validate) -> S(ValidateWiring)] && R[F(derive_processor) -> S(ProcessorWiring)],
+// TODO[x](#processor/trivial-derives-are-pipelines): R[F(derive_validate) -> S(ValidateWiring)] && R[F(derive_processor) -> S(ProcessorWiring)],
 // "The two identity derives, converted first because they prove the shape against 47 and 49 lines
 // before it meets 337. They share one declaration reader and part company at the generator"
 pub(crate) struct ValidateWiring;
