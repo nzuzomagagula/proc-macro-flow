@@ -16,6 +16,14 @@
 //! Deriving what you want generated and hand-writing the rest is ordinary Rust and needs no opt-out
 //! attribute, which is the same reasoning ID(processor/optionality) already settled"
 
+// TODO[ ](#derive/structure-mirrors-the-pattern): M[N(derive).F(flat) => N(derive).N(stage)],
+// "Each derive BECAME a pipeline in the conversion and stayed a single flat file, so the shape is
+// true of the code and invisible in the tree. N(base/extractor) already shows what it should look
+// like - a directory whose mod.rs names extractor, processor, generator and pipeline - and a
+// reader opening N(derive/syntax) should find the same three stages rather than 800 lines to scroll.
+//
+// The structure is the cheapest documentation there is: it is read before any comment, it cannot
+// disagree with itself, and a stage that has nowhere to live is a stage somebody skipped"
 pub(crate) mod ext;
 mod extractor;
 mod generator;
