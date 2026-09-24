@@ -22,7 +22,7 @@ use proc_macro_flow_derive::pipeline;
 
 // MUST BE AT THE CRATE ROOT. Attr(pipeline) emits the entry function as a SIBLING of this module,
 // and (2) above is why that is the only place it can land - NOTE(#pipeline/entry-is-a-sibling).
-// TODO[ ](#demo/boilerplate-absorbed): U[N(demo).lines], "99 non-comment lines of which ~14 were
+// TODO[x](#demo/boilerplate-absorbed): U[N(demo).lines], "99 non-comment lines of which ~14 were
 // the author's own logic: a twin struct with a field-for-field copy between them, a hand-forwarded
 // ToTokens, and two EMPTY impls. Only *how* belongs to the author - what the shape must be is
 // declared, and everything between is the macro's"
