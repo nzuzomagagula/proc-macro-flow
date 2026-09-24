@@ -648,7 +648,7 @@ impl<'ast> Grammar<'ast> {
     }
 }
 
-// TODO[ ](#assert/derive-reads-rules): C[Attr(assert)] && V[F(Rule::resolve).rejects(required)],
+// TODO[x](#assert/derive-reads-rules): C[Attr(assert)] && V[F(Rule::resolve).rejects(required)],
 // "Attr(assert) read off the type, with three checks a derive can make and a runtime cannot: the
 // field exists, the rule takes that many keys, and - the one that earns it - a REQUIRED field is
 // always written, so a rule asking whether it was is a statement its own type contradicts"
