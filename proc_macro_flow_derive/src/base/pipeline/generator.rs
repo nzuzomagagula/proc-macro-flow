@@ -171,7 +171,7 @@ impl ToTokens for Entry {
     }
 }
 
-// TODO[ ](#pipeline/generated-entry-compiles): V[Attr(proc_macro_derive).generated.compiles],
+// TODO[x](#pipeline/generated-entry-compiles): V[Attr(proc_macro_derive).generated.compiles],
 // "Every proof of Attr(pipeline) so far asserted the entry function as TOKENS, because a
 // Attr(proc_macro_derive) is legal only in a `proc-macro = true` crate and neither the derive crate
 // (which defines Attr(pipeline)) nor the facade (which is an ordinary lib) can be one. So the
