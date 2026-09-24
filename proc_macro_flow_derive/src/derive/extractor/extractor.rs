@@ -34,7 +34,7 @@ pub(crate) struct ChildDeclaration<'ast> {
     pub(crate) reach: Reach,
 }
 
-// TODO[ ](#extractor/fields-may-hold-values): C[Attr(value)], "Attr(derive(Extractor)) accepted
+// TODO[x](#extractor/fields-may-hold-values): C[Attr(value)], "Attr(derive(Extractor)) accepted
 // only fields that were child EXTRACTIONS, so a stage reading plain data off the AST could not use
 // it at all - it hand-wrote extract_from and then owed two empty impls. A third head says the field
 // holds a value; marking it apart rather than inferring it from the type keeps the `Extracted<T, I>`
