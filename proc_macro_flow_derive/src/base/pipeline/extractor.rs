@@ -1,19 +1,25 @@
 // @review [ ]
 //! Reading a `#[pipeline]` module: which items are stages, and which is the helper vocabulary.
 //!
-//! NOTE(#pipeline-macro/is-a-pipeline): V[N(base/pipeline).has(extractor, processor, generator)],
-//! "The macro that writes macros is itself written as extractor -> processor -> generator. That is
-//! dogfooding with a purpose rather than symmetry for its own sake: if the pattern could not
-//! express its own macro, that is a finding worth having early.
+//! NOTE(#pipeline-macro/is-a-pipeline): V[N(base/pipeline).has(extractor, processor, generator)]
+//! && V[Impl(Pipeline).for(PipelineWiring)], "The macro that writes macros is itself written as
+//! extractor -> processor -> generator, and now RUNS through Tr(Pipeline)::run like any other.
+//! That is dogfooding with a purpose rather than symmetry for its own sake: if the pattern could
+//! not express its own macro, that is a finding worth having early.
 //!
-//! What it does NOT use is Tr(Pipeline)::run, and the reason is a real limitation rather than
-//! bootstrapping laziness - see NOTE(#pipeline/subject-equals-source-breaks-attributes)"
+//! It did not always. This module used to drive the three stages by hand, and the exception was
+//! recorded as a real limitation - see Answer(#pipeline/subject-equals-source-breaks-attributes)
+//! for the finding that the limitation was never there"
 
 use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Reason, ReasonKind, Validate};
+use proc_macro_flow_traits::assert::Assert;
+use proc_macro_flow_traits::attributed::Attributed;
 use proc_macro_flow_traits::render::Diagnose;
 use syn::{Item, ItemMod};
 
 use crate::derive::ext::AttributesExt;
+
+use super::generator::PipelineArgs;
 
 proc_macro_flow_traits::vocabulary! {
     /// The three roles an item in a pipeline module may declare.
@@ -27,6 +33,33 @@ proc_macro_flow_traits::vocabulary! {
     }
 }
 
+proc_macro_flow_traits::vocabulary! {
+    /// What a generator does to the item its attribute macro was applied to.
+    ///
+    /// NOTE(#pipeline-macro/emission-must-be-declared): V[E(Emission).declared], "F(run_attribute)
+    /// hands the annotated item back and the generator adds beside it; a generator that REWRITES
+    /// the item must not go through it, or the item is emitted twice. Which of the two a pipeline
+    /// is doing cannot be read off the generator's Ty(Output) - the framework sees a Tr(ToTokens)
+    /// and no more - so it is declared.
+    ///
+    /// It sits on the GENERATOR role rather than on Attr(pipeline) because that is whose property
+    /// it is: the generator is the thing that either includes the item in what it builds or does
+    /// not. Attr(pipeline) itself is the worked example - it re-emits a STRIPPED module, so it
+    /// declares `replace`"
+    pub enum Emission {
+        Beside = "beside",
+        Replace = "replace",
+    }
+}
+
+impl Default for Emission {
+    /// Adding beside is the safe default: a generator that forgets to declare anything cannot
+    /// silently DELETE the author's item, only fail to rewrite it.
+    fn default() -> Self {
+        Self::Beside
+    }
+}
+
 /// A whole `#[pipeline]` module.
 pub(crate) struct PipelineExtraction<'ast> {
     /// Every item that declares a role. Items that declare none extract to nothing.
@@ -36,26 +69,37 @@ pub(crate) struct PipelineExtraction<'ast> {
     pub(crate) vocabularies: Vec<Extracted<VocabularyExtraction<'ast>, &'ast Item>>,
 }
 
+/// What `#[pipeline]` is handed: its own arguments, and the module they were written on.
+///
+/// NOTE(#pipeline-macro/is-a-pipeline): V[Impl(Pipeline).for(PipelineWiring)], "This macro used to
+/// drive its own three stages by hand, and ID(pipeline/subject-equals-source-breaks-attributes)
+/// recorded why: Tr(Pipeline) binds `Generator::Subject = Validate::Source`, and an attribute
+/// macro has TWO inputs, so no Source could carry both. That diagnosis was wrong about the cause.
+/// The binding was never the obstacle - `Source` being a SINGLE NODE was. S(Attributed) is a node
+/// carrying both, so the binding holds unchanged and the special case disappears.
+///
+/// The macro is now its own worked example: if the pipeline macro can be written as a pipeline,
+/// an author's attribute macro can be."
+pub(crate) type PipelineSource<'ast> = Attributed<'ast, PipelineArgs, ItemMod>;
+
 impl<'ast> Validate<'ast> for PipelineExtraction<'ast> {
-    type Source = &'ast ItemMod;
+    type Source = PipelineSource<'ast>;
     /// The module's CONTENT. A module with no body has nothing to wire.
     type Valid = &'ast [Item];
 
-    fn validate(input: &'ast ItemMod) -> Result<Self::Valid, Reason> {
-        match &input.content {
+    fn validate(input: Self::Source) -> Result<Self::Valid, Reason> {
+        let module = input.item();
+        match &module.content {
             Some((_, items)) => Ok(items),
-            None => Err(Reason::at(
-                ReasonKind::WrongShape,
-                &input.ident,
-            )),
+            None => Err(Reason::at(ReasonKind::WrongShape, &module.ident)),
         }
     }
 }
 
 impl<'ast> Extractor<'ast> for PipelineExtraction<'ast> {
-    type Output = Extracted<Self, &'ast ItemMod>;
+    type Output = Extracted<Self, PipelineSource<'ast>>;
 
-    fn extract_from(node: &'ast ItemMod) -> Self::Output {
+    fn extract_from(node: PipelineSource<'ast>) -> Self::Output {
         let extraction = match Self::validate(node) {
             Ok(items) => Extraction::value(Self {
                 components: ComponentExtraction::extract_each(items.iter()),
@@ -67,6 +111,8 @@ impl<'ast> Extractor<'ast> for PipelineExtraction<'ast> {
         Extracted::new(extraction, node)
     }
 }
+
+impl<'ast> Assert for PipelineExtraction<'ast> {}
 
 impl<'ast> Diagnose for PipelineExtraction<'ast> {
     fn diagnose(&self, out: &mut Vec<syn::Error>) {
@@ -146,6 +192,8 @@ impl<'ast> Extractor<'ast> for ComponentExtraction<'ast> {
     }
 }
 
+impl<'ast> Assert for ComponentExtraction<'ast> {}
+
 impl<'ast> Diagnose for ComponentExtraction<'ast> {
     fn diagnose(&self, _: &mut Vec<syn::Error>) {}
 }
@@ -210,6 +258,8 @@ impl<'ast> Extractor<'ast> for VocabularyExtraction<'ast> {
     }
 }
 
+impl<'ast> Assert for VocabularyExtraction<'ast> {}
+
 impl<'ast> Diagnose for VocabularyExtraction<'ast> {
     fn diagnose(&self, _: &mut Vec<syn::Error>) {}
 }
@@ -226,14 +276,13 @@ fn read_vocabulary(item: &syn::ItemMacro) -> syn::Result<(syn::Ident, Vec<syn::L
 
     // `.. enum NAME { .. }` - find the ident after `enum`.
     while let Some(tree) = trees.next() {
-        if let TokenTree::Ident(ident) = &tree {
-            if ident == "enum" {
-                match trees.peek() {
-                    Some(TokenTree::Ident(found)) => name = Some(found.clone()),
-                    _ => {}
-                }
-                break;
+        if let TokenTree::Ident(ident) = &tree
+            && ident == "enum"
+        {
+            if let Some(TokenTree::Ident(found)) = trees.peek() {
+                name = Some(found.clone());
             }
+            break;
         }
     }
 
@@ -311,6 +360,26 @@ mod tests {
         parse_str(source).expect("the module parses")
     }
 
+    /// A stand-in for what `#[pipeline(..)]` itself was invoked with.
+    ///
+    /// These tests are about the MODULE, not the invocation, so every one of them uses the same
+    /// arguments. It has to exist because the source is a pair now - see
+    /// NOTE(#pipeline-macro/is-a-pipeline).
+    fn invocation() -> PipelineArgs {
+        PipelineArgs {
+            kind: super::super::generator::MacroKind::Derive,
+            exported: parse_str("Thing").expect("an ident"),
+            entry: true,
+        }
+    }
+
+    fn read(item: &ItemMod) -> Extracted<PipelineExtraction<'_>, PipelineSource<'_>> {
+        // The arguments are leaked rather than threaded through every call site: they outlive the
+        // test either way and nothing here reads them.
+        let args: &'static PipelineArgs = Box::leak(Box::new(invocation()));
+        PipelineExtraction::extract_from(Attributed::new(args, item))
+    }
+
     const WHOLE: &str = r#"
         mod field_names {
             #[extractor(source = DeriveInput, helpers = SyntaxHelper)]
@@ -337,7 +406,7 @@ mod tests {
     #[test]
     fn every_roled_item_is_a_component() {
         let item = module(WHOLE);
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
         let value = extracted.value().expect("the module extracts");
 
         let roles: Vec<Role> = value
@@ -353,7 +422,7 @@ mod tests {
     #[test]
     fn a_component_carries_the_name_a_sibling_would_point_at() {
         let item = module(WHOLE);
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
         let value = extracted.value().unwrap();
 
         let names: Vec<String> = value
@@ -370,7 +439,7 @@ mod tests {
         // NOTE(#pipeline-macro/helpers-are-read). No type is resolved - the literals are read
         // straight out of the macro invocation's tokens.
         let item = module(WHOLE);
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
         let value = extracted.value().unwrap();
 
         let vocab = value
@@ -390,7 +459,7 @@ mod tests {
         // ID(heads-are-rustcs), one level up: a plain struct in a pipeline module is not a
         // mistake, so it produces no value AND no complaint.
         let item = module(WHOLE);
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
 
         assert!(
             extracted.render().is_empty(),
@@ -401,7 +470,7 @@ mod tests {
     #[test]
     fn a_module_with_no_body_has_nothing_to_wire() {
         let item = module("mod elsewhere;");
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
 
         assert!(extracted.value().is_none());
         assert_eq!(extracted.reasons().len(), 1);
@@ -411,7 +480,7 @@ mod tests {
     fn a_role_written_without_arguments_is_a_complaint() {
         // `#[processor]` bare cannot say where it comes from, and that IS ours to report.
         let item = module("mod m { #[processor] struct P; }");
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
         let value = extracted.value().expect("the module still extracts");
 
         assert_eq!(value.components.len(), 1);
@@ -432,7 +501,7 @@ mod tests {
                 #[generator(from = S)] struct G;
             }"#,
         );
-        let extracted = PipelineExtraction::extract_from(&item);
+        let extracted = read(&item);
         let value = extracted.value().expect("extracts");
 
         let first = value.components[0].value().expect("S is a component");

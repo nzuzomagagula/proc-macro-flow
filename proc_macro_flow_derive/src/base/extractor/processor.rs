@@ -92,7 +92,8 @@ impl<'ast> Processor<'ast> for SyntaxFieldAttributeExtraction<'ast, Raw> {
                     tokens,
                 }
             }),
-            reasons: extraction.reasons,
+            // NOTE(#processor/reasons-are-new-not-inherited): already rendered by the walk.
+            reasons: Vec::new(),
         }
     }
 }
@@ -107,10 +108,7 @@ impl<'ast> Processor<'ast> for FieldExtraction<'ast> {
         let field = *input.source();
         let extraction = input.into_extraction();
 
-        let mut out: Extraction<ProcessedField<'ast>> = Extraction {
-            value: None,
-            reasons: extraction.reasons,
-        };
+        let mut out: Extraction<ProcessedField<'ast>> = Extraction::default();
 
         let Some(value) = extraction.value else {
             return out;
@@ -121,6 +119,8 @@ impl<'ast> Processor<'ast> for FieldExtraction<'ast> {
         // then dropped on the way to generation by a `.map(|_| ..)` that ignored the value.
         let mut attrs = Vec::new();
         for child in <SyntaxFieldAttributeExtraction<'ast, Raw> as Processor<'ast>>::process_each(value.attrs) {
+            // `absorb` is right HERE and wrong for an extraction-tree child: what it takes are the
+            // reasons the CHILD'S PROCESSING added, which the walk has not seen.
             if let Some(attr) = out.absorb(child) {
                 attrs.push(attr);
             }
@@ -139,10 +139,7 @@ impl<'ast> Processor<'ast> for StructExtraction<'ast> {
         let item = *input.source();
         let extraction = input.into_extraction();
 
-        let mut out: Extraction<ProcessedStruct<'ast>> = Extraction {
-            value: None,
-            reasons: extraction.reasons,
-        };
+        let mut out: Extraction<ProcessedStruct<'ast>> = Extraction::default();
 
         // A failed extraction still carries its reasons upward - nothing is dropped just because
         // there is no value to narrow.
@@ -213,13 +210,25 @@ mod tests {
     }
 
     #[test]
-    fn an_enum_fails_extraction_and_the_reason_survives_processing() {
-        // StructExtraction::validate rejects a non-struct. The processor has no value to narrow,
-        // and must still carry the complaint upward rather than swallowing it.
-        let out = processed("pub enum Thing { A, B }");
+    fn an_enum_fails_extraction_and_the_reason_is_reported_exactly_once() {
+        // REWRITTEN against NOTE(#processor/reasons-are-new-not-inherited). This used to assert
+        // that the PROCESSOR carried the extraction's reason forward, which read like care and was
+        // a double-report: the walk had already rendered it from the tree, so every complaint in
+        // the crate came out twice.
+        //
+        // What actually matters is asserted instead - the complaint reaches the output, ONCE.
+        use proc_macro_flow_traits::render::Diagnose;
 
-        assert!(out.value.is_none());
-        assert_eq!(out.reasons.len(), 1);
+        let input: DeriveInput = parse_str("pub enum Thing { A, B }").expect("parses");
+        let extracted = StructExtraction::extract_from(&input);
+
+        // Rendered from the TREE, which is where a reason recorded during extraction lives.
+        assert_eq!(extracted.render().len(), 1);
+
+        // And processing adds none of its own, because it discovered none.
+        let processed = StructExtraction::process(extracted);
+        assert!(processed.value.is_none());
+        assert!(processed.reasons.is_empty(), "the reason was reported twice");
     }
 
     #[test]

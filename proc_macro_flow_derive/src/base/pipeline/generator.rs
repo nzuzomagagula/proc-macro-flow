@@ -16,6 +16,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{parse2, Ident, ItemFn, ItemImpl, ItemMod, ItemStruct, Token};
 
+use super::extractor::{Emission, PipelineSource};
 use super::processor::ProcessedPipeline;
 
 proc_macro_flow_traits::vocabulary! {
@@ -30,6 +31,25 @@ proc_macro_flow_traits::vocabulary! {
 }
 
 /// `#[pipeline(derive = FieldNames, entry = manual)]`.
+///
+/// NOTE(#pipeline-args/stays-hand-written): V[!S(PipelineArgs).derive(Syntax)], "The plan had this
+/// becoming an ordinary Attr(derive(Syntax)) grammar read through Tr(FromBody), so that
+/// Attr(pipeline)'s own surface got the same treatment it gives everyone else. It is NOT, for two
+/// reasons found on attempting it, and both are worth recording so the idea is not re-had.
+///
+/// FIRST, it cannot: ID(derive/cannot-self-host) is verified - `can't use a procedural macro from
+/// the same crate that defines it` - and Attr(derive(Syntax)) is defined in this crate. The only
+/// route would be hand-writing Tr(FromBody) and Tr(Described), which is writing out what the derive
+/// exists to generate.
+///
+/// SECOND, and this is the part that settles it, it would buy nothing. A grammar node is a FIXED
+/// KEY SET with an arity each; these arguments are a CHOICE among three heads - `derive`,
+/// `attribute`, `function` - where the head is the datum. Phase B's `one_of` could state that as
+/// three Option fields, but the hand-written F(parse) below already enforces exactly one and
+/// already produces the candidate list from E(MacroKind), which is the same single source of truth.
+///
+/// Revisit if Attr(pipeline) ever grows genuine key-value options, where the grammar model would
+/// start paying for itself"
 pub(crate) struct PipelineArgs {
     pub(crate) kind: MacroKind,
     /// The name the macro is exported under.
@@ -78,6 +98,28 @@ impl Parse for PipelineArgs {
     }
 }
 
+/// Emits the arguments back as they were written.
+///
+/// NOTE(#pipeline-args/tokens-for-the-span-only): V[Impl(ToTokens).for(PipelineArgs).span_only],
+/// "Exists because Tr(Pipeline)::run bounds `Source: ToTokens` and S(Attributed) emits both its
+/// halves, and it is used for ONE thing: the node a reason with nothing finer of its own falls
+/// back to (ID(reason/span-not-node)). Nothing lowers these tokens into anybody's crate - the
+/// module and the wiring are what the macro emits, and they are built elsewhere entirely.
+///
+/// It is reconstructed from the fields rather than a stored copy of the input, which keeps
+/// ID(no-owned-nodes) intact: nothing here holds tokens the author wrote."
+impl ToTokens for PipelineArgs {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let kind = quote::format_ident!("{}", self.kind.spelling());
+        let exported = &self.exported;
+        tokens.extend(quote!(#kind = #exported));
+
+        if !self.entry {
+            tokens.extend(quote!(, entry = manual));
+        }
+    }
+}
+
 struct Assign {
     key: Ident,
     value: Ident,
@@ -94,23 +136,10 @@ impl Parse for Assign {
     }
 }
 
-/// Everything a pipeline expansion needs, gathered by the entry function.
-///
-/// NOTE(#pipeline/subject-equals-source-breaks-attributes): V[Tr(Pipeline).Ty(Subject) == Ty(Source)],
-/// "The pipeline macro does NOT use Tr(Pipeline)::run, and the reason is a real limitation worth
-/// recording rather than bootstrapping convenience. Tr(Pipeline) binds
-/// `Generator::Subject = Validate::Source`, so a generator can only be handed the same node the
-/// extractor read. An ATTRIBUTE macro has two inputs - the attribute's arguments and the item - and
-/// the arguments are not part of the item, so there is no Source that carries both.
-///
-/// Ty(PipelineInput) is that pair, assembled by the entry function. The general fix is
-/// F(run_attribute) taking both, which is what ID(pipeline/macro-kind) is for; until then this one
-/// macro drives its own stages"
-pub(crate) struct PipelineInput<'ast> {
-    pub(crate) processed: ProcessedPipeline<'ast>,
-    pub(crate) args: &'ast PipelineArgs,
-    pub(crate) module: &'ast ItemMod,
-}
+// ID(pipeline/subject-equals-source-breaks-attributes) is CLOSED, and S(PipelineInput) went with
+// it. It existed to carry the args and the module beside the processed value, because
+// Tr(Pipeline) appeared unable to; see NOTE(#pipeline-macro/is-a-pipeline) for why that reading was
+// wrong and NOTE(#pipeline-macro/processed-carries-the-node) for where those two live now.
 
 /// The module, its wiring, and - when asked for - the entry point.
 pub(crate) struct PipelineExpansion(ItemMod, Wiring, Option<Entry>);
@@ -148,16 +177,16 @@ fn wiring_name(exported: &Ident) -> Ident {
 }
 
 impl<'ast> Generator<'ast> for Wiring {
-    type Input = &'ast PipelineInput<'ast>;
+    type Input = &'ast ProcessedPipeline<'ast>;
     type Subject = &'ast Ident;
     type Output = Self;
 
-    fn generate(input: &'ast PipelineInput<'ast>) -> Extraction<Self> {
-        let name = wiring_name(&input.args.exported);
+    fn generate(input: &'ast ProcessedPipeline<'ast>) -> Extraction<Self> {
+        let name = wiring_name(&input.written.exported);
         let (extractor, processor, generator) = (
-            input.processed.extractor,
-            input.processed.processor,
-            input.processed.generator,
+            input.extractor,
+            input.processor,
+            input.generator,
         );
         let module = &input.module.ident;
 
@@ -194,12 +223,12 @@ impl<'ast> Generator<'ast> for Wiring {
 }
 
 impl<'ast> Generator<'ast> for Entry {
-    type Input = &'ast PipelineInput<'ast>;
+    type Input = &'ast ProcessedPipeline<'ast>;
     type Subject = &'ast Ident;
     type Output = Self;
 
-    fn generate(input: &'ast PipelineInput<'ast>) -> Extraction<Self> {
-        let exported = &input.args.exported;
+    fn generate(input: &'ast ProcessedPipeline<'ast>) -> Extraction<Self> {
+        let exported = &input.written.exported;
         let wiring = wiring_name(exported);
         let name = quote::format_ident!("{}", heck::ToSnakeCase::to_snake_case(exported.to_string().as_str()));
         // NOTE(#pipeline-macro/helpers-are-idents): V[Attr(proc_macro_derive).attributes(Ident)],
@@ -213,7 +242,7 @@ impl<'ast> Generator<'ast> for Entry {
         // spelling their grammar can read but a derive helper cannot be named after"
         let mut helpers: Vec<Ident> = Vec::new();
         let mut spelling_failures: Vec<Reason> = Vec::new();
-        for spelling in &input.processed.helpers {
+        for spelling in &input.helpers {
             match syn::parse_str::<Ident>(&spelling.value()) {
                 Ok(ident) => helpers.push(ident),
                 Err(_) => spelling_failures.push(Reason::at(
@@ -243,14 +272,85 @@ impl<'ast> Generator<'ast> for Entry {
         };
 
         let run = quote!(<#wiring as ::proc_macro_flow_traits::pipeline::Pipeline>::run(&parsed));
-        let run_attribute =
-            quote!(<#wiring as ::proc_macro_flow_traits::pipeline::Pipeline>::run_attribute(&parsed));
 
-        let derive_body = parse(quote!(::proc_macro_flow_traits::syn::DeriveInput), run.clone());
-        let attribute_body = parse(quote!(::proc_macro_flow_traits::syn::Item), run_attribute);
-        let function_body = parse(quote!(::proc_macro_flow_traits::proc_macro2::TokenStream), run);
+        let source = &input.source;
+        let derive_body = parse(quote!(#source), run.clone());
+        let function_body = parse(quote!(#source), run.clone());
 
-        let item = match input.args.kind {
+        // THE TWO-INPUT PARSE. Everything above takes one token stream; an attribute macro takes
+        // the arguments AND the item, and until this existed the arguments were discarded outright
+        // - the generated signature read `_attr: TokenStream` and `#[trace(level = "debug")]` could
+        // not be written at all. See NOTE(#attributed/source-is-a-pair).
+        //
+        // The arguments go through Tr(FromBody), which is the ORDINARY grammar reader - the same
+        // one a helper attribute goes through (NOTE(#from-body/one-reader-two-entries)). `&parsed`
+        // is the fallback node, so a bare `#[trace]` missing a required key underlines the item it
+        // was written on rather than nothing.
+        let attribute_body = match &input.args {
+            Some(args) => {
+                let call = match input.emission {
+                    // The generator adds BESIDE the item, so the framework hands the item back.
+                    Emission::Beside => quote! {
+                        <#wiring as ::proc_macro_flow_traits::pipeline::Pipeline>::run_attribute(
+                            ::proc_macro_flow_traits::attributed::Attributed::new(&arguments, &parsed),
+                        )
+                    },
+                    // The generator REWRITES the item, so re-emitting it here would double it.
+                    Emission::Replace => quote! {
+                        <#wiring as ::proc_macro_flow_traits::pipeline::Pipeline>::run(
+                            ::proc_macro_flow_traits::attributed::Attributed::new(&arguments, &parsed),
+                        )
+                    },
+                };
+
+                quote! {
+                    let parsed = match ::proc_macro_flow_traits::syn::parse::<#source>(input) {
+                        ::std::result::Result::Ok(parsed) => parsed,
+                        ::std::result::Result::Err(error) => {
+                            return ::proc_macro_flow_traits::quote::ToTokens::to_token_stream(
+                                &error.to_compile_error(),
+                            )
+                            .into();
+                        }
+                    };
+
+                    let arguments = match <#args as
+                        ::proc_macro_flow_traits::vocab::leaves::FromBody>::from_body(
+                            &::std::convert::Into::into(attr),
+                            &parsed,
+                        )
+                    {
+                        ::std::result::Result::Ok(arguments) => arguments,
+                        // The author's ITEM is not deleted when their arguments are wrong - an
+                        // attribute macro replaces what it annotates, so emitting only the error
+                        // would take their code with it.
+                        ::std::result::Result::Err(error) => {
+                            let mut out = ::proc_macro_flow_traits::quote::ToTokens::to_token_stream(&parsed);
+                            ::std::iter::Extend::extend(&mut out, error.to_compile_error());
+                            return out.into();
+                        }
+                    };
+
+                    ::proc_macro_flow_traits::quote::ToTokens::to_token_stream(&#call).into()
+                }
+            }
+            // An attribute pipeline that declared no `args` has a bare node for a Source, so
+            // Tr(Annotated) is not implemented for it and F(run_attribute) would not compile.
+            // Reported HERE, where the author can be told what is missing, rather than as a trait
+            // error inside generated code.
+            None => {
+                let message = format!(
+                    "`attribute = {exported}` needs `args = Ty` on its extractor: an attribute \
+                     macro is handed its own arguments as well as the item, and without a grammar \
+                     to read them into they would be discarded"
+                );
+                quote! {
+                    ::std::compile_error!(#message);
+                }
+            }
+        };
+
+        let item = match input.written.kind {
             MacroKind::Derive => parse2::<ItemFn>(quote! {
                 #[proc_macro_derive(#exported, attributes(#(#helpers),*))]
                 pub fn #name(input: ::proc_macro::TokenStream) -> ::proc_macro::TokenStream {
@@ -260,7 +360,7 @@ impl<'ast> Generator<'ast> for Entry {
             MacroKind::Attribute => parse2::<ItemFn>(quote! {
                 #[proc_macro_attribute]
                 pub fn #name(
-                    _attr: ::proc_macro::TokenStream,
+                    attr: ::proc_macro::TokenStream,
                     input: ::proc_macro::TokenStream,
                 ) -> ::proc_macro::TokenStream {
                     #attribute_body
@@ -297,15 +397,20 @@ impl<'ast> Generator<'ast> for Entry {
 }
 
 impl<'ast> Generator<'ast> for PipelineExpansion {
-    type Input = &'ast PipelineInput<'ast>;
-    type Subject = &'ast ItemMod;
+    /// BY VALUE, because Tr(Pipeline) binds `Generator::Input = Processor::Output` and a processor
+    /// hands its output over rather than lending it. S(Wiring) and S(Entry) below still take a
+    /// borrow - they are parts of this expansion, not stages of the pipeline, and the borrow of a
+    /// local resolves against a shorter Ty(Generator) lifetime by covariance.
+    type Input = ProcessedPipeline<'ast>;
+    type Subject = PipelineSource<'ast>;
     type Output = Self;
 
-    fn generate(input: &'ast PipelineInput<'ast>) -> Extraction<Self> {
+    fn generate(input: ProcessedPipeline<'ast>) -> Extraction<Self> {
         let mut out: Extraction<Self> = Extraction::default();
-        let exported = &input.args.exported;
+        let exported = &input.written.exported;
+        let module = input.module;
 
-        let wiring = match out.absorb(Wiring::generate(input)) {
+        let wiring = match out.absorb(Wiring::generate(&input)) {
             Some(wiring) => wiring,
             None => match Wiring::stub(exported) {
                 Ok(vacant) => vacant,
@@ -318,23 +423,24 @@ impl<'ast> Generator<'ast> for PipelineExpansion {
         };
 
         // The toggle: a child that may not be there - NOTE(#pipeline-macro/entry-is-a-child).
-        let entry = match input.args.entry {
+        let entry = match input.written.entry {
             false => None,
-            true => match out.absorb(Entry::generate(input)) {
+            true => match out.absorb(Entry::generate(&input)) {
                 Some(entry) => Some(entry),
                 None => Entry::stub(exported).ok(),
             },
         };
 
         out.value = Some(PipelineExpansion(
-            super::extractor::stripped(input.module),
+            super::extractor::stripped(module),
             wiring,
             entry,
         ));
         out
     }
 
-    fn stub(module: &'ast ItemMod) -> syn::Result<Self> {
+    fn stub(node: PipelineSource<'ast>) -> syn::Result<Self> {
+        let module = node.item();
         // The module ALONE. Whatever failed, the author's own code still compiles.
         Ok(PipelineExpansion(
             super::extractor::stripped(module),
@@ -348,6 +454,30 @@ impl<'ast> Generator<'ast> for PipelineExpansion {
 mod tests {
     use crate::base::pipeline::expand;
     use quote::quote;
+
+    /// A module whose EXTRACTOR declaration varies, because that is what now decides the shape of
+    /// the entry: `source` says what to parse and `args` says whether there is a second input.
+    fn declaring(extractor: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        quote! {
+            mod stages {
+                #[extractor(#extractor)]
+                struct Read;
+
+                #[processor(from = Read)]
+                struct Understood;
+
+                #[generator(from = Understood)]
+                struct Built;
+
+                vocabulary! {
+                    pub enum Helper {
+                        Shape = "shape",
+                        Alias = "alias",
+                    }
+                }
+            }
+        }
+    }
 
     /// One well-formed pipeline module, reused by every kind - what differs is only the ARGUMENT.
     fn module() -> proc_macro2::TokenStream {
@@ -441,7 +571,8 @@ mod tests {
     fn an_attribute_pipeline_re_emits_the_item() {
         // ID(pipeline/attribute-re-emits). An attribute macro REPLACES what it annotates, so the
         // entry must call run_attribute - calling `run` would silently delete the author's item.
-        let out = expanded(quote!(attribute = Trace));
+        let module = declaring(quote!(source = ItemFn, args = TraceArgs, helpers = Helper));
+        let out = expand(quote!(attribute = Trace), module).to_string();
 
         assert!(out.contains("proc_macro_attribute"), "{out}");
         assert!(out.contains("run_attribute"), "an attribute entry called plain `run`: {out}");
@@ -449,13 +580,73 @@ mod tests {
     }
 
     #[test]
-    fn a_function_like_pipeline_parses_raw_tokens() {
-        // No node to narrow, so the source IS the TokenStream - VERIFIED Visitable.
-        let out = expanded(quote!(function = expand_it));
+    fn an_attribute_entry_actually_reads_its_arguments() {
+        // THE hole this phase exists to close. The entry used to be generated with
+        // `_attr: TokenStream` - the arguments were discarded outright, so `#[trace(level = ..)]`
+        // could not be written at all. See NOTE(#attributed/source-is-a-pair).
+        let module = declaring(quote!(source = ItemFn, args = TraceArgs, helpers = Helper));
+        let out = expand(quote!(attribute = Trace), module).to_string();
+
+        // `_attr :`, not `_attr` - `run_attribute` contains that substring, so the looser check
+        // failed against output that was already correct.
+        assert!(!out.contains("_attr :"), "the arguments are still discarded: {out}");
+        assert!(out.contains("attr : :: proc_macro :: TokenStream"), "{out}");
+        // Read by the ORDINARY grammar reader, not a parser of its own.
+        assert!(out.contains("FromBody"), "{out}");
+        assert!(out.contains("Attributed :: new"), "{out}");
+    }
+
+    #[test]
+    fn an_attribute_pipeline_without_args_is_told_what_is_missing() {
+        // Without `args` the Source is a bare node, so Tr(Annotated) is not implemented and
+        // `run_attribute` would fail as a trait error deep inside generated code. Reported here
+        // instead, where the author can act on it.
+        let module = declaring(quote!(source = ItemFn, helpers = Helper));
+        let out = expand(quote!(attribute = Trace), module).to_string();
+
+        assert!(out.contains("compile_error"), "{out}");
+        assert!(out.contains("args = Ty"), "the message must say what to write: {out}");
+    }
+
+    #[test]
+    fn a_generator_that_rewrites_the_item_does_not_re_emit_it() {
+        // NOTE(#pipeline-macro/emission-must-be-declared). `replace` means the generator's own
+        // output already contains the item, so handing it back as well would double it.
+        let module = quote! {
+            mod stages {
+                #[extractor(source = ItemFn, args = TraceArgs)]
+                struct Read;
+                #[processor(from = Read)]
+                struct Understood;
+                #[generator(from = Understood, emits = replace)]
+                struct Built;
+            }
+        };
+        let out = expand(quote!(attribute = Trace), module).to_string();
+
+        assert!(!out.contains("run_attribute"), "the item would be emitted twice: {out}");
+        assert!(out.contains("Pipeline > :: run ("), "{out}");
+    }
+
+    #[test]
+    fn a_function_like_pipeline_parses_what_its_source_declares() {
+        // No node to narrow, so the source IS the TokenStream - VERIFIED Visitable. What changed
+        // is that the entry now parses what `source` DECLARES rather than a hardcoded guess:
+        // NOTE(#pipeline-macro/source-was-never-read).
+        let module = declaring(quote!(source = proc_macro2::TokenStream, helpers = Helper));
+        let out = expand(quote!(function = expand_it), module).to_string();
 
         assert!(out.contains("# [proc_macro]"), "{out}");
-        assert!(out.contains("TokenStream"), "{out}");
+        assert!(out.contains("parse :: < proc_macro2 :: TokenStream >"), "{out}");
         assert!(!out.contains("DeriveInput"), "a function-like macro has no DeriveInput: {out}");
+    }
+
+    #[test]
+    fn a_derive_parses_the_node_its_source_declares() {
+        let module = declaring(quote!(source = ItemStruct, helpers = Helper));
+        let out = expand(quote!(derive = Thing), module).to_string();
+
+        assert!(out.contains("parse :: < ItemStruct >"), "a hardcoded node came back: {out}");
     }
 
     #[test]

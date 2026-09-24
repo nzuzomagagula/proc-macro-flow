@@ -20,14 +20,15 @@ pub(crate) mod ext;
 mod extractor;
 mod generator;
 mod processor;
+mod stage;
 mod syntax;
 mod validate;
 
-pub(crate) use extractor::derive_extractor;
-pub(crate) use generator::derive_generator;
-pub(crate) use processor::derive_processor;
-pub(crate) use syntax::derive_syntax;
-pub(crate) use validate::derive_validate;
+pub(crate) use extractor::ExtractorWiring;
+pub(crate) use generator::GeneratorWiring;
+pub(crate) use processor::ProcessorWiring;
+pub(crate) use syntax::SyntaxWiring;
+pub(crate) use validate::ValidateWiring;
 
 use ext::TypeExt;
 use syn::{DeriveInput, Result, Type};

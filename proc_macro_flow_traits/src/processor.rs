@@ -86,6 +86,24 @@ pub trait Processor<'ast>: Sized {
     /// What the generator receives.
     type Output;
 
+    /// NOTE(#processor/reasons-are-new-not-inherited): V[F(process).R(reasons).new_only], "The
+    /// E(Reason)s on a processor's OUTPUT are the ones PROCESSING discovered, never the ones its
+    /// input already carried. Inheriting them double-reports, because F(run) renders the whole
+    /// extraction tree BEFORE calling this and then appends whatever comes back:
+    ///
+    /// ```text
+    /// let mut errors = extracted.render();          // every reason in the tree
+    /// let processed = Self::Processor::process(extracted);
+    /// errors.extend(processed.reasons ..);          // what processing ADDED
+    /// ```
+    ///
+    /// So `reasons: extraction.reasons` in a F(process) body is a bug, and F(absorb) over a CHILD
+    /// that was part of the extraction tree is the same bug wearing a method call. Take the value
+    /// and leave the reasons where the walk will find them.
+    ///
+    /// FOUND THE HARD WAY: six impls did it, and it went unnoticed because every test asserted
+    /// that a complaint was PRESENT and none asserted how many. A test that counts is the only
+    /// kind that catches this."
     fn process(input: Self::Input) -> Extraction<Self::Output>;
 
     /// Process many children. Mirrors `Extractor::extract_each`, and is how a parent collects its

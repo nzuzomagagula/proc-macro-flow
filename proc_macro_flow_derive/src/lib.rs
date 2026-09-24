@@ -26,15 +26,20 @@ pub fn field_names(input: TokenStream) -> TokenStream {
 // never use them on its own types.
 
 /// Generate `extract_from` from `#[source(Ty)]` and each field's `#[from]` / `#[with]`.
-#[proc_macro_derive(Extractor, attributes(source, from, with))]
+#[proc_macro_derive(Extractor, attributes(source, args, from, with))]
 pub fn extractor(input: TokenStream) -> TokenStream {
-    expand(input, derive::derive_extractor)
+    let parsed = parse_macro_input!(input as DeriveInput);
+    derive::ExtractorWiring::run(&parsed).to_token_stream().into()
 }
 
 /// Generate the trivial pass-through `Validate`. Omit it when there is a real narrowing to do.
-#[proc_macro_derive(Validate, attributes(source))]
+///
+/// Parse and run, and nothing else - everything between 'I have a node' and 'here is a token
+/// stream' is Tr(Pipeline)'s (ID(pipeline/owns-normalisation)).
+#[proc_macro_derive(Validate, attributes(source, args))]
 pub fn validate(input: TokenStream) -> TokenStream {
-    expand(input, derive::derive_validate)
+    let parsed = parse_macro_input!(input as DeriveInput);
+    derive::ValidateWiring::run(&parsed).to_token_stream().into()
 }
 
 /// Wire a pipeline, and generate the macro entry point for it.
@@ -57,9 +62,10 @@ pub fn pipeline(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// `#[shape(AttributeKind::MetaList)]` narrows which openings a field accepts and lowers to a
 /// trait BOUND (NOTE(#shape/bound-at-last)). `#[alias]` adds the standard case spellings;
 /// `#[alias("x")]` adds exactly what it names.
-#[proc_macro_derive(Syntax, attributes(shape, alias))]
+#[proc_macro_derive(Syntax, attributes(shape, alias, assert))]
 pub fn syntax(input: TokenStream) -> TokenStream {
-    expand(input, derive::derive_syntax)
+    let parsed = parse_macro_input!(input as DeriveInput);
+    derive::SyntaxWiring::run(&parsed).to_token_stream().into()
 }
 
 /// Declare a generator: what it consumes, and which children it composes.
@@ -70,42 +76,31 @@ pub fn syntax(input: TokenStream) -> TokenStream {
 /// NOTE(#generator-derive/plumbing-not-logic).
 #[proc_macro_derive(Generator, attributes(generator, generates))]
 pub fn generator(input: TokenStream) -> TokenStream {
-    expand(input, derive::derive_generator)
+    let parsed = parse_macro_input!(input as DeriveInput);
+    derive::GeneratorWiring::run(&parsed).to_token_stream().into()
 }
 
 /// Generate the identity `Processor`. Omit it when the stage does real work.
-#[proc_macro_derive(Processor, attributes(source))]
+#[proc_macro_derive(Processor, attributes(source, args))]
 pub fn processor(input: TokenStream) -> TokenStream {
-    expand(input, derive::derive_processor)
-}
-
-/// Shared entry: parse, run, and turn any error into a `compile_error!` at the author's span.
-///
-/// NOTE(#derive/expansion-is-typed-items): V[F(expand).A(f).R(Vec<Item>)], "A derive hands back
-/// PARSED ITEMS, not a raw stream, so nothing malformed can leave one - each item was validated by
-/// `syn::parse2` where it was built, and a mistake is a `syn::Error` bubbled to the author rather
-/// than a panic in the middle of expansion.
-///
-/// Ty(Vec<Item>) and not Ty(ItemImpl): most of these derives emit MORE THAN ONE item -
-/// Attr(derive(Extractor)) alone emits an Extractor impl and a Diagnose impl - and
-/// `parse2::<ItemImpl>` over two of them fails, because parse2 requires the whole stream consumed.
-/// Ty(Item) is the smallest type that covers what a derive may emit"
-///
-/// A derive that returns nothing on failure leaves the impl missing and every use site reporting
-/// "does not implement", which is the cascade NOTE(#generator/stub-alongside-errors) exists to
-/// prevent. Here there is no meaningful stub - the impl we failed to write IS the product - so the
-/// error is all that goes out, and it is spanned where the author can act on it.
-fn expand(
-    input: TokenStream,
-    f: fn(DeriveInput) -> syn::Result<Vec<Item>>,
-) -> TokenStream {
     let parsed = parse_macro_input!(input as DeriveInput);
-
-    match f(parsed) {
-        Ok(items) => quote!( #(#items)* ).into(),
-        Err(error) => error.to_compile_error().into(),
-    }
+    derive::ProcessorWiring::run(&parsed).to_token_stream().into()
 }
+
+// NOTE(#derive/every-entry-is-parse-and-run): V[N(lib).!F(expand)], "There was a shared F(expand)
+// here that every derive went through: parse the input, call a function returning
+// `Result<Vec<Item>>`, lower it or lower the error. It is GONE, and its absence is the measure of
+// what the conversion bought.
+//
+// Each derive is now a Tr(Pipeline), so everything that function did - and everything it could not
+// do, like walking an extraction tree for reasons before processing consumes it, or emitting a stub
+// beside the errors - lives in F(run), once, for all of them. What is left at each entry point is
+// the one thing rustc's signature forces: `parse_macro_input!`, run, `.into()`.
+//
+// It also removed a REAL limitation rather than only duplication. `Result<Vec<Item>>` could report
+// exactly one error, because `?` returns on the first - so a grammar with three mistakes showed one
+// and made the author recompile twice to find the others. ID(no-result) is why a pipeline cannot do
+// that, and the conversion is where that guarantee reached the derives."
 
 //TODO[ ](#future-thought): C[Attr(Custom), "Create attributes that point to or annotate custom implementation of things so that the derives are not all or nothing, you can choose what to include and exclude from the generated code"]
 //TODO[ ](#future-thought): C[Attr(Map), "Map items in the extractor to be flagged as requiring their own processor and maybe generator source? the point is that because everything is nested, users may want a parallel pattern where once nested concept moves throughout the pipeline in different forms so we can maybe actually use sub pipelines? oay so we need to create the notion of a pipeline and be able to nest them"]

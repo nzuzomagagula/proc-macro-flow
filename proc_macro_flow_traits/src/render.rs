@@ -23,13 +23,26 @@
 
 use syn::Error;
 
+use crate::assert::Assert;
 use crate::extractor::{Extracted, Reason, ReasonKind};
 
 /// Say where a node's children are, so the walk can reach them.
 ///
 /// Implementors do NOT render their own reasons - the `Extracted` wrapping them does that, because
 /// it holds the node those reasons span against.
-pub trait Diagnose {
+///
+/// NOTE(#assert/diagnose-requires-assert): V[Tr(Diagnose).super(Tr(Assert))], "Tr(Assert) is a
+/// SUPERTRAIT, so a type that can be diagnosed can always be asked what rules it breaks - even
+/// when the answer is none. That is what lets the rules ride this walk instead of needing one of
+/// their own: F(render) already descends every child and already knows the node each reason spans
+/// against, so a rule stated three levels down arrives correctly placed for free.
+///
+/// THE COST, recorded rather than discovered later: every Tr(Diagnose) implementor now needs an
+/// `impl Assert for X {}` as well. The method is defaulted so that is one line
+/// (NOTE(#assert/default-is-empty)), but it is a line an author hand-writing an extraction type has
+/// to write, and forgetting it is `the trait bound X: Assert is not satisfied`. Paid deliberately:
+/// a second walk would have duplicated this one, and two traversals of the same tree drift."
+pub trait Diagnose: Assert {
     fn diagnose(&self, out: &mut Vec<Error>);
 
     /// Walk this tree and collect every reason in it, in source order.
@@ -51,6 +64,19 @@ pub trait Diagnose {
     }
 }
 
+/// DELIBERATELY EMPTY, and the emptiness is the design rather than a stub.
+///
+/// NOTE(#assert/extracted-is-the-handoff): V[Impl(Assert).for(Extracted).empty], "The two walks
+/// cover different ground and meet exactly here. Tr(Assert) descends WITHIN a value - into the
+/// grammar nodes and collections a value holds. Tr(Diagnose) descends ACROSS S(Extracted)
+/// boundaries, and asks each value it reaches for its rules on the way past.
+///
+/// So an S(Extracted) reached during an ASSERT walk must not descend, or its value's rules are
+/// reported twice: once by the parent's assert walk and once when the diagnose walk arrives at it
+/// independently. Making this empty is what keeps every rule reported exactly once, and it is the
+/// kind of thing that would otherwise be found as a duplicated diagnostic long after."
+impl<T, I> Assert for Extracted<T, I> {}
+
 impl<T, I> Diagnose for Extracted<T, I>
 where
     T: Diagnose,
@@ -65,6 +91,15 @@ where
         // Then its children. A node with no value has none to visit - but its reasons were
         // already taken above, which is the case that matters most.
         if let Some(value) = self.value() {
+            // THE ONE PLACE a rule becomes an error, and it is here for the same reason a reason
+            // is (NOTE(#render/who-renders)): this is what holds the node to span against. A rule
+            // is about a value, so there is nothing to check when extraction produced none.
+            let mut violations = Vec::new();
+            value.assert(&mut violations);
+            for violation in violations {
+                out.push(violation.to_error(self.source(), violation.kind.message()));
+            }
+
             value.diagnose(out);
         }
     }
@@ -105,6 +140,9 @@ impl ReasonKind {
             ReasonKind::Missing => "required, and not written".to_owned(),
             ReasonKind::Duplicate => "written more than once".to_owned(),
             ReasonKind::Ambiguous => "ambiguous - qualify it".to_owned(),
+            // Worded HERE, from the rule and the keys it names, rather than at the site that
+            // recorded it - ID(reason/message).
+            ReasonKind::Violated(violation) => violation.message(),
             // The held error's own wording. Only the FIRST of a combined error appears here -
             // the rest survive in the error itself, which F(to_error) returns whole.
             ReasonKind::Internal(error) => format!("internal: {error}"),
@@ -126,6 +164,11 @@ mod tests {
         children: Vec<Extracted<Child, Ident>>,
     }
     struct Child;
+
+    use crate::assert::Assert;
+
+    impl Assert for Parent {}
+    impl Assert for Child {}
 
     impl Diagnose for Parent {
         fn diagnose(&self, out: &mut Vec<Error>) {
@@ -401,4 +444,73 @@ mod tests {
         let reason = Reason::custom(Precise(token.span()));
         assert!(reason.span().is_some(), "an author with something finer keeps it");
     }
+    /// A value that breaks a rule, so the collection point can be exercised.
+    struct Ruled(bool);
+
+    impl Assert for Ruled {
+        fn assert(&self, out: &mut Vec<Reason>) {
+            if self.0 {
+                out.push(Reason::new(ReasonKind::Violated(
+                    crate::assert::Violation::new(
+                        crate::assert::AssertKind::OneOf,
+                        &["times", "forever"],
+                    ),
+                )));
+            }
+        }
+    }
+
+    impl Diagnose for Ruled {
+        // a leaf: no children to visit
+        fn diagnose(&self, _: &mut Vec<Error>) {}
+    }
+
+    #[test]
+    fn a_rule_a_value_breaks_reaches_the_walk() {
+        // ID(assert/a-rule-is-a-reason): no second traversal was added - the rule rides the walk
+        // that already collects reasons, and arrives worded from the rule rather than from a
+        // string baked when it was recorded.
+        let node = quote!(retry(times = 3, forever = true));
+        let extracted = Extracted::new(Extraction::value(Ruled(true)), node);
+
+        let errors = extracted.render();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].to_string(),
+            "expected exactly one of `times`, `forever`"
+        );
+    }
+
+    #[test]
+    fn a_satisfied_rule_adds_nothing_to_the_walk() {
+        let node = quote!(retry(times = 3));
+        let extracted = Extracted::new(Extraction::value(Ruled(false)), node);
+
+        assert!(extracted.render().is_empty());
+    }
+
+    #[test]
+    fn a_broken_rule_does_not_suppress_the_value() {
+        // Non-fatal, which is ID(generator/stub-is-not-empty) seen from this end: the extraction
+        // still HAS its value, so generation still runs and the author still gets their item. A
+        // rule that voided the value would turn one bad key into an error at every use site.
+        let node = quote!(retry(times = 3, forever = true));
+        let extracted = Extracted::new(Extraction::value(Ruled(true)), node);
+
+        assert!(!extracted.render().is_empty());
+        assert!(extracted.value().is_some(), "a broken rule threw the value away");
+    }
+
+    #[test]
+    fn a_rule_is_not_asked_of_an_extraction_that_produced_nothing() {
+        // There is no value to have rules about. The node's own reasons are still taken.
+        let node = quote!(retry());
+        let extracted: Extracted<Ruled, _> =
+            Extracted::new(Extraction::failed(Reason::new(ReasonKind::Missing)), node);
+
+        let errors = extracted.render();
+        assert_eq!(errors.len(), 1, "{errors:?}", errors = errors.len());
+        assert_eq!(errors[0].to_string(), "required, and not written");
+    }
+
 }

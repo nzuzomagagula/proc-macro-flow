@@ -16,6 +16,7 @@ mod derives {
     // namespace, traits in the type namespace.
     use proc_macro_flow_derive::{Extractor, Processor, Validate};
     use proc_macro_flow_traits::{
+        assert::Assert,
         extractor::{Extracted, Extraction, Extractor, Reason, ReasonKind, Validate},
         processor::Processor,
         render::Diagnose,
@@ -45,6 +46,8 @@ mod derives {
     /// read the answer off. VERIFIED that omitting it does not fail silently - the derived parent
     /// stops compiling with `the trait bound `Leaf<'_>: Diagnose` is not satisfied`, so an
     /// unreachable subtree is a compile error rather than a quiet gap in the diagnostics.
+    impl<'ast> Assert for Leaf<'ast> {}
+
     impl<'ast> Diagnose for Leaf<'ast> {
         fn diagnose(&self, _: &mut Vec<syn::Error>) {}
     }
@@ -258,6 +261,261 @@ mod derives {
     }
 }
 
+/// An ATTRIBUTE macro's stages, which need a Source carrying two halves.
+///
+/// NOTE(#facade/hosts-the-attribute-proof): the derive crate cannot use its own derives, so this is
+/// the only place `#[derive(Validate)] #[args(..)]` can be declared and then RUN. It is the whole
+/// of ID(attributed/source-is-a-pair) end to end: the arguments are read by the ordinary grammar
+/// reader, the pair validates to the item, and only the item is what a re-emission would hand back.
+#[cfg(test)]
+mod annotated {
+    use proc_macro_flow_derive::{Syntax, Validate};
+    use proc_macro_flow_traits::{
+        attributed::{Annotated, Attributed},
+        extractor::Validate,
+        quote::{quote, ToTokens},
+        vocab::leaves::FromBody,
+    };
+    use syn::{parse_str, ItemFn, LitStr};
+
+    /// The arguments, declared as an ordinary grammar - the same declaration a helper attribute
+    /// would get, because it IS the same reader (ID(from-body/one-reader-two-entries)).
+    #[derive(Syntax)]
+    pub struct TraceArgs {
+        level: LitStr,
+        skip: Option<LitStr>,
+    }
+
+    /// The stage. `#[args]` is the only difference from a derive's declaration.
+    #[derive(Validate)]
+    #[source(ItemFn)]
+    #[args(TraceArgs)]
+    pub struct TraceRead<'ast> {
+        _p: ::core::marker::PhantomData<&'ast ()>,
+    }
+
+    fn item() -> ItemFn {
+        parse_str("fn traced() {}").expect("the item parses")
+    }
+
+    #[test]
+    fn the_arguments_are_read_by_the_ordinary_grammar_reader() {
+        let args = TraceArgs::from_body(&quote!(level = "debug"), &item()).expect("reads");
+
+        assert_eq!(args.level.value(), "debug");
+        assert!(args.skip.is_none());
+    }
+
+    #[test]
+    fn a_pair_validates_to_the_item() {
+        // ID(validate/source-shape-follows-args): the Source carries both halves, and `Valid`
+        // narrows to the node a downstream stage actually wants to look at.
+        let args = TraceArgs::from_body(&quote!(level = "debug"), &item()).expect("reads");
+        let item = item();
+
+        // `Reason` has no Debug - deliberately, the crate renders rather than formats - so this
+        // matches rather than unwrapping.
+        let Ok(valid) = TraceRead::validate(Attributed::new(&args, &item)) else {
+            panic!("the pair did not validate");
+        };
+        assert_eq!(valid.sig.ident, "traced");
+    }
+
+    #[test]
+    fn only_the_item_would_be_re_emitted() {
+        // ID(attributed/annotated-decides-the-kind), at the type level: this compiles because the
+        // Source is a pair. The same call against a derive's `&DeriveInput` does not, which is
+        // what makes `run_attribute` uncallable on the wrong kind of pipeline.
+        let args = TraceArgs::from_body(&quote!(level = "debug"), &item()).expect("reads");
+        let item = item();
+        let node = Attributed::new(&args, &item);
+
+        let out = Annotated::item(node).to_token_stream().to_string();
+        assert!(out.contains("fn traced"), "{out}");
+        assert!(!out.contains("debug"), "the arguments were re-emitted: {out}");
+    }
+
+    #[test]
+    fn bad_arguments_are_the_grammars_own_complaint() {
+        // The user of the generated macro writes `#[trace(levl = "debug")]`. Nothing special
+        // happens here - it is the same reader, so it is the same did-you-mean.
+        let error = TraceArgs::from_body(&quote!(levl = "debug"), &item())
+            .err()
+            .expect("`levl` is not a key");
+
+        assert_eq!(error.to_string(), "expected one of: `level`, `skip`");
+    }
+
+    #[test]
+    fn a_bare_attribute_missing_a_required_key_still_lands_somewhere() {
+        // `#[trace]` and `#[trace()]` are indistinguishable and EMPTY ARGUMENTS HAVE NO SPAN, so
+        // without the `at` fallback this complaint would have nothing at all to underline.
+        let item = item();
+        let error = TraceArgs::from_body(&Default::default(), &item)
+            .err()
+            .expect("level is required");
+
+        assert!(error.to_string().contains("level"), "{error}");
+    }
+}
+
+/// Rules a grammar states about itself, and the walk that carries them up.
+///
+/// NOTE(#facade/hosts-the-rule-proof): same reason as the rest - the derive crate cannot use its
+/// own derives, so a grammar that DECLARES rules and then breaks them can only be written here.
+#[cfg(test)]
+mod rules {
+    use proc_macro_flow_derive::Syntax;
+    use proc_macro_flow_traits::{
+        assert::{Assert, Rule},
+        extractor::{Reason, ReasonKind},
+        vocab::leaves::FromMeta,
+    };
+    use syn::{parse_str, LitInt, LitStr, Meta};
+
+    fn meta(source: &str) -> Meta {
+        parse_str(source).expect("the meta parses")
+    }
+
+    fn violations(value: &impl Assert) -> Vec<String> {
+        let mut out: Vec<Reason> = Vec::new();
+        value.assert(&mut out);
+        out.iter().map(|reason| reason.kind.message()).collect()
+    }
+
+    #[derive(Syntax)]
+    #[assert(one_of(times, forever))]
+    pub struct Retry {
+        times: Option<LitInt>,
+        forever: Option<LitStr>,
+    }
+
+    #[test]
+    fn a_satisfied_rule_says_nothing() {
+        let value = Retry::from_meta(&meta("retry(times = 3)")).expect("reads");
+        assert!(violations(&value).is_empty());
+    }
+
+    #[test]
+    fn a_broken_rule_is_worded_from_the_rule_and_its_keys() {
+        // ID(assert/violation-is-not-a-message): nothing was worded when the rule was recorded -
+        // the message is built at render time from the kind plus the keys it names.
+        let both = Retry::from_meta(&meta(r#"retry(times = 3, forever = "yes")"#)).expect("reads");
+        assert_eq!(
+            violations(&both),
+            ["expected exactly one of `times`, `forever`"]
+        );
+
+        let neither = Retry::from_meta(&meta("retry()")).expect("reads");
+        assert_eq!(
+            violations(&neither),
+            ["expected exactly one of `times`, `forever`"]
+        );
+    }
+
+    #[derive(Syntax)]
+    #[assert(any_of(a, b), requires(b, a))]
+    #[assert(at_most_one(c, d))]
+    pub struct Several {
+        a: Option<LitStr>,
+        b: Option<LitStr>,
+        c: Option<LitStr>,
+        d: Option<LitStr>,
+    }
+
+    #[test]
+    fn every_broken_rule_is_reported_not_just_the_first() {
+        // ID(no-result) at the rule level: a grammar stating three rules reports all three it
+        // breaks. `b` alone breaks `requires(b, a)`; `c` and `d` together break `at_most_one`.
+        let value = Several::from_meta(&meta(
+            r#"several(b = "1", c = "2", d = "3")"#,
+        ))
+        .expect("reads");
+
+        let found = violations(&value);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found.iter().any(|m| m.contains("was written, so")), "{found:?}");
+        assert!(found.iter().any(|m| m.contains("at most one")), "{found:?}");
+    }
+
+    #[test]
+    fn several_rules_may_share_one_attribute_and_several_attributes_may_be_written() {
+        // Both forms above are exercised by the type compiling at all; this pins the behaviour.
+        let clean = Several::from_meta(&meta(r#"several(a = "1")"#)).expect("reads");
+        assert!(violations(&clean).is_empty());
+    }
+
+    // ---- propagation, which is the whole ask ------------------------------------------------
+
+    #[derive(Syntax)]
+    pub struct Outer {
+        #[shape(proc_macro_flow_traits::meta::AttributeKind::MetaList)]
+        nested: Retry,
+    }
+
+    #[test]
+    fn a_rule_on_a_nested_grammar_reaches_the_parent() {
+        // THE propagation claim. `Outer` states no rules of its own; the complaint comes from a
+        // grammar one level down and is carried by the descent the derive emits. This is the half
+        // that would silently do nothing if the leaf `Assert` impls were missing
+        // (NOTE(#assert/leaves-are-askable)) or the descent were not generated.
+        let value = Outer::from_meta(&meta(r#"outer(nested(times = 3, forever = "y"))"#))
+            .expect("reads");
+
+        assert_eq!(
+            violations(&value),
+            ["expected exactly one of `times`, `forever`"],
+            "a nested grammar's rule did not reach the parent"
+        );
+    }
+
+    #[test]
+    fn a_clean_nested_grammar_adds_nothing() {
+        let value = Outer::from_meta(&meta("outer(nested(times = 3))")).expect("reads");
+        assert!(violations(&value).is_empty());
+    }
+
+    // ---- the escape hatch --------------------------------------------------------------------
+
+    pub struct NoZeroRetries;
+
+    impl Rule for NoZeroRetries {
+        type Subject = Guarded;
+
+        fn check(subject: &Guarded, out: &mut Vec<Reason>) {
+            // An author supplies MEANING; the framework supplies span, position and accumulation.
+            if subject
+                .times
+                .as_ref()
+                .and_then(|lit| lit.base10_parse::<u32>().ok())
+                == Some(0)
+            {
+                out.push(Reason::new(ReasonKind::Custom(
+                    "retrying zero times is the same as not retrying".to_owned(),
+                )));
+            }
+        }
+    }
+
+    #[derive(Syntax)]
+    #[assert(with = NoZeroRetries)]
+    pub struct Guarded {
+        times: Option<LitInt>,
+    }
+
+    #[test]
+    fn an_authors_own_rule_runs_and_words_itself() {
+        let bad = Guarded::from_meta(&meta("guarded(times = 0)")).expect("reads");
+        assert_eq!(
+            violations(&bad),
+            ["retrying zero times is the same as not retrying"]
+        );
+
+        let good = Guarded::from_meta(&meta("guarded(times = 3)")).expect("reads");
+        assert!(violations(&good).is_empty());
+    }
+}
+
 /// The syntax stage, exercised where it can be: a grammar declared with the derive.
 ///
 /// NOTE(#facade/hosts-the-grammar-proof): same reason as NOTE(#facade/hosts-the-proof) - the
@@ -320,6 +578,85 @@ mod grammar {
             .err()
             .expect("times is required");
         assert!(error.to_string().contains("times"), "{error}");
+    }
+
+    /// THE claim of ID(from-body/one-reader-two-entries), asserted rather than assumed.
+    ///
+    /// A helper attribute's body and an attribute macro's ARGUMENTS are the same tokens read by the
+    /// same reader. `Retry` is declared once and entered both ways here; if the two ever diverge -
+    /// a second grammar, a second set of rules - these stop agreeing.
+    mod both_ways {
+        use super::*;
+        use proc_macro_flow_traits::proc_macro2;
+        use proc_macro_flow_traits::quote::quote;
+        use proc_macro_flow_traits::vocab::leaves::FromBody;
+
+        /// What a DERIVE sees: the whole `retry(..)` attribute, head included.
+        fn as_helper(source: &str) -> syn::Result<Retry> {
+            Retry::from_meta(&meta(source))
+        }
+
+        /// What an ATTRIBUTE MACRO sees: rustc hands the arguments over already unwrapped, so
+        /// there is no head at all. `at` is the node a complaint falls back to.
+        fn as_arguments(body: proc_macro2::TokenStream) -> syn::Result<Retry> {
+            let item: syn::ItemFn = parse_str("fn annotated() {}").expect("the item parses");
+            Retry::from_body(&body, &item)
+        }
+
+        #[test]
+        fn the_same_input_read_both_ways_gives_the_same_value() {
+            let helper = as_helper(r#"retry(times = 3, back_off = "200ms")"#).expect("reads");
+            let arguments = as_arguments(quote!(times = 3, back_off = "200ms")).expect("reads");
+
+            assert_eq!(helper.times.base10_digits(), arguments.times.base10_digits());
+            assert_eq!(
+                helper.back_off.map(|lit| lit.value()),
+                arguments.back_off.map(|lit| lit.value()),
+            );
+        }
+
+        #[test]
+        fn the_same_mistake_read_both_ways_gives_the_same_complaint() {
+            // Not merely 'both fail' - the SAME WORDING, because it is one reader. A second
+            // grammar for arguments would drift here first.
+            let helper = as_helper(r#"retry(back_off = "200ms")"#)
+                .err()
+                .expect("times is required");
+            let arguments = as_arguments(quote!(back_off = "200ms"))
+                .err()
+                .expect("times is required");
+
+            assert_eq!(helper.to_string(), arguments.to_string());
+            assert!(helper.to_string().contains("times"), "{helper}");
+        }
+
+        #[test]
+        fn an_unknown_key_is_caught_on_the_arguments_path_too() {
+            let error = as_arguments(quote!(times = 3, bakc_off = "200ms"))
+                .err()
+                .expect("`bakc_off` is not a key");
+
+            // The grammar's own did-you-mean, reached from the arguments side - asserted WHOLE
+            // rather than by a substring, because every key name also appears in the grammar
+            // itself and a looser check would pass without the candidate list existing.
+            assert_eq!(error.to_string(), "expected one of: `times`, `back_off`");
+        }
+
+
+        #[test]
+        fn empty_arguments_complain_against_the_item_they_were_written_on() {
+            // ID(from-body/fallback-is-tokens-not-a-span), and the reason `at` is a parameter at
+            // all. `#[retry]` and `#[retry()]` are indistinguishable to an attribute macro and
+            // EMPTY ARGUMENTS HAVE NO SPAN - so without a fallback this complaint has nothing to
+            // underline. Spanned output is not inspectable on stable, so what is asserted is that
+            // an error is produced and still names the key.
+            let error = as_arguments(proc_macro2::TokenStream::new())
+                .err()
+                .expect("times is required");
+
+            assert!(error.to_string().contains("times"), "{error}");
+            assert!(!error.to_compile_error().is_empty());
+        }
     }
 
     #[derive(Syntax)]
@@ -556,6 +893,8 @@ mod wiring {
             Extracted::new(Extraction::value(Extraction2(node)), node)
         }
     }
+
+    impl<'ast> proc_macro_flow_traits::assert::Assert for Extraction2<'ast> {}
 
     impl<'ast> Diagnose for Extraction2<'ast> {
         fn diagnose(&self, _: &mut Vec<syn::Error>) {}

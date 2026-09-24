@@ -14,9 +14,12 @@ use proc_macro_flow_traits::extractor::{Extracted, Extraction, Reason, ReasonKin
 use proc_macro_flow_traits::processor::Processor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{Ident, ItemMod, LitStr, Token};
+use syn::{Ident, ItemMod, LitStr, Token, Type};
 
-use super::extractor::{ComponentExtraction, PipelineExtraction, Role};
+use crate::derive::ext::TypeExt;
+
+use super::extractor::{ComponentExtraction, Emission, PipelineExtraction, PipelineSource, Role};
+use super::generator::PipelineArgs;
 
 /// A pipeline, resolved: three stages that exist, and the helpers rustc must be told about.
 pub(crate) struct ProcessedPipeline<'ast> {
@@ -25,10 +28,45 @@ pub(crate) struct ProcessedPipeline<'ast> {
     pub(crate) generator: &'ast Ident,
     /// Lifted from the vocabulary named by `helpers = ..`, never redeclared.
     pub(crate) helpers: Vec<LitStr>,
+
+    /// The node the extractor reads, from `source = Ty` on the extractor role.
+    ///
+    /// NOTE(#pipeline-macro/source-was-never-read): V[S(ProcessedPipeline).P(source)], "`source`
+    /// has been written in every pipeline test since the macro existed and read by NOTHING - the
+    /// processor looked only at `from` and `helpers`. It went unnoticed because the entry function
+    /// hardcoded Ty(DeriveInput) for a derive, which is right for a derive and silently wrong for
+    /// everything else. Reading it is what lets an entry parse the node its pipeline actually
+    /// declared, and it is resolution over the whole module, which is this stage's job"
+    pub(crate) source: Type,
+
+    /// The grammar the attribute's own arguments are read into, from `args = Ty`.
+    ///
+    /// `None` is a derive - see NOTE(#args/absence-is-the-derive-case).
+    pub(crate) args: Option<Type>,
+
+    /// What the generator does to the item it was applied to, from `emits = ..`.
+    pub(crate) emission: Emission,
+
+    /// The module itself, so the generator can re-emit it stripped.
+    ///
+    /// NOTE(#pipeline-macro/processed-carries-the-node): V[S(ProcessedPipeline).P(module)],
+    /// "S(PipelineInput) used to exist to carry these two alongside the processed value, because
+    /// the generator needed them and Tr(Processor)::Output could not reach them. It can: the
+    /// processor is handed the whole S(Extracted), source included, so it can put on its output
+    /// whatever the next stage needs. That is ID(processor/receives-whole) being spent rather than
+    /// merely stated, and S(PipelineInput) collapses into this."
+    pub(crate) module: &'ast ItemMod,
+
+    /// What `#[pipeline(..)]` ITSELF was invoked with.
+    ///
+    /// Named apart from `args` above, which is the grammar an authored attribute macro reads ITS
+    /// arguments into. Two different attributes' arguments meet in this struct and calling both
+    /// `args` would be the kind of collision that compiles.
+    pub(crate) written: &'ast PipelineArgs,
 }
 
 /// `key = Value` pairs inside a role attribute.
-struct Args(Vec<(Ident, Ident)>);
+struct Args(Vec<(Ident, Type)>);
 
 impl Parse for Args {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -39,41 +77,51 @@ impl Parse for Args {
 
 struct Arg {
     key: Ident,
-    value: Ident,
+    value: Type,
 }
 
 impl Parse for Arg {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let key = input.parse()?;
         input.parse::<Token![=]>()?;
-        // The value is a bare name - `from = Struct`, `helpers = SyntaxHelper`. A path would be a
-        // different feature; a name is what a sibling in this module has.
+        // NOTE(#pipeline-macro/values-are-types): V[S(Arg).P(value).T(Type)], "Was Ty(Ident),
+        // which was right while the only values were `from = Struct` and `helpers = Vocabulary` -
+        // both of which name a SIBLING in this module, and a sibling is a bare name. `source` and
+        // `args` are not siblings: they name TYPES, and a type may be qualified
+        // (`proc_macro2::TokenStream`) or generic. So the value widens to Ty(Type) and the two
+        // sibling-naming keys narrow back with F(as_ident), which answers None for anything that
+        // could not be a sibling in the first place"
         let value = input.parse()?;
         Ok(Arg { key, value })
     }
 }
 
 impl Args {
-    fn get(&self, key: &str) -> Option<&Ident> {
+    fn get(&self, key: &str) -> Option<&Type> {
         self.0
             .iter()
             .find(|(name, _)| name == key)
             .map(|(_, value)| value)
     }
+
+    /// The value of `key`, when it names something a sibling in this module could be called.
+    fn sibling(&self, key: &str) -> Option<&Ident> {
+        self.get(key).and_then(TypeExt::as_ident)
+    }
 }
 
 impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
-    type Input = Extracted<PipelineExtraction<'ast>, &'ast ItemMod>;
+    type Input = Extracted<PipelineExtraction<'ast>, PipelineSource<'ast>>;
     type Output = ProcessedPipeline<'ast>;
 
     fn process(input: Self::Input) -> Extraction<Self::Output> {
-        let module = *input.source();
+        let node = *input.source();
+        let (module, written) = (node.item(), node.args());
         let extraction = input.into_extraction();
 
-        let mut out: Extraction<ProcessedPipeline<'ast>> = Extraction {
-            value: None,
-            reasons: extraction.reasons,
-        };
+        // NOTE(#processor/reasons-are-new-not-inherited): the extraction's own reasons are the
+        // walk's to render, not this stage's to repeat.
+        let mut out: Extraction<ProcessedPipeline<'ast>> = Extraction::default();
 
         let Some(value) = extraction.value else {
             return out;
@@ -122,8 +170,12 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
         let present: Vec<&Ident> = components.iter().map(|(c, _)| c.name).collect();
         for (_, args) in &components {
             if let Some(from) = args.get("from") {
-                if !present.iter().any(|name| *name == from) {
-                    out.reasons.push(Reason::at(ReasonKind::UnknownKey, from));
+                match from.as_ident() {
+                    Some(name) if present.contains(&name) => {}
+                    // Either it names nothing here, or it is not the shape a sibling's name can
+                    // take at all (`a::B`, `B<T>`). Both are the same complaint to the author:
+                    // this does not name a component in this module.
+                    _ => out.reasons.push(Reason::at(ReasonKind::UnknownKey, from)),
                 }
             }
         }
@@ -131,7 +183,7 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
         // `helpers = Y` must name a vocabulary declared in this module, whose spellings we lift.
         let helpers = match components
             .iter()
-            .find_map(|(_, args)| args.get("helpers"))
+            .find_map(|(_, args)| args.sibling("helpers"))
         {
             None => Vec::new(),
             Some(named) => {
@@ -152,13 +204,53 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
             }
         };
 
-        if let (Some(extractor), Some(processor), Some(generator)) = (extractor, processor, generator)
+        // `source = Ty` on the EXTRACTOR, which is the role that declares what it reads. Required:
+        // without it an entry function has no node to parse - see
+        // NOTE(#pipeline-macro/source-was-never-read).
+        let declared = |role: Role, key: &str| -> Option<Type> {
+            components
+                .iter()
+                .find(|(component, _)| component.roles.contains(&role))
+                .and_then(|(_, args)| args.get(key))
+                .cloned()
+        };
+
+        let source = declared(Role::Extractor, "source");
+        let declared_args = declared(Role::Extractor, "args");
+
+        if source.is_none() {
+            out.reasons
+                .push(Reason::at(ReasonKind::Missing, &module.ident));
+        }
+
+        // `emits = ..` on the GENERATOR - NOTE(#pipeline-macro/emission-must-be-declared).
+        let emission = match declared(Role::Generator, "emits") {
+            None => Emission::default(),
+            Some(written) => match written.as_ident().and_then(|name| {
+                Emission::from_spelling(&name.to_string())
+            }) {
+                Some(emission) => emission,
+                None => {
+                    out.reasons
+                        .push(Reason::at(ReasonKind::UnknownKey, &written));
+                    Emission::default()
+                }
+            },
+        };
+
+        if let (Some(extractor), Some(processor), Some(generator), Some(source)) =
+            (extractor, processor, generator, source)
         {
             out.value = Some(ProcessedPipeline {
                 extractor,
                 processor,
                 generator,
                 helpers,
+                source,
+                args: declared_args,
+                emission,
+                module,
+                written,
             });
         }
 
@@ -176,7 +268,14 @@ mod tests {
         let item: &'static ItemMod = Box::leak(Box::new(
             parse_str(source).expect("the module parses"),
         ));
-        PipelineExtraction::process(PipelineExtraction::extract_from(item))
+        let args: &'static PipelineArgs = Box::leak(Box::new(PipelineArgs {
+            kind: crate::base::pipeline::generator::MacroKind::Derive,
+            exported: parse_str("Thing").expect("an ident"),
+            entry: true,
+        }));
+        PipelineExtraction::process(PipelineExtraction::extract_from(
+            proc_macro_flow_traits::attributed::Attributed::new(args, item),
+        ))
     }
 
     const WHOLE: &str = r#"
@@ -271,4 +370,114 @@ mod tests {
         assert!(out.reasons.is_empty());
         assert!(out.value.expect("resolves").helpers.is_empty());
     }
+    #[test]
+    fn the_source_is_read_off_the_extractor() {
+        // NOTE(#pipeline-macro/source-was-never-read). This declaration had been written in every
+        // test since the macro existed and read by nothing.
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = ItemFn)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+            }"#,
+        );
+        let value = out.value.expect("resolves");
+
+        assert_eq!(
+            quote::ToTokens::to_token_stream(&value.source).to_string(),
+            "ItemFn"
+        );
+        assert!(value.args.is_none(), "a derive has no arguments");
+    }
+
+    #[test]
+    fn a_qualified_source_survives_being_a_type() {
+        // ID(pipeline-macro/values-are-types). While a value was an Ident this did not parse at
+        // all, which is why a function-like pipeline could not name its own source.
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = proc_macro2::TokenStream)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+            }"#,
+        );
+        let value = out.value.expect("resolves");
+
+        assert_eq!(
+            quote::ToTokens::to_token_stream(&value.source).to_string(),
+            "proc_macro2 :: TokenStream"
+        );
+    }
+
+    #[test]
+    fn declaring_args_is_what_makes_it_an_attribute_macro() {
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = ItemFn, args = TraceArgs)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+            }"#,
+        );
+        let value = out.value.expect("resolves");
+
+        let args = value.args.expect("the arguments were declared");
+        assert_eq!(quote::ToTokens::to_token_stream(&args).to_string(), "TraceArgs");
+    }
+
+    #[test]
+    fn a_pipeline_with_no_source_is_reported() {
+        let out = processed(
+            r#"mod m {
+                #[extractor(helpers = H)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+            }"#,
+        );
+
+        assert!(out.value.is_none(), "an entry has no node to parse");
+        assert!(!out.reasons.is_empty());
+    }
+
+    #[test]
+    fn emission_defaults_to_adding_beside_the_item() {
+        // The safe default: a generator that declares nothing cannot silently DELETE the item.
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = ItemFn)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P)] struct G;
+            }"#,
+        );
+
+        assert_eq!(out.value.expect("resolves").emission, Emission::Beside);
+    }
+
+    #[test]
+    fn a_generator_may_declare_that_it_rewrites_the_item() {
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = ItemFn)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P, emits = replace)] struct G;
+            }"#,
+        );
+
+        assert_eq!(out.value.expect("resolves").emission, Emission::Replace);
+    }
+
+    #[test]
+    fn an_emission_we_do_not_have_is_reported_and_falls_back_safely() {
+        let out = processed(
+            r#"mod m {
+                #[extractor(source = ItemFn)] struct S;
+                #[processor(from = S)] struct P;
+                #[generator(from = P, emits = obliterate)] struct G;
+            }"#,
+        );
+
+        // Reported - and the fallback is the one that cannot lose the author's code.
+        assert!(!out.reasons.is_empty(), "an unknown emission went unreported");
+        assert_eq!(out.value.expect("resolves").emission, Emission::Beside);
+    }
+
 }

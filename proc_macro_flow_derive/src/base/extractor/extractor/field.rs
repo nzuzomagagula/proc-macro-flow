@@ -1,5 +1,6 @@
 // @review [ ]
 use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Reason, Validate};
+use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::render::Diagnose;
 use proc_macro_flow_traits::resolution::Raw;
 use syn::{Attribute, Field};
@@ -53,6 +54,11 @@ impl<'ast> Validate<'ast> for FieldExtraction<'ast> {
         Ok(input)
     }
 }
+
+/// No rules of its own. `#[assert(..)]` is how a grammar states one; this is an extraction
+/// type, and an S(Extracted) child's rules are reached by the diagnose walk instead -
+/// NOTE(#assert/extracted-is-the-handoff).
+impl<'ast> Assert for FieldExtraction<'ast> {}
 
 impl<'ast> Diagnose for FieldExtraction<'ast> {
     /// Where the children are, and nothing else - each `Extracted` renders its own node's reasons,

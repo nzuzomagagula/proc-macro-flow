@@ -21,6 +21,7 @@
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 
+use crate::attributed::Annotated;
 use crate::extractor::{Extraction, Extractor, Validate};
 use crate::generator::Generator;
 use crate::processor::Processor;
@@ -180,18 +181,28 @@ pub trait Pipeline<'ast> {
     }
 
     /// The same run, for an ATTRIBUTE macro: the annotated item comes back beside the output.
+    ///
+    /// NOTE(#pipeline/attribute-is-bounded-not-declared): V[F(run_attribute).W(Annotated)], "The
+    /// `Source: Annotated` bound is what makes this method EXIST only for a macro that has an item
+    /// to hand back. A derive's `&DeriveInput` has no Tr(Annotated) impl, so calling this on one is
+    /// a compile error rather than a macro that quietly re-emits its own input; and an attribute
+    /// pipeline whose extractor omitted `args` still has a bare node for a Source, so it fails the
+    /// same way. See NOTE(#attributed/annotated-decides-the-kind).
+    ///
+    /// It re-emits `node.item()` and NOT `node`: the arguments were consumed reading them, and
+    /// echoing them back would paste `level = \"debug\"` into the author's crate as if it were code"
     fn run_attribute(
         node: <Self::Extractor as Validate<'ast>>::Source,
     ) -> Reemission<
-        <Self::Extractor as Validate<'ast>>::Source,
+        &'ast <<Self::Extractor as Validate<'ast>>::Source as Annotated<'ast>>::Item,
         <Self::Generator as Generator<'ast>>::Output,
     >
     where
         <Self::Extractor as Extractor<'ast>>::Output: Diagnose,
-        <Self::Extractor as Validate<'ast>>::Source: Copy + ToTokens,
+        <Self::Extractor as Validate<'ast>>::Source: Copy + ToTokens + Annotated<'ast>,
     {
         Reemission {
-            item: node,
+            item: node.item(),
             expansion: Self::run(node),
         }
     }

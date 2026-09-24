@@ -65,6 +65,51 @@ pub trait FromMeta: Sized {
     fn from_meta(meta: &syn::Meta) -> Result<Self>;
 }
 
+/// A grammar node read from the INSIDE of its delimiters, with no head in front of it.
+///
+/// NOTE(#from-body/one-reader-two-entries): V[Tr(FromMeta).delegates(Tr(FromBody))], "This is
+/// ID(entry)'s 'from_body does the work; the other two are thin adapters', built. The whole reason
+/// it is cheap is that the reader never wanted the head: `from_meta`'s first act is
+/// `meta.require_list()?` purely to reach `list.tokens`, and it does not look at `meta.path()` at
+/// all. So a helper attribute's body and an ATTRIBUTE MACRO'S ARGUMENTS are already the same
+/// thing: rustc hands a proc_macro_attribute its arguments ALREADY UNWRAPPED, which is exactly
+/// the token stream `require_list` was digging for.
+///
+/// What this buys is that an attribute macro's arguments obey the SAME RULES as a helper
+/// attribute's: the same keys, the same aliases, the same arity read off the field type, the same
+/// shape bounds, the same did-you-mean from Ty(Node), the same accumulation. Not a second grammar
+/// that has to be kept in step with the first - the same one, entered a different way"
+// NOTE(#assert/leaves-are-askable): V[M(leaf).emits(Impl(Assert))], "Every leaf gets an EMPTY
+// Tr(Assert), and the emptiness is not the point - the EXISTENCE is. A grammar's generated
+// `assert` descends into each of its fields so that a nested grammar's rules are reached, and a
+// descent needs every field type to be askable, leaves included. Without these the derive could
+// only descend into fields it could prove were grammars, which it cannot do from a type alone.
+//
+// They are emitted from M(leaf) and M(leaf_meta) - the same two lists that already decide what a
+// leaf is - rather than written out again, so a leaf added later cannot be askable in one sense
+// and not the other."
+pub trait FromBody: Sized {
+    /// Read the body.
+    ///
+    /// NOTE(#from-body/fallback-is-tokens-not-a-span): V[F(from_body).A(at).T(ToTokens)], "`at` is
+    /// what a complaint falls back to when it has no token of its own to point at, and it is
+    /// `&impl ToTokens` rather than a Ty(Span) for a reason that would otherwise be discovered as a
+    /// regression. The missing-key arm uses `Error::new_spanned(..)`, which underlines a node's
+    /// whole start..end range; a bare Ty(Span) collapses that to the FIRST TOKEN, because
+    /// `Span::join` is nightly-only - the same constraint ID(reason/span-not-node) records. So
+    /// F(from_meta) passes `meta` and the derive path's spans are byte-identical to what they were
+    /// before this trait existed.
+    ///
+    /// What it buys is the asymmetry ID(entry) flagged and could not otherwise handle: EMPTY
+    /// ARGUMENTS HAVE NO SPAN. `#[trace]` and `#[trace()]` are indistinguishable to an attribute
+    /// macro, so a required key missing from a bare `#[trace]` has nothing at all to underline.
+    /// The entry passes the ANNOTATED ITEM, and the complaint lands on the function the attribute
+    /// was written on instead of nowhere"
+    fn from_body<S>(body: &proc_macro2::TokenStream, at: &S) -> Result<Self>
+    where
+        S: quote::ToTokens + ?Sized;
+}
+
 /// Implement [`FromExpr`] for the `Lit` family, which is uniform.
 ///
 /// ```ignore
@@ -83,6 +128,12 @@ macro_rules! leaf {
                     <::syn::$ty as $crate::vocab::leaves::FromExpr>::leaf_from_meta(meta)
                 }
             }
+
+            // A leaf states no rules, but it must be ASKABLE, or a grammar holding one cannot
+            // descend into its fields at all. Emitted from the same list that already decides what
+            // a leaf IS, so there is no second set of names to keep in step -
+            // NOTE(#assert/leaves-are-askable).
+            impl $crate::assert::Assert for ::syn::$ty {}
 
             impl $crate::vocab::leaves::FromExpr for ::syn::$ty {
                 fn from_expr(expr: &::syn::Expr) -> ::syn::Result<Self> {
@@ -160,6 +211,8 @@ macro_rules! leaf_meta {
                     <$ty as FromExpr>::leaf_from_meta(meta)
                 }
             }
+
+            impl crate::assert::Assert for $ty {}
         )+
     };
 }

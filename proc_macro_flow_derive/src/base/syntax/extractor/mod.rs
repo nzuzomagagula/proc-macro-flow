@@ -8,6 +8,7 @@ use proc_macro_flow_traits::{
 use syn::{Attribute, Type};
 
 use proc_macro_flow_traits::extractor::{Extractor, Validate};
+use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::render::Diagnose;
 
 // NOTE(#heads-are-rustcs):V[F(extract_from).!emits(E(ReasonKind).V(UnknownKey))], "An attribute
@@ -172,6 +173,8 @@ impl<'ast, S: Stage> Validate<'ast> for SyntaxFieldAttributeExtraction<'ast, S> 
             .map_err(|_| Reason::at(ReasonKind::UnknownKey, input.path()))
     }
 }
+
+impl<'ast, S: Stage> Assert for SyntaxFieldAttributeExtraction<'ast, S> {}
 
 impl<'ast, S: Stage> Diagnose for SyntaxFieldAttributeExtraction<'ast, S> {
     /// A LEAF, and that is a statement about the design rather than a stub.

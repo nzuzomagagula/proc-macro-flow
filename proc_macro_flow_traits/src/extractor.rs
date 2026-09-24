@@ -67,6 +67,14 @@ pub enum ReasonKind {
     Duplicate,
     Ambiguous,
 
+    /// A rule the grammar STATED about itself, and this value breaks.
+    ///
+    /// Distinct from the five above because it is a different KIND of fact: those are about
+    /// reading - a key we could not resolve, a shape that did not fit - and this one is about a
+    /// value that read perfectly well and is still not allowed. Keeping them apart is what lets a
+    /// caller ask which rule failed; see NOTE(#assert/violation-is-not-a-message).
+    Violated(crate::assert::Violation),
+
     /// OURS. A framework failure - malformed tokens we assembled, a contract we broke.
     ///
     /// Never re-spanned onto the author's syntax: blaming them for our bug is worse than a vague

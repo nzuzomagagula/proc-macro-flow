@@ -8,6 +8,7 @@ use syn::{DataStruct, DeriveInput, Field};
 
 pub(crate) use proc_macro_flow_traits::extractor::{Extracted, Extraction};
 use proc_macro_flow_traits::extractor::{Extractor, Reason, ReasonKind, Validate};
+use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::render::Diagnose;
 
 use crate::base::extractor::extractor::field::FieldExtraction;
@@ -69,6 +70,8 @@ impl<'ast> Validate<'ast> for StructExtraction<'ast> {
         }
     }
 }
+
+impl<'ast> Assert for StructExtraction<'ast> {}
 
 impl<'ast> Diagnose for StructExtraction<'ast> {
     /// Only where the children are - the `Extracted` around each one renders its reasons, because

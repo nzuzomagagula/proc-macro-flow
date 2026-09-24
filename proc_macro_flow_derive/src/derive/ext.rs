@@ -33,6 +33,14 @@ pub(crate) trait TypeExt {
 
     /// The `T` of `Extracted<T, I>` — the extractor that produced this child.
     fn extractor(&self) -> Result<Type>;
+
+    /// The bare name this type is, when it is one.
+    ///
+    /// A role argument's value is parsed as a Ty(Type) so `source = proc_macro2::TokenStream`
+    /// works, but `from = Struct` and `helpers = Vocabulary` NAME A SIBLING in the same module -
+    /// and a sibling is an ident, not a path. This is the narrowing between the two, and `None`
+    /// is the honest answer for anything qualified or generic.
+    fn as_ident(&self) -> Option<&syn::Ident>;
 }
 
 impl TypeExt for Type {
@@ -70,6 +78,20 @@ impl TypeExt for Type {
             .unwrap_or(self)
     }
 
+    fn as_ident(&self) -> Option<&syn::Ident> {
+        let Type::Path(path) = self else {
+            return None;
+        };
+
+        // Qualified (`a::B`) or generic (`B<T>`) is not a bare name, so neither answers here.
+        if path.qself.is_some() || path.path.segments.len() != 1 {
+            return None;
+        }
+
+        let segment = path.path.segments.first()?;
+        matches!(segment.arguments, syn::PathArguments::None).then_some(&segment.ident)
+    }
+
     fn extractor(&self) -> Result<Type> {
         self.unwrap_generic("Extracted").cloned().ok_or_else(|| {
             Error::new_spanned(
@@ -85,6 +107,16 @@ impl TypeExt for Type {
 pub(crate) trait DeriveInputExt {
     /// The syn node this extraction reads, from `#[source(Ty)]`.
     fn source_type(&self) -> Result<Type>;
+
+    /// The grammar an ATTRIBUTE macro's own arguments are read into, from `#[args(Ty)]`.
+    ///
+    /// NOTE(#args/absence-is-the-derive-case): V[F(args_type).R(Option)], "`None` is not a missing
+    /// declaration to complain about - it is what a DERIVE looks like. A derive has one input, so
+    /// its Ty(Source) stays the bare node it always was; an attribute macro has two, so its Source
+    /// becomes S(Attributed). Which macro kind a pipeline is therefore falls out of whether this
+    /// attribute was written, and Tr(Annotated) turns that into something the compiler checks -
+    /// see NOTE(#attributed/annotated-decides-the-kind)"
+    fn args_type(&self) -> Result<Option<Type>>;
 }
 
 impl DeriveInputExt for syn::DeriveInput {
@@ -98,6 +130,13 @@ impl DeriveInputExt for syn::DeriveInput {
         })?;
 
         attr.parse_args::<Type>()
+    }
+
+    fn args_type(&self) -> Result<Option<Type>> {
+        match self.attrs.find_one("args")? {
+            None => Ok(None),
+            Some(attr) => attr.parse_args::<Type>().map(Some),
+        }
     }
 }
 
