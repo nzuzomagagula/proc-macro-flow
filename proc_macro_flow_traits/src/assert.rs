@@ -11,7 +11,7 @@
 //! The alternative, a second traversal invoked beside F(render), would have duplicated a walk that
 //! already works. See NOTE(#assert/diagnose-requires-assert) for what the shortcut costs."
 
-// TODO[ ](#assert/rules-are-declared): C[Tr(Assert)] && C[Tr(Rule)] && C[S(Violation)] && C[E(AssertKind)],
+// TODO[x](#assert/rules-are-declared): C[Tr(Assert)] && C[Tr(Rule)] && C[S(Violation)] && C[E(AssertKind)],
 // "A grammar can state a key's shape, arity and requiredness off the field's type, and cannot say
 // 'exactly one of these two' - the commonest real constraint there is. A rule produces a E(Reason),
 // which is what makes it cost nothing to propagate"
