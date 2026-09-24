@@ -87,7 +87,7 @@ pub fn processor(input: TokenStream) -> TokenStream {
     derive::ProcessorWiring::run(&parsed).to_token_stream().into()
 }
 
-// TODO[ ](#derive/entries-are-parse-and-run): D[F(expand)], "The shared entry every derive went
+// TODO[x](#derive/entries-are-parse-and-run): D[F(expand)], "The shared entry every derive went
 // through could report exactly ONE error, because `?` returns on the first - so a grammar with
 // three mistakes showed one and cost the author two extra recompiles. ID(no-result) is why a
 // pipeline cannot do that"
