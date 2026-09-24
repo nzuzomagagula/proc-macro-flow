@@ -26,7 +26,7 @@ use extractor::{PipelineExtraction, PipelineSource};
 use generator::{PipelineArgs, PipelineExpansion};
 
 /// The wiring this macro runs through - the same marker type it generates for everyone else.
-// TODO[ ](#pipeline/macro-is-a-pipeline): C[Impl(Pipeline).for(PipelineWiring)] && D[F(expand).orchestration],
+// TODO[x](#pipeline/macro-is-a-pipeline): C[Impl(Pipeline).for(PipelineWiring)] && D[F(expand).orchestration],
 // "The macro that writes pipelines drove its own three stages by hand, because
 // ID(pipeline/subject-equals-source-breaks-attributes) concluded Tr(Pipeline) could not express an
 // attribute macro. It can - the binding was never the obstacle, a single-node Ty(Source) was"
