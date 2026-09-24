@@ -2,9 +2,10 @@
 //! The concrete processor for the extractor stage: narrowing an extraction into what the
 //! generator wants.
 //!
-//! NOTE(#processor/base-scope): a processor VALIDATES NOTHING and TRANSFORMS ONLY. By the time an
-//! extraction arrives its reasons are recorded, and re-checking would discard the spans that make them
-//! diagnosable.
+// NOTE(#processor/base-scope): V[N(processor) != validates], "A processor validates nothing and transforms only"
+// a processor VALIDATES NOTHING and TRANSFORMS ONLY. By the time an
+// extraction arrives its reasons are recorded, and re-checking would discard the spans that make them
+// diagnosable.
 
 use proc_macro2::TokenStream;
 use proc_macro_flow_traits::{
@@ -48,15 +49,15 @@ pub(crate) struct ProcessedAttribute<'ast> {
     /// `attribute`, which is the author's syntax rather than a token we assembled. The removal was
     /// right then and the restoration is right now - that is the test the note set for itself.
     pub(crate) attribute: &'ast Attribute,
-    // NOTE(#processed-attribute/no-unread-node): V[!S(ProcessedAttribute).P(attribute)], "This
-    // struct deliberately does NOT carry its `&'ast Attribute`. It did for one commit, on the
+    // NOTE(#processed-attribute/no-unread-node): V[S(ProcessedAttribute) != P(attribute)], "ProcessedAttribute carries no unread node"
+    // This struct deliberately does NOT carry its `&'ast Attribute`. It did for one commit, on the
     // reasoning that ID(typed-output/spans) will eventually want a node to span generated errors
     // against - and that is exactly the reasoning that produced Tr(Sourced), a whole trait making
     // every extractor store and hand back a node that one test read. The crate's standard is that
     // unread is unread: ID(extraction/unconsumed) took an allow OFF a field the moment it got real
     // readers, rather than suppressing the warning while waiting for one. When
     // ID(typed-output/spans) lands it can add the node back WITH a reader, which is a smaller and
-    // more honest change than keeping a field warm for a year"
+    // more honest change than keeping a field warm for a year
     /// Which helper this is, resolved once at `validate` and never compared again.
     pub(crate) helper: SyntaxHelper,
     /// The argument tokens, still UNREAD. Carrying them is the whole point - ID(no-parse) - and
@@ -92,7 +93,7 @@ impl<'ast> Processor<'ast> for SyntaxFieldAttributeExtraction<'ast, Raw> {
                     tokens,
                 }
             }),
-            // NOTE(#processor/reasons-are-new-not-inherited): already rendered by the walk.
+            // ID(processor/reasons-are-new-not-inherited): already rendered by the walk.
             reasons: Vec::new(),
         }
     }
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn an_enum_fails_extraction_and_the_reason_is_reported_exactly_once() {
-        // REWRITTEN against NOTE(#processor/reasons-are-new-not-inherited). This used to assert
+        // REWRITTEN against ID(processor/reasons-are-new-not-inherited). This used to assert
         // that the PROCESSOR carried the extraction's reason forward, which read like care and was
         // a double-report: the walk had already rendered it from the tree, so every complaint in
         // the crate came out twice.

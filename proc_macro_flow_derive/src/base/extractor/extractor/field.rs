@@ -7,9 +7,11 @@ use syn::{Attribute, Field};
 
 use crate::base::syntax::extractor::SyntaxFieldAttributeExtraction;
 
-// NOTE(#attribute/generic-grammar): a field's Attr(from) expression is NOT a child node. It says how
+// NOTE(#attribute/generic-grammar): V[Attr(from) != child], "A field's #[from] expression is not a child node"
+// a field's Attr(from) expression is NOT a child node. It says how
 // to reach a value, which belongs on the field, not in an extraction of its own.
-// NOTE(#field/children): a field's children are its ATTRIBUTES, each its own extraction. This is what
+// NOTE(#field/children): V[S(FieldExtraction).P(attrs)], "A field's children are its attributes, each its own extraction"
+// a field's children are its ATTRIBUTES, each its own extraction. This is what
 // puts the syntax stage on the macro path.
 pub(crate) struct FieldExtraction<'ast> {
     /// One child per attribute written on the field, grammar or not.
@@ -44,12 +46,12 @@ impl<'ast> Validate<'ast> for FieldExtraction<'ast> {
     type Source = &'ast Field;
     type Valid = &'ast Field;
 
-    // NOTE(#extractor/field-validate): V[F(validate).accepts(all)], "Validates nothing - every
-    // Field is accepted, and that is the ANSWER rather than an outstanding task, which is why this
-    // is no longer a TODO. Kept honest rather than made to look busy: what there is to check here
-    // is whether the field's ATTRIBUTES form a well-shaped grammar node, and each of those is now
-    // its own child extraction (ID(field/children)) with its own validate. A check here would
-    // duplicate theirs and have a worse span to report it against"
+    // NOTE(#extractor/field-validate): V[F(validate).has(accepts all)], "Field validate accepts everything, and that is the answer"
+    // Validates nothing - every Field is accepted, and that is the ANSWER rather than an
+    // outstanding task, which is why this is no longer a TODO. Kept honest rather than made to look
+    // busy: what there is to check here is whether the field's ATTRIBUTES form a well-shaped
+    // grammar node, and each of those is now its own child extraction (ID(field/children)) with its
+    // own validate. A check here would duplicate theirs and have a worse span to report it against
     fn validate(input: &'ast Field) -> Result<Self::Valid, Reason> {
         Ok(input)
     }
@@ -57,12 +59,12 @@ impl<'ast> Validate<'ast> for FieldExtraction<'ast> {
 
 /// No rules of its own. `#[assert(..)]` is how a grammar states one; this is an extraction
 /// type, and an S(Extracted) child's rules are reached by the diagnose walk instead -
-/// NOTE(#assert/extracted-is-the-handoff).
+/// ID(assert/extracted-is-the-handoff).
 impl<'ast> Assert for FieldExtraction<'ast> {}
 
 impl<'ast> Diagnose for FieldExtraction<'ast> {
     /// Where the children are, and nothing else - each `Extracted` renders its own node's reasons,
-    /// because it holds the node they span against (NOTE(#render/who-renders)).
+    /// because it holds the node they span against (ID(render/who-renders)).
     fn diagnose(&self, out: &mut Vec<syn::Error>) {
         self.attrs.diagnose(out);
     }

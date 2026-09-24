@@ -49,6 +49,17 @@ mod tests {
     }
 
     #[test]
+    fn every_walked_field_is_also_asked_for_its_rules() {
+        // ID(diagnose-derive/asks-what-it-walks). A grammar held as a VALUE states its rules
+        // through Tr(Assert), not the walk - so an Assert that does not descend drops them, which
+        // is how the demo's `conflicts(skip, key)` never fired.
+        let out = expand("struct S { column: Option<Column>, #[skip] name: Option<Ident> }");
+
+        assert!(out.contains("assert (& self . column"), "{out}");
+        assert!(!out.contains("assert (& self . name"), "a skipped field was asked: {out}");
+    }
+
+    #[test]
     fn a_type_with_no_fields_walks_nothing_and_still_gets_both_impls() {
         let out = expand("struct S {}");
 

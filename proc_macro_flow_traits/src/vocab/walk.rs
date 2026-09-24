@@ -5,13 +5,13 @@
 //! walk. One walker means `UnknownKey`, `Duplicate` and the candidate list are decided once, so a
 //! diagnostics fix lands everywhere instead of in N expansions.
 //!
-//! NOTE(#walk/accumulates): V[S(Errors).F(combine) && !F(walk_keys).uses(?)], "The walk does NOT use
-//! `?` on an element. VERIFIED what that would cost: a syn Parse impl using `?` over three bad
-//! elements reports ONE of them and silently drops the other two, which is exactly what ID(no-result)
-//! exists to prevent. syn::Error::combine keeps each error's own span and to_compile_error emits one
-//! compile_error! per error, so accumulating here costs nothing and loses nothing. The only thing
-//! that aborts is a body that will not parse as a meta list AT ALL - there are no siblings to lose
-//! when there are no siblings"
+// NOTE(#walk/accumulates): V[S(Errors).F(combine) && F(walk_keys) != uses(try operator)], "The walk accumulates and never uses ? on an element"
+// The walk does NOT use `?` on an element. VERIFIED what that would cost: a syn Parse impl using
+// `?` over three bad elements reports ONE of them and silently drops the other two, which is
+// exactly what ID(no-result) exists to prevent. syn::Error::combine keeps each error's own span and
+// to_compile_error emits one compile_error! per error, so accumulating here costs nothing and loses
+// nothing. The only thing that aborts is a body that will not parse as a meta list AT ALL - there
+// are no siblings to lose when there are no siblings
 //!
 
 use syn::{Error, Meta, Result};
@@ -20,8 +20,9 @@ use crate::meta::ListBody;
 
 /// A closed set of names, and the one place a spelling is compared.
 ///
-/// NOTE(#keys/table-is-strings-the-rest-is-not): V[C(spellings).T(str) && M(resolve).once],
-/// "VERIFIED that the table CANNOT be typed tokens, before designing around the limitation:
+/// NOTE(#keys/table-is-strings-the-rest-is-not): V[S(spellings).T(str) && F(resolve).has(once)], "The spelling table is strings; everything else is typed"
+///
+/// VERIFIED that the table CANNOT be typed tokens, before designing around the limitation:
 /// proc_macro2::Ident::new(&str, Span) is not const and Span::call_site() is not const, so
 /// `const SPELLINGS: &[Ident]` cannot exist at all. A spelling is a &'static str at rest and there
 /// is no way around that.
@@ -30,7 +31,7 @@ use crate::meta::ListBody;
 /// string is compared in EXACTLY ONE place - F(resolve) - and everything downstream carries the
 /// typed variant plus the author's own token. `impl<T: AsRef<str>> PartialEq<T> for Ident` makes
 /// that comparison `ident == spelling` with no String and no allocation, and it ignores spans,
-/// which is right: two idents spelled the same ARE the same key however they were written"
+/// which is right: two idents spelled the same ARE the same key however they were written
 pub trait Keys: Sized + Copy + PartialEq + 'static {
     /// The token this kind of name is written as.
     ///
@@ -54,16 +55,16 @@ pub trait Keys: Sized + Copy + PartialEq + 'static {
 
 /// Declare a LOCAL key set and its [`Keys`] impl.
 ///
-/// NOTE(#keys/two-arms): V[M(keys).arm(literal) && M(keys).arm(ident)], "Two arms, because the two
-/// callers have different information and macro_rules cannot bridge them. M(meta_list) knows an
-/// explicit spelling per field (`colour: T = \"color\"`) so it passes literals. M(variants)' struct
-/// variants have only the FIELD IDENT, and turning an ident into a literal is precisely what a
-/// declarative macro cannot do - the same wall ID(vocabulary/derive-spelling) hit. `stringify!` in
-/// EXPRESSION position works, which is why the ident arm exists at all; it is the `:literal`
-/// MATCHER that cannot accept it.
+/// NOTE(#keys/two-arms): V[MacDef(keys).has(literal arm + ident arm)], "Two arms because the callers know different things"
+/// Two arms, because the two callers have different information and macro_rules cannot bridge them.
+/// M(meta_list) knows an explicit spelling per field (`colour: T = \"color\"`) so it passes
+/// literals. M(variants)' struct variants have only the FIELD IDENT, and turning an ident into a
+/// literal is precisely what a declarative macro cannot do - the same wall
+/// ID(vocabulary/derive-spelling) hit. `stringify!` in EXPRESSION position works, which is why the
+/// ident arm exists at all; it is the `:literal` MATCHER that cannot accept it.
 ///
 /// Separate from M(vocabulary) on purpose: that one is the public, aliased vocabulary with
-/// TryFrom conversions, this one is a private key set local to a single reader"
+/// TryFrom conversions, this one is a private key set local to a single reader
 #[macro_export]
 #[doc(hidden)]
 macro_rules! keys {
@@ -188,7 +189,7 @@ impl Errors {
 
 /// Naming, on the syn types themselves.
 ///
-/// An extension trait rather than free functions, per NOTE(#pipeline/no-free-functions) - and it
+/// An extension trait rather than free functions, per ID(pipeline/no-free-functions) - and it
 /// has to be a trait because `syn::Path` is foreign, which is the same orphan-rule shape the whole
 /// vocab suite is built around (ID(vocab/orphan-shapes-the-api)).
 pub trait Named {
@@ -239,13 +240,13 @@ impl<'ast> ListBody<'ast> {
     /// Owns unknown-key and duplicate-key reporting; the closure only reads the element it was
     /// handed. Missing required keys are NOT reported here - which are required is written in the
     /// caller's TYPES, per ID(from/arity-from-type), and this walker cannot see them.
-    /// NOTE(#walk/metas-are-owned): V[F(metas).R(owned)], "The closure sees `&Meta` and
-    /// `Written<'_, K>` at a LOCAL lifetime, not at 'ast, and that is forced rather than chosen.
-    /// F(metas) PARSES the carried tokens, so every Meta it yields is a new value - there is no
-    /// `&'ast Meta` in the AST to hand out, because the body was never parsed until now
-    /// (ID(no-parse)). Span fidelity is unaffected: syn carries the original spans through
-    /// parsing, so an error against one of these idents still underlines what the author wrote.
-    /// Only the LIFETIME is local; the span is the real one"
+    /// NOTE(#walk/metas-are-owned): V[F(metas).R(owned)], "metas yields owned Metas at a local lifetime, by necessity"
+    /// The closure sees `&Meta` and `Written<'_, K>` at a LOCAL lifetime, not at 'ast, and that is
+    /// forced rather than chosen. F(metas) PARSES the carried tokens, so every Meta it yields is a
+    /// new value - there is no `&'ast Meta` in the AST to hand out, because the body was never
+    /// parsed until now (ID(no-parse)). Span fidelity is unaffected: syn carries the original spans
+    /// through parsing, so an error against one of these idents still underlines what the author
+    /// wrote. Only the LIFETIME is local; the span is the real one
     pub fn walk<K, F>(self, mut accept: F) -> Result<()>
     where
         K: Keys<Written = syn::Ident>,
@@ -467,7 +468,7 @@ mod tests {
     #[test]
     fn a_body_that_is_not_a_meta_list_aborts() {
         // The ONE thing that aborts rather than accumulates - there are no siblings to lose when
-        // there are no siblings. See NOTE(#walk/accumulates).
+        // there are no siblings. See ID(walk/accumulates).
         let result = with_body("#[t(0, 64)]", |body| body.walk::<Key, _>(|_, _| Ok(())));
         assert!(result.is_err());
     }

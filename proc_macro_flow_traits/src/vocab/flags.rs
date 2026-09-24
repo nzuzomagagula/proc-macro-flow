@@ -4,12 +4,13 @@
 //! Closes ID(attribute/path): "Bare-path pattern `#[attr]` maps to a ZST/unit struct - no payload,
 //! presence is the signal."
 //!
-//! NOTE(#flag/key-or-value): V[S(NoClean).accepts(\"no_clean\") && S(NoClean).accepts(\"NoClean\")],
-//! "A flag accepts BOTH its key spelling and its type spelling, and that is not a case-folding rule
-//! sneaking in - it is ID(resolve)'s key-or-value equivalence. A ZST value carries exactly the
-//! information its key does, so `no_clean` and `NoClean` name the same node and there is nothing to
-//! choose between them. Both are DECLARED, per ID(vocabulary/exact); deriving the second from the
-//! first is ID(vocabulary/derive-spelling), which needs heck and therefore needs the derive"
+// NOTE(#flag/key-or-value): V[S(NoClean).has(key or value)], "A flag is written bare, as a key or as a value"
+// no_clean\") && S(NoClean).accepts(\"NoClean\")], "A flag accepts BOTH its key spelling and its
+// type spelling, and that is not a case-folding rule sneaking in - it is ID(resolve)'s key-or-value
+// equivalence. A ZST value carries exactly the information its key does, so `no_clean` and
+// `NoClean` name the same node and there is nothing to choose between them. Both are DECLARED, per
+// ID(vocabulary/exact); deriving the second from the first is ID(vocabulary/derive-spelling), which
+// needs heck and therefore needs the derive
 
 /// Declare a flag: a unit struct matched from a bare path.
 ///
@@ -25,17 +26,15 @@
 ///
 /// `TryFrom<&Meta>` rejects anything that is not a `Meta::Path`: a flag written as `no_clean(x)` or
 /// `no_clean = 1` has a payload, and a flag by definition has nowhere to put one.
-// TODO[ ](#vocab/products-are-askable): C[Impl(Assert).for(flag, name_value, meta_list, variants)],
-// "Tr(Assert) is Tr(Diagnose)'s supertrait and a grammar descends into every field, so a vocabulary
-// product used AS a grammar field could not be asked. Only the leaves had it"
-// TODO[x](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "M(flag), M(name_value)
-// and M(variants) emitted `::quote::ToTokens` and `::proc_macro2::Span` as BARE PATHS, so a crate
-// using any of them had to depend on quote and proc_macro2 under exactly those names - the same
-// bargain ID(traits/reexport-syn) already closed for syn, and one the derives were fixed for
-// earlier. Routing them through $crate's own re-exports closes it for the declarative half too.
+// TODO[x](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "Macros emitted bare quote/proc_macro2 paths; now through $crate"
+// M(flag), M(name_value) and M(variants) emitted `::quote::ToTokens` and `::proc_macro2::Span` as
+// BARE PATHS, so a crate using any of them had to depend on quote and proc_macro2 under exactly
+// those names - the same bargain ID(traits/reexport-syn) already closed for syn, and one the
+// derives were fixed for earlier. Routing them through $crate's own re-exports closes it for the
+// declarative half too.
 //
 // It survived because every test imports what it needs directly; only a caller reaching the crate
-// through the facade alone can see it, which is what N(tour) does"
+// through the facade alone can see it, which is what N(tour) does
 #[macro_export]
 macro_rules! flag {
     (
@@ -120,9 +119,14 @@ macro_rules! flag {
             }
 
             // Askable, so a grammar holding one can descend into its fields -
-            // NOTE(#assert/leaves-are-askable). It states no rules; what matters is that it can
+            // ID(assert/leaves-are-askable). It states no rules; what matters is that it can
             // be asked.
             impl $crate::assert::Assert for $name {}
+
+            // And walkable - ID(diagnose/values-are-walkable).
+            impl $crate::render::Diagnose for $name {
+                fn diagnose(&self, _: &mut ::std::vec::Vec<$crate::syn::Error>) {}
+            }
 
             impl $crate::vocab::leaves::FromMeta for $name {
                 fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {

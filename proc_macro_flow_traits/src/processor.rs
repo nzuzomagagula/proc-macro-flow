@@ -5,26 +5,26 @@
 //! processor is **optional** - most extractions copy their fields through and generate from them
 //! with no transformation at all, which is what `#[derive(Processor)]` emits.
 //!
-//! NOTE(#processor/receives-whole): V[Ty(Input) == Ty(Extractor::Output)], "A processor takes the
-//! extractor's Output AS HANDED OVER - `Extracted<T, I>`, not the `Extraction` inside it. The
-//! pipeline does not unwrap between stages, because unwrapping strips the source node off exactly
-//! the value that needs it: a FAILED extraction has no T to ask, and that is the case a diagnostic
-//! needs position for most"
+// NOTE(#processor/receives-whole): V[Ty(Input) ==? Ty(Extractor::Output)], "A processor takes the Extracted as handed over, unopened"
+// A processor takes the extractor's Output AS HANDED OVER - `Extracted<T, I>`, not the `Extraction`
+// inside it. The pipeline does not unwrap between stages, because unwrapping strips the source node
+// off exactly the value that needs it: a FAILED extraction has no T to ask, and that is the case a
+// diagnostic needs position for most
 //!
-//! NOTE(#processor/output-needs-no-bound): V[Tr(Extractor).Ty(Output).unbounded], "This answers
-//! ID(extractor/output-bound), and the answer is that no bound is needed. The obvious move once
-//! Processor exists is to bound Extractor::Output as 'something a processor can consume' - but an
-//! extractor does not know which processor will consume it, and nothing makes it one-to-one. The
-//! relationship is declared from the OTHER side: a Processor names its Input, and that is where the
-//! two are required to agree. Bounding Output would assert a coupling that does not exist"
+// NOTE(#processor/output-needs-no-bound): V[Tr(Extractor).Ty(Output) != bounded], "Extractor::Output needs no bound for Processor to exist"
+// This answers ID(extractor/output-bound), and the answer is that no bound is needed. The obvious
+// move once Processor exists is to bound Extractor::Output as 'something a processor can consume' -
+// but an extractor does not know which processor will consume it, and nothing makes it one-to-one.
+// The relationship is declared from the OTHER side: a Processor names its Input, and that is where
+// the two are required to agree. Bounding Output would assert a coupling that does not exist
 //!
-//! NOTE(#processor/cascade-is-a-helper): V[F(process_each) != Tr(Processor).A(children)], "Children
-//! are processed BEFORE their parent combines them, but that is a discipline the helpers support
-//! rather than a shape the signature enforces. For the framework to hand a parent its children
-//! already processed, the parent's Input would have to be its own extraction with every child field
-//! replaced by that child's Output - a type-level transformation of a struct, which Rust cannot
-//! express. So `process_each` mirrors `extract_each` and the parent calls it first. Same bottom-up
-//! order, no machinery that does not exist"
+// NOTE(#processor/cascade-is-a-helper): V[F(process_each) != Tr(Processor).A(children)], "Children are processed first by discipline, not by signature"
+// Children are processed BEFORE their parent combines them, but that is a discipline the helpers
+// support rather than a shape the signature enforces. For the framework to hand a parent its
+// children already processed, the parent's Input would have to be its own extraction with every
+// child field replaced by that child's Output - a type-level transformation of a struct, which Rust
+// cannot express. So `process_each` mirrors `extract_each` and the parent calls it first. Same
+// bottom-up order, no machinery that does not exist
 
 /* @group(#processor/fluid)
  *
@@ -32,36 +32,39 @@
  * cannot be abstracted: extraction is a walk and generation is a splice, but understanding what was
  * written is the author's business by definition. The items below follow from that.
  *
- * TODO[ ](#processor/derive-enforces):U[MacDef(Processor)], "Attr(derive(Processor)) currently
- * emits a working IDENTITY impl, which is the OPPOSITE of the job it should do. The derive should
- * ENFORCE that the logic exists, not supply it: derive the PLUMBING - Ty(Input) and Ty(Output)
- * wired from Attr(source) - and delegate the body to an inherent `process_impl` the author must
- * write, so a missing body is a compile error rather than a silently trivial pipeline.
+ * TODO[ ](#processor/derive-enforces): U[MacDef(Processor)], "derive(Processor) should enforce the logic, not supply identity"
+ * Attr(derive(Processor)) currently emits a working IDENTITY impl, which is the OPPOSITE of the job
+ * it should do. The derive should ENFORCE that the logic exists, not supply it: derive the PLUMBING
+ * - Ty(Input) and Ty(Output) wired from Attr(source) - and delegate the body to an inherent
+ * `process_impl` the author must write, so a missing body is a compile error rather than a silently
+ * trivial pipeline.
  *
  * This SUPERSEDES a decision, so the conflict is recorded rather than quietly dropped: this
  * module's header and ID(processor/optionality) both currently justify the identity on the grounds
  * that 'downstream sees one shape and never an either-or'. That argument is still true - it is why
  * ID(pipeline/no-processor-is-the-extractor) has no two-stage variant - but it is an argument for
  * the identity being AVAILABLE, not for it being what the derive hands you by default. Decide
- * whether the identity survives under another name"
+ * whether the identity survives under another name
  *
- * NOTE(#processor/holds-state): V[S(Processor).P ??], "A processor is a STRUCT, and the intent is
- * that it may CARRY STATE across its children - counting items, collecting every struct definition
- * in a module, accumulating something the children contribute to one at a time. Tr(Processor)::
- * process is STATIC (`fn process(input) -> ..`), so today it cannot: there is no `self` to
- * accumulate into. Recorded as a signature question rather than pre-empted, because `&self` and
- * `&mut self` are different designs - the first lets a configured processor be reused, the second
- * makes the cascade order load-bearing in a way ID(processor/cascade-is-a-helper) currently leaves
- * free. Decide it when a real stateful processor exists to test it against"
+ * NOTE(#processor/holds-state): V[S(Processor).P ??], "A processor is a struct and may carry state across children"
+ * A processor is a STRUCT, and the intent is that it may CARRY STATE across its children - counting
+ * items, collecting every struct definition in a module, accumulating something the children
+ * contribute to one at a time. Tr(Processor):: process is STATIC (`fn process(input) -> ..`), so
+ * today it cannot: there is no `self` to accumulate into. Recorded as a signature question rather
+ * than pre-empted, because `&self` and `&mut self` are different designs - the first lets a
+ * configured processor be reused, the second makes the cascade order load-bearing in a way
+ * ID(processor/cascade-is-a-helper) currently leaves free. Decide it when a real stateful processor
+ * exists to test it against
  *
- * TODO[ ](#processor/generalises-over-traits):C[Impl(Processor).over(Tr)], "A processor may define
- * ITS OWN traits, which extractors then implement, and be implemented OVER THAT TRAIT rather than
- * over a concrete extraction type: `impl<T: MyInput> Processor for MyProc<T>`, calling methods
- * instead of matching types. That is how one processor handles several shapes of input without
- * knowing any of them - the processing-side twin of @group(#multi-source), and the same answer:
- * the generic goes on the TYPE, and what varies is reached through a trait rather than inferred.
- * Cross-reference both; they should be decided together, because a processor generic over an input
- * trait and an extractor generic over its source are the same mechanism seen from two ends"
+ * TODO[ ](#processor/generalises-over-traits): C[Impl(Processor).over(Tr)], "A processor may be implemented over its own trait"
+ * A processor may define ITS OWN traits, which extractors then implement, and be implemented OVER
+ * THAT TRAIT rather than over a concrete extraction type: `impl<T: MyInput> Processor for
+ * MyProc<T>`, calling methods instead of matching types. That is how one processor handles several
+ * shapes of input without knowing any of them - the processing-side twin of @group(#multi-source),
+ * and the same answer: the generic goes on the TYPE, and what varies is reached through a trait
+ * rather than inferred. Cross-reference both; they should be decided together, because a processor
+ * generic over an input trait and an extractor generic over its source are the same mechanism seen
+ * from two ends
  */
 
 use crate::extractor::Extraction;
@@ -71,14 +74,15 @@ use crate::extractor::Extraction;
 /// It validates nothing: by the time an extraction arrives its reasons are already recorded, and
 /// re-checking would duplicate a test it cannot improve on while discarding the spans that make the
 /// result diagnosable. TRANSFORM only.
-/// NOTE(#pipeline/one-shape-per-stage): V[Tr(Extractor)<'ast> && Tr(Processor)<'ast> && Tr(Generator)<'ast>],
-/// "Every stage carries 'ast, and the symmetry is the point rather than tidiness. Without it a
+/// NOTE(#pipeline/one-shape-per-stage): V[Tr(Extractor).L('ast) && Tr(Processor).L('ast) && Tr(Generator).L('ast)], "Every stage carries 'ast so it can name a borrowed Input"
+///
+/// Every stage carries 'ast, and the symmetry is the point rather than tidiness. Without it a
 /// stage cannot name a BORROWED Ty(Input) unless the implementing type happens to carry the
 /// lifetime itself - which forced the generator's leaves to take OWNED data, which in turn left
 /// them with no source node to point a failure at.
 ///
 /// So the missing lifetime was not a cosmetic asymmetry: it was why generation could not attribute
-/// a failure to the author's syntax. One shape per stage, and a stage can borrow what produced it"
+/// a failure to the author's syntax. One shape per stage, and a stage can borrow what produced it
 pub trait Processor<'ast>: Sized {
     /// An extractor's `Output`, whole.
     type Input;
@@ -86,13 +90,13 @@ pub trait Processor<'ast>: Sized {
     /// What the generator receives.
     type Output;
 
-    // TODO[x](#reason/reported-once): U[F(process).R(reasons).new_only], "Six processors copied
-    // their input's reasons forward, and F(run) had already rendered those from the tree, so EVERY
-    // diagnostic in the crate came out twice. Nothing caught it because every test asserted a
-    // complaint was present and none asserted how many"
-    /// NOTE(#processor/reasons-are-new-not-inherited): V[F(process).R(reasons).new_only], "The
-    /// E(Reason)s on a processor's OUTPUT are the ones PROCESSING discovered, never the ones its
-    /// input already carried. Inheriting them double-reports, because F(run) renders the whole
+    // TODO[x](#reason/reported-once): U[F(process).R(reasons).new_only], "Processors copied input reasons forward, reporting everything twice"
+    // Six processors copied their input's reasons forward, and F(run) had already rendered those
+    // from the tree, so EVERY diagnostic in the crate came out twice. Nothing caught it because
+    // every test asserted a complaint was present and none asserted how many
+    /// NOTE(#processor/reasons-are-new-not-inherited): V[F(process).R(reasons).new_only], "A processor's reasons are the ones processing found, never inherited"
+    /// The E(Reason)s on a processor's OUTPUT are the ones PROCESSING discovered, never the ones
+    /// its input already carried. Inheriting them double-reports, because F(run) renders the whole
     /// extraction tree BEFORE calling this and then appends whatever comes back:
     ///
     /// ```text
@@ -107,7 +111,7 @@ pub trait Processor<'ast>: Sized {
     ///
     /// FOUND THE HARD WAY: six impls did it, and it went unnoticed because every test asserted
     /// that a complaint was PRESENT and none asserted how many. A test that counts is the only
-    /// kind that catches this."
+    /// kind that catches this.
     fn process(input: Self::Input) -> Extraction<Self::Output>;
 
     /// Process many children. Mirrors `Extractor::extract_each`, and is how a parent collects its

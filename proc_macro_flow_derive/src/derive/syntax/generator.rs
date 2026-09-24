@@ -1,5 +1,5 @@
 // @review [ ]
-//! What `#[derive(Syntax)]` builds: four impls and the shape bounds.
+//! What `#[derive(Syntax)]` builds: five impls and the shape bounds.
 
 use heck::ToUpperCamelCase;
 use proc_macro_flow_traits::assert::AssertKind;
@@ -12,13 +12,13 @@ use super::super::Arity;
 use super::super::ext::TypeExt;
 use super::processor::{Field, Grammar, Rule};
 
-/// Four impls and the shape bounds.
-pub(crate) struct SyntaxExpansion(ItemImpl, ItemImpl, ItemImpl, ItemImpl, Bounds);
+/// Five impls and the shape bounds.
+pub(crate) struct SyntaxExpansion(ItemImpl, ItemImpl, ItemImpl, ItemImpl, ItemImpl, Bounds);
 
 /// One `const _` per `#[shape(..)]` selector - however many the grammar declared.
 ///
 /// A newtype over a Ty(Vec) rather than a counted tuple, and honestly so: the bound SET is one
-/// thing whose size the grammar decides, unlike the four impls above, which are always four.
+/// thing whose size the grammar decides, unlike the five impls above, which are always five.
 pub(crate) struct Bounds(Vec<Item>);
 
 impl ToTokens for SyntaxExpansion {
@@ -28,6 +28,7 @@ impl ToTokens for SyntaxExpansion {
         self.2.to_tokens(tokens);
         self.3.to_tokens(tokens);
         self.4.to_tokens(tokens);
+        self.5.to_tokens(tokens);
     }
 }
 
@@ -55,7 +56,7 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
             let bounds = grammar.bounds()?;
 
             // Each item parsed on its own, so a malformed one names the generator that built it
-            // rather than arriving in the author's crate - NOTE(#derive/expansion-is-typed-items).
+            // rather than arriving in the author's crate - ID(derive/expansion-is-typed-items).
             let described = parse2::<ItemImpl>(quote! {
                 impl #impl_generics ::proc_macro_flow_traits::node::Described
                     for #name #type_generics #where_clause
@@ -64,7 +65,7 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
                 }
             })?;
 
-            // The WORK. See NOTE(#from-body/one-reader-two-entries) for why this is the half that
+            // The WORK. See ID(from-body/one-reader-two-entries) for why this is the half that
             // holds it: the reader never wanted the attribute's head, only the tokens inside its
             // delimiters.
             let body = parse2::<ItemImpl>(quote! {
@@ -77,7 +78,7 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
 
             // The ADAPTER, and the only place `require_list` survives. `meta` is passed as the
             // fallback rather than `meta.span()`, so every span on this path is what it was before
-            // the split - NOTE(#from-body/fallback-is-tokens-not-a-span).
+            // the split - ID(from-body/fallback-is-tokens-not-a-span).
             let from_meta = parse2::<ItemImpl>(quote! {
                 impl #impl_generics ::proc_macro_flow_traits::vocab::leaves::FromMeta
                     for #name #type_generics #where_clause
@@ -100,11 +101,28 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
                 }
             })?;
 
+            // EMPTY, and true: a grammar holds values, never an S(Extracted), so there is nothing
+            // beneath it for the walk to reach. It exists so a grammar can sit in a DERIVED walk
+            // without Attr(skip) - which would silently drop the rules above.
+            // ID(diagnose/values-are-walkable).
+            let walk = parse2::<ItemImpl>(quote! {
+                impl #impl_generics ::proc_macro_flow_traits::render::Diagnose
+                    for #name #type_generics #where_clause
+                {
+                    fn diagnose(
+                        &self,
+                        _: &mut ::std::vec::Vec<::proc_macro_flow_traits::syn::Error>,
+                    ) {
+                    }
+                }
+            })?;
+
             Ok(SyntaxExpansion(
                 described,
                 body,
                 from_meta,
                 asserts,
+                walk,
                 Bounds(bounds),
             ))
         })();
@@ -115,7 +133,7 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
         }
     }
 
-    /// No vacant form - NOTE(#derive/the-impl-is-the-product).
+    /// No vacant form - ID(derive/the-impl-is-the-product).
     fn stub(subject: &'ast DeriveInput) -> Result<Self> {
         Err(Error::new_spanned(
             &subject.ident,
@@ -140,7 +158,7 @@ impl<'ast> Grammar<'ast> {
             };
             let shapes = match &field.shape {
                 // The selector names a TYPE, so its runtime identity comes from the Shape impl rather
-                // than from anything we compare - NOTE(#shape/two-facts).
+                // than from anything we compare - ID(shape/two-facts).
                 Some(path) => quote!(&[<#path as ::proc_macro_flow_traits::meta::Shape>::KIND]),
                 None => quote!(&[]),
             };
@@ -168,7 +186,7 @@ impl<'ast> Grammar<'ast> {
     ///
     /// Everything a complaint here cannot span itself falls back to `at`, which is `meta` on the
     /// derive path and the ANNOTATED ITEM on the attribute-macro path - see
-    /// NOTE(#from-body/fallback-is-tokens-not-a-span).
+    /// ID(from-body/fallback-is-tokens-not-a-span).
     fn reader(&self) -> Result<ImplItem> {
         let (name, fields) = (self.name, &self.fields);
         let key_set = quote::format_ident!("__{}Keys", name);
@@ -218,11 +236,11 @@ impl<'ast> Grammar<'ast> {
                 // `clippy::redundant_field_names` fires on, and a lint in generated code is
                 // reported against the AUTHOR's struct - they see a warning about a line they
                 // did not write and cannot silence. Generated code owes the same cleanliness as
-                // written code; see NOTE(#derive/no-panics) for the same argument about panics.
+                // written code; see ID(derive/no-panics) for the same argument about panics.
                 Arity::Maybe => quote!( #ident ),
                 // Reached only inside the Ok arm, where the check above has already passed - so None
                 // would be a FRAMEWORK bug. It bubbles a diagnostic saying so rather than panicking;
-                // see NOTE(#derive/no-panics).
+                // see ID(derive/no-panics).
                 _ => quote! {
                     #ident: match #ident {
                         ::std::option::Option::Some(value) => value,
@@ -254,23 +272,25 @@ impl<'ast> Grammar<'ast> {
                 // same reason: it needs no unique name and there is no second public name to keep in
                 // step. Unlike meta_list!, aliases are real here, because a proc macro can build the
                 // literals.
-                // TODO[x](#syntax/key-set-shadowing): U[E(keys).name], "The generated key enum
-                // was called `Key` and shadowed any author type of that name, failing with a path
-                // nobody wrote"
-                // NOTE(#syntax-derive/the-key-set-cannot-shadow): V[E(keys).name.derived], "Named
-                // after the grammar rather than `Key`, because this enum is declared INSIDE the
-                // reader's body and a bare `Key` shadows any type the author happens to have called
-                // that - including one used as a field's own type in this very grammar. The failure
-                // reads `the trait bound <Column as FromBody>::from_body::Key: FromMeta is not
-                // satisfied`, which names a path the author never wrote."
+                // TODO[x](#syntax/key-set-shadowing): U[E(keys).name], "The key enum was called Key and shadowed author types"
+                // The generated key enum was called `Key` and shadowed any author type of that
+                // name, failing with a path nobody wrote
+                // NOTE(#syntax-derive/the-key-set-cannot-shadow): V[E(keys).name.derived], "The key enum is named after the grammar, so it cannot shadow"
+                // Named after the grammar rather than `Key`, because this enum is declared INSIDE
+                // the reader's body and a bare `Key` shadows any type the author happens to have
+                // called that - including one used as a field's own type in this very grammar. The
+                // failure reads `the trait bound <Column as FromBody>::from_body::Key: FromMeta is
+                // not satisfied`, which names a path the author never wrote.
                 ::proc_macro_flow_traits::keys! {
                     #[allow(non_camel_case_types)]
                     enum #key_set { #( #idents = #keys ),* }
                 }
                 // The alias spellings the Node table advertises, asserted against the key set so the
-                // two cannot drift. TODO[ ](#syntax-derive/aliases-in-keys): `keys!` accepts one
-                // spelling per variant, so an alias is currently visible to diagnostics but not to
-                // `Keys::resolve`. Extending `keys!` to take `ident = "a" | "b"` closes it.
+                // two cannot drift.
+                // TODO[ ](#syntax-derive/aliases-in-keys): U[MacDef(keys) ->+ alias spellings], "Aliases reach diagnostics but not Keys::resolve"
+                // `keys!` accepts one spelling per variant, so an alias is currently visible to
+                // diagnostics but not to `Keys::resolve`. Extending `keys!` to take
+                // `ident = "a" | "b"` closes it.
                 const _: &[&[&str]] = &[ #( &[ #(#aliases),* ] ),* ];
 
                 #( let mut #idents = ::std::option::Option::None; )*
@@ -296,14 +316,14 @@ impl<'ast> Grammar<'ast> {
 
     /// Step 6: the selector becomes a BOUND.
     ///
-    /// NOTE(#shape/bound-at-last): V[Attr(shape).lowers_to(Tr(Shape))], "Ty(Shape) was declared long
-    /// before anything used it - `S: Shape` and `S::KIND` appeared only in meta.rs's own tests, so the
-    /// promise that Attr(shape) lowers to a trait BOUND rather than a runtime match was recorded and
-    /// unbuilt. This is where it is spent: a selector that names a shape the field's type cannot be
-    /// read in fails in the AUTHOR's crate, at the author's span.
+    /// NOTE(#shape/bound-at-last): V[Attr(shape).has(lowers to Tr(Shape))], "#[shape] finally lowers to a Shape trait bound"
+    /// Ty(Shape) was declared long before anything used it - `S: Shape` and `S::KIND` appeared only
+    /// in meta.rs's own tests, so the promise that Attr(shape) lowers to a trait BOUND rather than
+    /// a runtime match was recorded and unbuilt. This is where it is spent: a selector that names a
+    /// shape the field's type cannot be read in fails in the AUTHOR's crate, at the author's span.
     ///
     /// The runtime check is untouched and still correct. The two answer different questions -
-    /// NOTE(#shape/two-facts) - and this is the half that had never been exercised"
+    /// ID(shape/two-facts) - and this is the half that had never been exercised
     /// Step 6: the selector becomes a BOUND.
     fn bounds(&self) -> Result<Vec<Item>> {
         let fields = &self.fields;
@@ -326,16 +346,17 @@ impl<'ast> Grammar<'ast> {
     }
 }
 
-// TODO[x](#assert/derive-reads-rules): C[Attr(assert)] && V[F(Rule::resolve).rejects(required)],
-// "Attr(assert) read off the type, with three checks a derive can make and a runtime cannot: the
+// TODO[x](#assert/derive-reads-rules): V[Attr(assert)] && V[F(Rule::resolve).has(rejects required)], "#[assert] is read off the type with derive-time checks"
+//
+// Attr(assert) read off the type, with three checks a derive can make and a runtime cannot: the
 // field exists, the rule takes that many keys, and - the one that earns it - a REQUIRED field is
-// always written, so a rule asking whether it was is a statement its own type contradicts"
+// always written, so a rule asking whether it was is a statement its own type contradicts
 
 impl Grammar<'_> {
     /// The `assert` body: this grammar's own rules, then a descent into every field.
     ///
     /// The descent is unconditional and needs no knowledge of which fields are grammars, because
-    /// every leaf is askable too - NOTE(#assert/leaves-are-askable).
+    /// every leaf is askable too - ID(assert/leaves-are-askable).
     fn assert(&self) -> Result<ImplItem> {
         let checks = self
             .rules
@@ -376,11 +397,11 @@ impl Rule<'_> {
     ///
     /// Each one records a E(Reason) and carries on - there is no `?` and no early return, so a
     /// grammar stating three rules reports all three it breaks rather than the first
-    /// (NOTE(#assert/no-result)).
+    /// (ID(assert/no-result)).
     fn emit(&self, fields: &[Field<'_>]) -> Result<syn::Stmt> {
         let (kind, named, _) = match self {
             // An author's rule words its OWN reason, so nothing is built here -
-            // NOTE(#assert/with-never-violates).
+            // ID(assert/with-never-violates).
             Rule::With(path) => {
                 return parse2(quote! {
                     <#path as ::proc_macro_flow_traits::assert::Rule>::check(self, out);
@@ -390,7 +411,7 @@ impl Rule<'_> {
         };
 
         // Resolved when the rule was read, so a miss here cannot happen on a grammar that got
-        // this far - and it still bubbles rather than panicking (NOTE(#derive/no-panics)).
+        // this far - and it still bubbles rather than panicking (ID(derive/no-panics)).
         let presence = named
             .iter()
             .map(|name| match fields.iter().find(|field| field.ident == *name) {

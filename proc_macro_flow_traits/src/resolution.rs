@@ -10,10 +10,11 @@
 //! consumes the old one, and `Resolved` has no `resolve` - double resolution is a type error rather
 //! than a silent no-op, and reading an unparsed item does not compile.
 //!
-//! NOTE(#no-idempotence): V[S(Resolved).!has(F(resolve))], "There is deliberately no idempotent
-//! resolve(). An idempotent operation is one whose SECOND call has to be handled; here the second
-//! call cannot be written, because `resolve` consumes an `Unresolved` and hands back a `Resolved`
-//! that has no such method. The ordering bug is not guarded against, it is unrepresentable"
+// NOTE(#no-idempotence): V[S(Resolved) != has(F(resolve))], "There is deliberately no idempotent resolve()"
+// There is deliberately no idempotent resolve(). An idempotent operation is one whose SECOND call
+// has to be handled; here the second call cannot be written, because `resolve` consumes an
+// `Unresolved` and hands back a `Resolved` that has no such method. The ordering bug is not guarded
+// against, it is unrepresentable
 
 use core::marker::PhantomData;
 

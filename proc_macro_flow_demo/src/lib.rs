@@ -1,8 +1,9 @@
 // @review [ ]
-// TODO[ ](#demo/exercises-the-surface): U[N(demo).covers(grammar, helpers, children, flags)], "A
-// single field-name list proved only that a pipeline runs. A macro with a helper GRAMMAR, a rule on
-// it, registered spellings and a real child per field exercises the parts that break - and found
-// three crate bugs the moment it was written"
+// NOTE(#demo/exercises-the-surface): V[N(demo).has(grammar, helpers, children, flags)], "The demo exercises the parts that break, not just a pipeline"
+// A single field-name list proved only that a pipeline runs. A macro with a helper GRAMMAR, a rule
+// on it, registered spellings and a real child per field exercises the parts that break - and found
+// three crate bugs the moment it was written
+
 //! `#[derive(Columns)]` — a worked macro, written the way an AUTHOR would write one.
 //!
 //! It exists twice over: to compile the entry point Attr(pipeline) generates, and to be the thing a
@@ -23,34 +24,35 @@
 //! }
 //! ```
 //!
-//! NOTE(#demo/exercises-the-whole-surface): V[N(demo).uses(grammar, helpers, children, asserts)],
-//! "Deliberately richer than one field-name list. The first demo used none of the crate's own
-//! vocabulary and so proved only that a pipeline runs. This one declares a GRAMMAR for its helper
-//! attribute, states a RULE that grammar must satisfy, registers the helper through `helpers =`
-//! so no spelling is written twice, and has a real CHILD EXTRACTION per field - which means the
-//! diagnostic walk has somewhere to walk and a bad attribute is reported against the field that
-//! carries it, not the struct."
+// NOTE(#demo/exercises-the-whole-surface): V[N(demo).has(grammar, helpers, children, asserts)], "Richer than a field-name list: grammar, rule, helpers, children"
+//
+// Deliberately richer than one field-name list. The first demo used none of the crate's own
+// vocabulary and so proved only that a pipeline runs. This one declares a GRAMMAR for its helper
+// attribute, states a RULE that grammar must satisfy, registers the helper through `helpers =`
+// so no spelling is written twice, and has a real CHILD EXTRACTION per field - which means the
+// diagnostic walk has somewhere to walk and a bad attribute is reported against the field that
+// carries it, not the struct.
 //!
-//! NOTE(#demo/why-a-third-crate): V[N(demo).proc_macro && N(demo) != N(derive)], "This crate exists
-//! because two rustc constraints meet and leave nowhere else to stand.
-//!
-//! (1) `can't use a procedural macro from the same crate that defines it` - VERIFIED, and already
-//! recorded as ID(derive/cannot-self-host). So proc_macro_flow_derive cannot apply its own
-//! Attr(pipeline), which is what the plan's 'regenerate lib.rs::field_names with Attr(pipeline)'
-//! asked for and why that step is impossible rather than merely unfinished.
-//!
-//! (2) `functions tagged with #[proc_macro_derive] must currently reside in the root of the crate`,
-//! and only a `proc-macro = true` crate may have one at all. So the facade cannot host it either -
-//! which is the one thing ID(facade/hosts-the-proof) could never cover.
-//!
-//! The gap that leaves is the one this closes. Every proof of Attr(pipeline) so far ran under
-//! `entry = manual`, so the entry function it generates had been asserted as TOKENS and never once
-//! handed to rustc. Here it is compiled, exported, and used by the facade against a real struct."
+// NOTE(#demo/why-a-third-crate): V[N(demo).is(proc_macro) && N(demo) != N(derive)], "Two rustc constraints leave this third crate as the only place"
+// This crate exists because two rustc constraints meet and leave nowhere else to stand.
+//
+// (1) `can't use a procedural macro from the same crate that defines it` - VERIFIED, and already
+// recorded as ID(derive/cannot-self-host). So proc_macro_flow_derive cannot apply its own
+// Attr(pipeline), which is what the plan's 'regenerate lib.rs::field_names with Attr(pipeline)'
+// asked for and why that step is impossible rather than merely unfinished.
+//
+// (2) `functions tagged with #[proc_macro_derive] must currently reside in the root of the crate`,
+// and only a `proc-macro = true` crate may have one at all. So the facade cannot host it either -
+// which is the one thing ID(facade/hosts-the-proof) could never cover.
+//
+// The gap that leaves is the one this closes. Every proof of Attr(pipeline) so far ran under
+// `entry = manual`, so the entry function it generates had been asserted as TOKENS and never once
+// handed to rustc. Here it is compiled, exported, and used by the facade against a real struct.
 
 use proc_macro_flow_derive::pipeline;
 
 // MUST BE AT THE CRATE ROOT. Attr(pipeline) emits the entry function as a SIBLING of this module,
-// and (2) above is why that is the only place it can land - NOTE(#pipeline/entry-is-a-sibling).
+// and (2) above is why that is the only place it can land - ID(pipeline/entry-is-a-sibling).
 #[pipeline(derive = Columns)]
 mod columns {
     use proc_macro_flow_derive::{Diagnose, Extractor, Generator, Processor, Syntax};
@@ -97,18 +99,20 @@ mod columns {
         pub skip: Option<Skip>,
     }
 
-    /// One field of the annotated struct, and whatever `#[column(..)]` said about it.
     /// One field of the annotated struct, and what `#[column(..)]` said about it.
     ///
     /// HAND-WRITTEN, and the only stage here that should be: reading the grammar can FAIL, and a
     /// failure belongs on the field that carries the attribute. A derived extractor splices
     /// expressions and has nowhere to put a E(Reason) - so the moment reading is fallible, the
     /// stage is doing real work and writes itself. Attr(derive(Diagnose)) still absorbs the walk.
+    ///
+    /// `column` is WALKED, not skipped. The walk finds nothing beneath a grammar, but the derived
+    /// Assert asks it on the way past, and that is the only route by which `conflicts(skip, key)`
+    /// reaches the author - ID(diagnose-derive/asks-what-it-walks).
     #[derive(Diagnose)]
     pub struct ColumnRead<'ast> {
         #[skip]
         pub name: Option<&'ast Ident>,
-        #[skip]
         pub column: Option<Column>,
     }
 
@@ -127,8 +131,17 @@ mod columns {
         fn extract_from(node: &'ast Field) -> Self::Output {
             let mut out: Extraction<Self> = Extraction::default();
 
-            let written = node.attrs.iter().find(|a| a.path().is_ident("column"));
-            let column = match written.map(|attr| Column::from_meta(&attr.meta)) {
+            let mut written = node.attrs.iter().filter(|a| a.path().is_ident("column"));
+            let first = written.next();
+
+            // A second `#[column]` is neither merged nor dropped. The first is still read, and
+            // every extra one is a complaint pointing at itself - a value AND a reason, which is
+            // the case S(Extraction) is shaped for.
+            for extra in written {
+                out.reasons.push(Reason::at(ReasonKind::Duplicate, extra));
+            }
+
+            let column = match first.map(|attr| Column::from_meta(&attr.meta)) {
                 None => None,
                 Some(Ok(column)) => Some(column),
                 // The grammar already worded this - a missing key, an unknown one with its
@@ -175,11 +188,11 @@ mod columns {
 
     /// The only hand-written stage, and the only one that should be: a narrowing is a decision.
     ///
-    /// NOTE(#demo/valid-is-what-the-stage-needs): V[Ty(Valid).pair], "Attr(derive(Validate))
-    /// declines to guess at a narrowing, so this is written out. It narrows to a PAIR rather than
-    /// the `&FieldsNamed` the shape check produces, because every Attr(value) below is written
-    /// against `source`: narrowing to the fields alone would put the type's own name out of reach.
-    /// Ty(Valid) is exactly the place to say what this stage needs."
+    /// NOTE(#demo/valid-is-what-the-stage-needs): V[Ty(Valid).is(pair)], "Valid narrows to what this stage needs: the name and the fields"
+    /// Attr(derive(Validate)) declines to guess at a narrowing, so this is written out. It narrows
+    /// to a PAIR rather than the `&FieldsNamed` the shape check produces, because every Attr(value)
+    /// below is written against `source`: narrowing to the fields alone would put the type's own
+    /// name out of reach. Ty(Valid) is exactly the place to say what this stage needs.
     impl<'ast> Validate<'ast> for TableRead<'ast> {
         type Source = &'ast DeriveInput;
         type Valid = (&'ast Ident, &'ast FieldsNamed);
@@ -251,5 +264,57 @@ mod columns {
             })
             .map(Table)
         }
+    }
+}
+
+// The STAGE, run in process - what a grammar-level test cannot see. `Column`'s own Assert was
+// always correct; what broke was the stage never asking it. So these read a real field, walk the
+// extraction exactly as the pipeline does, and look at what comes out.
+#[cfg(test)]
+mod tests {
+    use super::columns::ColumnRead;
+    use proc_macro_flow_traits::{
+        extractor::Extractor,
+        render::Diagnose,
+        syn::{self, parse_str, Data, DeriveInput, Fields},
+    };
+
+    /// Every complaint the walk finds on the one field of `struct T { <field> }`.
+    fn complaints(field: &str) -> Vec<String> {
+        let input: DeriveInput = parse_str(&format!("struct T {{ {field} }}")).expect("parses");
+        let Data::Struct(data) = &input.data else { unreachable!() };
+        let Fields::Named(named) = &data.fields else { unreachable!() };
+        let field: &syn::Field = named.named.first().expect("one field");
+
+        ColumnRead::extract_from(field)
+            .render()
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn a_rule_the_grammar_states_is_enforced_by_the_stage() {
+        // ID(diagnose-derive/asks-what-it-walks). This compiled clean before - the rule was
+        // stated on the grammar and never once asked.
+        let found = complaints("#[column(skip, key)] id: u64");
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("cannot be written together"), "{found:?}");
+    }
+
+    #[test]
+    fn a_second_column_attribute_is_a_complaint_not_a_silent_drop() {
+        let found = complaints(r#"#[column(key)] #[column(rename = "x")] id: u64"#);
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("more than once"), "{found:?}");
+    }
+
+    #[test]
+    fn a_clean_field_says_nothing() {
+        // The other side of both: walking and asking a grammar that breaks nothing adds nothing.
+        assert!(complaints(r#"#[column(rename = "x", key)] id: u64"#).is_empty());
+        assert!(complaints("id: u64").is_empty());
     }
 }

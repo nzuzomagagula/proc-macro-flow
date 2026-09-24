@@ -75,15 +75,15 @@ pub mod author {
         name: Option<ConfigName>,
     }
 
-    // NOTE(#no-type-alias): V[Attr(alias).on(E(ColourSetting)) != Seg(Colour)], "There is
-    // deliberately no #[alias(Colour)] here making `Colour::Red` resolve. A grammar type is a REAL
-    // item that exists once, and inventing a second path segment for it would be a phantom naming
-    // nothing - the author's crate would have to grow a `pub use ColourSetting as Colour;` to make
-    // it real, which is the duplication the design is avoiding. The principle: THE FRAMEWORK MAY
-    // ALIAS WHAT IT OWNS - attribute heads and field keys, which are names we invent and match
-    // ourselves - AND MUST NOT ALIAS WHAT RUSTC OWNS, which is paths. A user who wants the short
-    // spelling writes `use ColourSetting as Colour;` in their own crate and gets it from rustc,
-    // with rustc's own semantics and no feature of ours competing with it"
+    // NOTE(#no-type-alias): V[Attr(alias).has(E(ColourSetting)) != Seg(Colour)], "No #[alias(Colour)]: a grammar type exists once"
+    // There is deliberately no #[alias(Colour)] here making `Colour::Red` resolve. A grammar type
+    // is a REAL item that exists once, and inventing a second path segment for it would be a
+    // phantom naming nothing - the author's crate would have to grow a `pub use ColourSetting as
+    // Colour;` to make it real, which is the duplication the design is avoiding. The principle: THE
+    // FRAMEWORK MAY ALIAS WHAT IT OWNS - attribute heads and field keys, which are names we invent
+    // and match ourselves - AND MUST NOT ALIAS WHAT RUSTC OWNS, which is paths. A user who wants
+    // the short spelling writes `use ColourSetting as Colour;` in their own crate and gets it from
+    // rustc, with rustc's own semantics and no feature of ours competing with it
     #[derive(Syntax)]
     pub enum ColourSetting {
         Red,
@@ -263,7 +263,7 @@ mod walkthrough {
         // `#[shpae(..)]` never reaches this code in a real compilation: a derive registers its
         // helpers with attributes(shape, alias), and rustc rejects every other head first, with a
         // better message than we could write. So when one DOES reach us it belongs to another
-        // macro, and the only correct response is silence. See NOTE(#heads-are-rustcs).
+        // macro, and the only correct response is silence. See ID(heads-are-rustcs).
         let field = grammar_field(
             r#"
             pub struct Configuration {

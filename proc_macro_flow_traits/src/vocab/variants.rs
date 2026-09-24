@@ -12,20 +12,21 @@
 //! Rgb(r = 12, g = 34, b = 56)   Meta::List        struct variant, named Metas
 //! ```
 //!
-//! NOTE(#variants/matched-not-resolved): V[M(variants).matches(last_segment)], "This is the one
-//! place ID(vocab/match-or-splice) bites, and it bites in the direction the rule predicts: the
-//! caller needs a VALUE - an actual ColourSetting to branch on - and rustc cannot hand us one, only
-//! check one. So variant names are MATCHED, on the last path segment, and the documented cost is
-//! that a renamed import is invisible: `use ColourSetting::Other as O;` then `colour(O(Blue))` will
-//! not be seen. `ColourSetting::Red` and `Red` ARE the same node, because suffix matching handles
-//! qualification. Contrast #[shape(..)], where no value is needed and the tokens are spliced for
-//! rustc to resolve - which is why a renamed import DOES work there"
+// NOTE(#variants/matched-not-resolved): V[MacDef(variants).has(last segment match)], "variants! matches names because the caller needs a value"
+// This is the one place ID(vocab/match-or-splice) bites, and it bites in the direction the rule
+// predicts: the caller needs a VALUE - an actual ColourSetting to branch on - and rustc cannot hand
+// us one, only check one. So variant names are MATCHED, on the last path segment, and the
+// documented cost is that a renamed import is invisible: `use ColourSetting::Other as O;` then
+// `colour(O(Blue))` will not be seen. `ColourSetting::Red` and `Red` ARE the same node, because
+// suffix matching handles qualification. Contrast #[shape(..)], where no value is needed and the
+// tokens are spliced for rustc to resolve - which is why a renamed import DOES work there
 //!
-//! NOTE(#variants/payload-is-pre-formed): V[M(variants).acc(decl)], "The muncher accumulates each
-//! variant's payload as already-formed TOKENS rather than as structured data. It has to: a macro
-//! cannot expand into a partial enum body, so `enum E { $crate::variants!(@decl ..) }` is not
-//! legal. Accumulating the exact declaration tokens and splicing them with one repetition is the
-//! way around it, and is why the three shapes converge on a single `$($decl)*` at emission"
+// NOTE(#variants/payload-is-pre-formed): V[MacDef(variants).has(pre-formed payload)], "Each variant's payload accumulates as pre-formed tokens"
+// The muncher accumulates each variant's payload as already-formed TOKENS rather than as structured
+// data. It has to: a macro cannot expand into a partial enum body, so `enum E {
+// $crate::variants!(@decl ..) }` is not legal. Accumulating the exact declaration tokens and
+// splicing them with one repetition is the way around it, and is why the three shapes converge on a
+// single `$($decl)*` at emission
 
 /// Declare an enum read from a value position.
 ///
@@ -124,8 +125,13 @@ macro_rules! variants {
         }
 
         // Askable, so a grammar holding one can descend into its fields -
-        // NOTE(#assert/leaves-are-askable).
+        // ID(assert/leaves-are-askable).
         impl $crate::assert::Assert for $name {}
+
+        // And walkable - ID(diagnose/values-are-walkable).
+        impl $crate::render::Diagnose for $name {
+            fn diagnose(&self, _: &mut ::std::vec::Vec<$crate::syn::Error>) {}
+        }
 
         impl $crate::vocab::leaves::FromMeta for $name {
             fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
@@ -241,7 +247,7 @@ macro_rules! variants {
 
         // BUBBLES. `positional` already checked the count, so None is unreachable - but an
         // unreachable panic in the AUTHOR'S compile is still a panic, and a diagnostic naming the
-        // framework costs nothing. See NOTE(#vocab/no-panics-in-generated-code).
+        // framework costs nothing. See ID(vocab/no-panics-in-generated-code).
         ::std::result::Result::Ok($name::$v(
             $(
                 <$t as $crate::vocab::leaves::FromExpr>::from_expr(&match taken.next() {

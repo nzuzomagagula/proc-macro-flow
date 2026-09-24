@@ -43,11 +43,12 @@ impl<'ast> Generator<'ast> for ValidateExpansion {
         let (_, type_generics, _) = input.declared.split_for_impl();
         let (name, lifetime, source) = (input.name, &input.lifetime, &input.source);
 
-        // NOTE(#validate/source-shape-follows-args): V[Ty(Source) == S(Attributed) <=> Attr(args)],
-        // "One input or two, and nothing else changes. A derive keeps the bare borrowed node it
+        // NOTE(#validate/source-shape-follows-args): V[Ty(Source) ==? S(Attributed)], "The Source is Attributed exactly when #[args] is written"
+        //
+        // One input or two, and nothing else changes. A derive keeps the bare borrowed node it
         // always had; an attribute macro gets S(Attributed), which carries BOTH halves of what
         // rustc handed it. Ty(Valid) narrows to the ITEM either way, because that is what a stage
-        // downstream wants to look at - the arguments were already read into a grammar by then."
+        // downstream wants to look at - the arguments were already read into a grammar by then.
         let source_type: syn::Result<Type> = match &input.args {
             None => parse2(quote!(& #lifetime #source)),
             Some(args) => parse2(quote! {
@@ -70,7 +71,7 @@ impl<'ast> Generator<'ast> for ValidateExpansion {
                     for #name #type_generics #where_clause
                 {
                     // Attr(source(Ty)) maps ONE-FOR-ONE onto the associated type - see
-                    // NOTE(#pipeline/source-is-associated).
+                    // ID(pipeline/source-is-associated).
                     type Source = #source_type;
                     type Valid = & #lifetime #source;
 
@@ -114,15 +115,16 @@ impl<'ast> Generator<'ast> for ValidateExpansion {
         out
     }
 
-    /// NOTE(#derive/the-impl-is-the-product): V[F(stub).R(Err)], "There is no vacant form here, and
-    /// saying so is more honest than inventing one. Everywhere else a stub prevents a cascade: a
-    /// missing generated impl becomes 'does not implement' at every use site, so a shaped-but-empty
-    /// one is strictly better than nothing (ID(generator/stub-is-not-empty)).
+    /// NOTE(#derive/the-impl-is-the-product): V[F(stub).R(Err)], "There is no vacant form; the impl is the product"
+    /// There is no vacant form here, and saying so is more honest than inventing one. Everywhere
+    /// else a stub prevents a cascade: a missing generated impl becomes 'does not implement' at
+    /// every use site, so a shaped-but-empty one is strictly better than nothing
+    /// (ID(generator/stub-is-not-empty)).
     ///
     /// A derive that FAILED TO READ ITS DECLARATION cannot write a shaped one - it does not know
     /// the source type, which is the whole content of the impl. A guessed one would compile and be
     /// wrong, sending the author to debug correct code. So this returns Err, F(run) emits the
-    /// reasons alone, and the author gets the one error that names what to fix."
+    /// reasons alone, and the author gets the one error that names what to fix.
     fn stub(subject: &'ast DeriveInput) -> syn::Result<Self> {
         Err(syn::Error::new_spanned(
             &subject.ident,
@@ -133,20 +135,20 @@ impl<'ast> Generator<'ast> for ValidateExpansion {
 
 /// What `source` must actually BE, checked where the author wrote it.
 ///
-/// NOTE(#declaration/assert-what-was-named): V[F(assert_visitable).at(author_span)], "Attr(source)
-/// had been written in every pipeline test since the macro existed and checked by NOTHING, so
-/// naming a type that is not a syn node produced either a confusing error deep in generated code or
-/// (worse) nothing at all, because the declaration was never read. These are the same
-/// `const _ { const fn assert_x<T: Bound>() {} }` assertions ID(shape/bound-at-last) already uses
-/// for Attr(shape), spanned with quote_spanned! so the error lands on the type the author named
-/// rather than on the item or on code they did not write.
+/// NOTE(#declaration/assert-what-was-named): V[F(assert_visitable).has(author span)], "#[source] is checked to name a syn node, at the author's span"
+/// Attr(source) had been written in every pipeline test since the macro existed and checked by
+/// NOTHING, so naming a type that is not a syn node produced either a confusing error deep in
+/// generated code or (worse) nothing at all, because the declaration was never read. These are the
+/// same `const _ { const fn assert_x<T: Bound>() {} }` assertions ID(shape/bound-at-last) already
+/// uses for Attr(shape), spanned with quote_spanned! so the error lands on the type the author
+/// named rather than on the item or on code they did not write.
 ///
-/// NOTE(#assert-item/needs-the-generics): V[S(const).wraps(F(generic))], "The check cannot sit
-/// directly in a `const _: () = { .. }`, because a const item HAS NO GENERICS and the source type
-/// is written against the stage lifetime - `&'ast Field` there is
+/// NOTE(#assert-item/needs-the-generics): V[S(const).has(F(generic))], "The check sits in a generic fn, since a const has no generics"
+/// The check cannot sit directly in a `const _: () = { .. }`, because a const item HAS NO GENERICS
+/// and the source type is written against the stage lifetime - `&'ast Field` there is
 /// `error[E0261]: use of undeclared lifetime name`. Wrapping it in a function that carries the
 /// type's own generics puts the lifetime back in scope. The function is never called; its BODY is
-/// what rustc type-checks, and that is where the bound is proved."
+/// what rustc type-checks, and that is where the bound is proved.
 fn assert_visitable(input: &ProcessedStage<'_>) -> syn::Result<Assertion> {
     let (impl_generics, _, where_clause) = input.generics.split_for_impl();
     let (lifetime, source) = (&input.lifetime, &input.source);

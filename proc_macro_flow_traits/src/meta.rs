@@ -6,23 +6,23 @@
 //! node layer to sit beside it; this module only names the three places a grammar CONTINUES, and
 //! translates a `Meta` into whichever one it is.
 //!
-//! NOTE(#openings): V[S(ListBody).T(TokenStream)] && V[S(ValueExpr).T(Expr)], "Two of the three
-//! openings are UNPARSED, and that is the point rather than an omission. MetaList::tokens is a raw
-//! TokenStream and MetaNameValue::value is an arbitrary Expr, so syn stops at exactly the depth
-//! where a grammar's own meaning begins. An extractor carries these; a processor reads them. The
-//! third, PathOnly, has nothing to read at all - presence is the signal."
+// NOTE(#openings): V[S(ListBody).T(TokenStream)] && V[S(ValueExpr).T(Expr)], "Two of the three openings are unparsed, on purpose"
+// Two of the three openings are UNPARSED, and that is the point rather than an omission.
+// MetaList::tokens is a raw TokenStream and MetaNameValue::value is an arbitrary Expr, so syn stops
+// at exactly the depth where a grammar's own meaning begins. An extractor carries these; a
+// processor reads them. The third, PathOnly, has nothing to read at all - presence is the signal.
 //!
-//! NOTE(#shape-is-the-opening): V[Tr(Shape).Ty(Input)], "A 'shape' is not a tag we attach to a
-//! field, it is WHICH OPENING the payload arrives through. That collapses what looked like two
-//! concepts into one: #[shape(AttributeKind::MetaList)] narrows a field to the ListBody opening,
-//! and the narrowing is checked by rustc because the marker's Input type either matches what the
-//! grammar type can read or does not."
+// NOTE(#shape-is-the-opening): V[Tr(Shape).has(Ty(Input))], "A shape is which opening the payload arrives through"
+// A 'shape' is not a tag we attach to a field, it is WHICH OPENING the payload arrives through.
+// That collapses what looked like two concepts into one: #[shape(AttributeKind::MetaList)] narrows
+// a field to the ListBody opening, and the narrowing is checked by rustc because the marker's Input
+// type either matches what the grammar type can read or does not.
 //!
-//! NOTE(#meta-vs-expr): V[F(metas) != F(exprs)], "The spine/leaf rule, made into two methods.
-//! `colour(ColourSetting::Red)` reads its body as Metas because every element NAMES something;
-//! `bounds(0, 64)` cannot, because a bare literal is not valid Meta at all. A grammar node picks
-//! the reading its own shape implies - which is why Meta::List::tokens being raw is load-bearing
-//! and not an inconvenience."
+// NOTE(#meta-vs-expr): V[F(metas) != F(exprs)], "Spine reads as Metas, leaves read as Exprs"
+// The spine/leaf rule, made into two methods. `colour(ColourSetting::Red)` reads its body as Metas
+// because every element NAMES something; `bounds(0, 64)` cannot, because a bare literal is not
+// valid Meta at all. A grammar node picks the reading its own shape implies - which is why
+// Meta::List::tokens being raw is load-bearing and not an inconvenience.
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
@@ -50,12 +50,14 @@ impl<'ast> ListBody<'ast> {
 
     /// Read the body as a spine with a separator of the caller's choosing.
     ///
-    /// NOTE(#list-body/separator-is-a-type): V[M(separated).P(S)], "The separator is a TYPE
-    /// PARAMETER, not an argument and not a third reading, which is ID(from/arity-from-type)'s rule
-    /// applied to punctuation: what the grammar accepts is written in the type, so nothing can
-    /// contradict it and no runtime value has to be threaded to the parse.
+    /// NOTE(#list-body/separator-is-a-type): V[F(separated).G(S)], "The separator is a type parameter"
+    /// The separator is a TYPE PARAMETER, not an argument and not a third reading, which is
+    /// ID(from/arity-from-type)'s rule applied to punctuation: what the grammar accepts is written
+    /// in the type, so nothing can contradict it and no runtime value has to be threaded to the
+    /// parse.
     ///
-    /// NOTE(#separator): a custom separator is viable - VERIFIED that rustc accepts `#[attr(a; b)]`
+    /// NOTE(#separator): V[F(separated).has(custom separator)], "A custom separator is viable; rustc accepts it as a helper"
+    /// a custom separator is viable - VERIFIED that rustc accepts `#[attr(a; b)]`
     /// as an inert derive helper, parses it as Meta::List, and hands the tokens over verbatim.
     pub fn separated<S>(self) -> syn::Result<Punctuated<Meta, S>>
     where
@@ -133,9 +135,10 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// NOTE(#shape/two-facts): V[Ty(AttributeKind) != E(Opening)], "THE RULE the parallel vocabularies
-/// exist to express, written down because the obvious reading of two structures with the same three
-/// members is that one of them is redundant. They are not. They state DIFFERENT FACTS:
+/// NOTE(#shape/two-facts): V[Ty(AttributeKind) != E(Opening)], "AttributeKind and Opening state different facts"
+/// THE RULE the parallel vocabularies exist to express, written down because the obvious reading of
+/// two structures with the same three members is that one of them is redundant. They are not. They
+/// state DIFFERENT FACTS:
 ///
 ///   Ty(AttributeKind::MetaList)  - THIS TYPE DECLARES it can be read as a list. Compile time.
 ///                                  Known from the grammar author's own types, before any user
@@ -147,10 +150,10 @@ mod sealed {
 /// needs BOTH halves at once, and a framework holding only one of them can say what it wanted or
 /// what it got, never the pair. E(ReasonKind)::WrongShape is exactly that sentence.
 ///
-/// This is the boundary NOTE(#type-backed) names: user input is runtime by definition, so the check
+/// This is the boundary ID(type-backed) names: user input is runtime by definition, so the check
 /// stays. What the rule demands is that its RESULT be typed - which it is, because C(KIND) is the
 /// join and the comparison is over E(ShapeKind) rather than over spellings. Everything downstream
-/// of the check is bound; only the check itself is not"
+/// of the check is bound; only the check itself is not
 ///
 /// A shape, named by the opening its payload arrives through.
 ///
@@ -162,11 +165,12 @@ pub trait Shape: sealed::Sealed {
 
     /// The runtime identity this marker selects.
     ///
-    /// NOTE(#shape/bridge): V[Tr(Shape).C(KIND)], "Without this, the type-level markers and the
-    /// runtime Opening were parallel structures with nothing joining them, and a WrongShape
-    /// diagnostic had to hand-write both halves - the expected shape from the marker, the found
-    /// shape from the Meta, with no compiler check that the two vocabularies agreed. Now a field's
-    /// selected shape and what was written compare directly: `opening.kind() == S::KIND`"
+    /// NOTE(#shape/bridge): V[Tr(Shape).has(KIND)], "KIND joins the type-level marker to the runtime Opening"
+    /// Without this, the type-level markers and the runtime Opening were parallel structures with
+    /// nothing joining them, and a WrongShape diagnostic had to hand-write both halves - the
+    /// expected shape from the marker, the found shape from the Meta, with no compiler check that
+    /// the two vocabularies agreed. Now a field's selected shape and what was written compare
+    /// directly: `opening.kind() == S::KIND`
     const KIND: ShapeKind;
 }
 

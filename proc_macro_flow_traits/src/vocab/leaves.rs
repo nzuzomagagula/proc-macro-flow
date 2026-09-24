@@ -7,11 +7,11 @@
 //! `MetaList::tokens` can be read as `Punctuated<Expr, Comma>`, so both value positions funnel
 //! through one trait and neither needs a parser of ours.
 //!
-//! NOTE(#leaves/local-trait): V[Tr(FromExpr).local && !Impl(TryFrom).for(syn)], "This is a trait and
-//! not a TryFrom impl because of the orphan rule - VERIFIED E0117 for
-//! `impl TryFrom<&Expr> for syn::LitStr`, a foreign trait on a foreign type. See
-//! ID(vocab/orphan-shapes-the-api) for why newtyping the leaves to get TryFrom back was rejected:
-//! it would put our wrapper in the author's own field types"
+// NOTE(#leaves/local-trait): V[Tr(FromExpr).is(local) && Impl(TryFrom) != for(syn)], "FromExpr is a local trait because of the orphan rule"
+// This is a trait and not a TryFrom impl because of the orphan rule - VERIFIED E0117 for `impl
+// TryFrom<&Expr> for syn::LitStr`, a foreign trait on a foreign type. See
+// ID(vocab/orphan-shapes-the-api) for why newtyping the leaves to get TryFrom back was rejected: it
+// would put our wrapper in the author's own field types
 
 use syn::{spanned::Spanned, Error, Expr, Ident, Path, Result};
 
@@ -21,7 +21,7 @@ pub trait FromExpr: Sized {
 
     /// The `FromMeta` body every leaf shares: a terminal is written as the right-hand side of `=`.
     ///
-    /// Provided here rather than as a free function (NOTE(#pipeline/no-free-functions)), so a leaf
+    /// Provided here rather than as a free function (ID(pipeline/no-free-functions)), so a leaf
     /// spells its `FromMeta` impl `Self::leaf_from_meta(meta)` and names nothing twice.
     fn leaf_from_meta(meta: &syn::Meta) -> Result<Self> {
         match meta {
@@ -36,16 +36,16 @@ pub trait FromExpr: Sized {
 
 /// Read a node out of a `Meta` - the uniform field read.
 ///
-/// NOTE(#leaves/uniform-field-read): V[Tr(FromMeta).impl(all)], "Every generated node implements
-/// this, which is what lets meta_list! read a field WITHOUT knowing what shape it is: a flag reads
-/// from Meta::Path, a leaf from a NameValue's expr, a nested list from Meta::List, and the caller
-/// writes the same line for all three. There is deliberately no blanket
-/// `impl<T: FromExpr> FromMeta for T` - it would conflict with the specific impls flag! and
-/// meta_list! generate, so each macro emits its own one-liner instead"
-/// NOTE(#forwarding/no-option): V[!Impl(Option<T>).impl(FromMeta)], "There is DELIBERATELY no
-/// `impl<T: FromMeta> FromMeta for Option<T>`, and its absence is load-bearing rather than an
-/// oversight. ID(forwarding) asks for adapters over Option, Vec and Box; Vec and Box are fine and
-/// Option must never be written.
+/// NOTE(#leaves/uniform-field-read): V[Tr(FromMeta).impl(all)], "Every generated node implements FromMeta, whatever its shape"
+/// Every generated node implements this, which is what lets meta_list! read a field WITHOUT knowing
+/// what shape it is: a flag reads from Meta::Path, a leaf from a NameValue's expr, a nested list
+/// from Meta::List, and the caller writes the same line for all three. There is deliberately no
+/// blanket `impl<T: FromExpr> FromMeta for T` - it would conflict with the specific impls flag! and
+/// meta_list! generate, so each macro emits its own one-liner instead
+/// NOTE(#forwarding/no-option): V[Impl(Option<T>) != impl(FromMeta)], "No FromMeta for Option: a mis-read arity stays a compile error"
+/// There is DELIBERATELY no `impl<T: FromMeta> FromMeta for Option<T>`, and its absence is
+/// load-bearing rather than an oversight. ID(forwarding) asks for adapters over Option, Vec and
+/// Box; Vec and Box are fine and Option must never be written.
 ///
 /// WHY. Arity is read off the field's TYPE (ID(from/arity-from-type)), and M(meta_list) reads it
 /// SYNTACTICALLY - it matches the tokens `Option < .. >` before it matches a bare type, because
@@ -60,46 +60,48 @@ pub trait FromExpr: Sized {
 /// So the missing impl is what keeps a mis-read arity a compile error at the AUTHOR's site. When
 /// ID(syntax/derive) lands the derive will PARSE the type and get this right for real, because a
 /// proc macro can look at `segments.last()` - which is exactly what F(unwrap_generic) in the derive
-/// crate already does. Revisit then, not before"
+/// crate already does. Revisit then, not before
 pub trait FromMeta: Sized {
     fn from_meta(meta: &syn::Meta) -> Result<Self>;
 }
 
 /// A grammar node read from the INSIDE of its delimiters, with no head in front of it.
 ///
-/// NOTE(#from-body/one-reader-two-entries): V[Tr(FromMeta).delegates(Tr(FromBody))], "This is
-/// ID(entry)'s 'from_body does the work; the other two are thin adapters', built. The whole reason
-/// it is cheap is that the reader never wanted the head: `from_meta`'s first act is
+/// NOTE(#from-body/one-reader-two-entries): V[Tr(FromMeta).has(delegates to FromBody)], "from_meta is a thin adapter; from_body does the work"
+/// This is ID(entry)'s 'from_body does the work; the other two are thin adapters', built. The whole
+/// reason it is cheap is that the reader never wanted the head: `from_meta`'s first act is
 /// `meta.require_list()?` purely to reach `list.tokens`, and it does not look at `meta.path()` at
-/// all. So a helper attribute's body and an ATTRIBUTE MACRO'S ARGUMENTS are already the same
-/// thing: rustc hands a proc_macro_attribute its arguments ALREADY UNWRAPPED, which is exactly
-/// the token stream `require_list` was digging for.
+/// all. So a helper attribute's body and an ATTRIBUTE MACRO'S ARGUMENTS are already the same thing:
+/// rustc hands a proc_macro_attribute its arguments ALREADY UNWRAPPED, which is exactly the token
+/// stream `require_list` was digging for.
 ///
 /// What this buys is that an attribute macro's arguments obey the SAME RULES as a helper
 /// attribute's: the same keys, the same aliases, the same arity read off the field type, the same
 /// shape bounds, the same did-you-mean from Ty(Node), the same accumulation. Not a second grammar
-/// that has to be kept in step with the first - the same one, entered a different way"
-// NOTE(#assert/leaves-are-askable): V[M(leaf).emits(Impl(Assert))], "Every leaf gets an EMPTY
-// Tr(Assert), and the emptiness is not the point - the EXISTENCE is. A grammar's generated
-// `assert` descends into each of its fields so that a nested grammar's rules are reached, and a
-// descent needs every field type to be askable, leaves included. Without these the derive could
-// only descend into fields it could prove were grammars, which it cannot do from a type alone.
+/// that has to be kept in step with the first - the same one, entered a different way
+// NOTE(#assert/leaves-are-askable): V[MacDef(leaf).has(Impl(Assert))], "Every leaf is askable, so a grammar can descend into it"
+// Every leaf gets an EMPTY Tr(Assert), and the emptiness is not the point - the EXISTENCE is. A
+// grammar's generated `assert` descends into each of its fields so that a nested grammar's rules
+// are reached, and a descent needs every field type to be askable, leaves included. Without these
+// the derive could only descend into fields it could prove were grammars, which it cannot do from a
+// type alone.
 //
 // They are emitted from M(leaf) and M(leaf_meta) - the same two lists that already decide what a
 // leaf is - rather than written out again, so a leaf added later cannot be askable in one sense
-// and not the other."
-// TODO[x](#attribute/args-are-a-grammar): C[Tr(FromBody)] && V[Tr(FromMeta).delegates(Tr(FromBody))],
-// "An attribute macro's arguments must obey the SAME rules as a helper attribute - same keys,
+// and not the other.
+// TODO[x](#attribute/args-are-a-grammar): C[Tr(FromBody)] && V[Tr(FromMeta).delegates(Tr(FromBody))], "Attribute arguments obey the same grammar as helper attributes"
+//
+// An attribute macro's arguments must obey the SAME rules as a helper attribute - same keys,
 // aliases, arity, shapes, did-you-mean - rather than a second grammar kept in step by hand. The
-// reader never wanted the head, so one split is the whole adapter"
+// reader never wanted the head, so one split is the whole adapter
 pub trait FromBody: Sized {
     /// Read the body.
     ///
-    /// NOTE(#from-body/fallback-is-tokens-not-a-span): V[F(from_body).A(at).T(ToTokens)], "`at` is
-    /// what a complaint falls back to when it has no token of its own to point at, and it is
-    /// `&impl ToTokens` rather than a Ty(Span) for a reason that would otherwise be discovered as a
-    /// regression. The missing-key arm uses `Error::new_spanned(..)`, which underlines a node's
-    /// whole start..end range; a bare Ty(Span) collapses that to the FIRST TOKEN, because
+    /// NOTE(#from-body/fallback-is-tokens-not-a-span): V[F(from_body).A(at).T(ToTokens)], "at is a ToTokens fallback, not a Span, to keep multi-token spans"
+    /// `at` is what a complaint falls back to when it has no token of its own to point at, and it
+    /// is `&impl ToTokens` rather than a Ty(Span) for a reason that would otherwise be discovered
+    /// as a regression. The missing-key arm uses `Error::new_spanned(..)`, which underlines a
+    /// node's whole start..end range; a bare Ty(Span) collapses that to the FIRST TOKEN, because
     /// `Span::join` is nightly-only - the same constraint ID(reason/span-not-node) records. So
     /// F(from_meta) passes `meta` and the derive path's spans are byte-identical to what they were
     /// before this trait existed.
@@ -108,7 +110,7 @@ pub trait FromBody: Sized {
     /// ARGUMENTS HAVE NO SPAN. `#[trace]` and `#[trace()]` are indistinguishable to an attribute
     /// macro, so a required key missing from a bare `#[trace]` has nothing at all to underline.
     /// The entry passes the ANNOTATED ITEM, and the complaint lands on the function the attribute
-    /// was written on instead of nowhere"
+    /// was written on instead of nowhere
     fn from_body<S>(body: &proc_macro2::TokenStream, at: &S) -> Result<Self>
     where
         S: quote::ToTokens + ?Sized;
@@ -136,8 +138,13 @@ macro_rules! leaf {
             // A leaf states no rules, but it must be ASKABLE, or a grammar holding one cannot
             // descend into its fields at all. Emitted from the same list that already decides what
             // a leaf IS, so there is no second set of names to keep in step -
-            // NOTE(#assert/leaves-are-askable).
+            // ID(assert/leaves-are-askable).
             impl $crate::assert::Assert for $crate::syn::$ty {}
+
+            // And walkable, so it can sit in a derived walk - ID(diagnose/values-are-walkable).
+            impl $crate::render::Diagnose for $crate::syn::$ty {
+                fn diagnose(&self, _: &mut ::std::vec::Vec<$crate::syn::Error>) {}
+            }
 
             impl $crate::vocab::leaves::FromExpr for $crate::syn::$ty {
                 fn from_expr(expr: &$crate::syn::Expr) -> $crate::syn::Result<Self> {
@@ -217,6 +224,10 @@ macro_rules! leaf_meta {
             }
 
             impl crate::assert::Assert for $ty {}
+
+            impl crate::render::Diagnose for $ty {
+                fn diagnose(&self, _: &mut Vec<syn::Error>) {}
+            }
         )+
     };
 }

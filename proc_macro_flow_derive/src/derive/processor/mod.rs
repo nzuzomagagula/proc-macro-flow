@@ -7,7 +7,7 @@
 //! opt-out attribute.
 //!
 //! It shares its extractor and processor with `#[derive(Validate)]` and differs only at the
-//! generator - see NOTE(#stage/one-reader-two-generators).
+//! generator - see ID(stage/one-reader-two-generators).
 
 pub mod extractor;
 pub mod generator;

@@ -1,29 +1,30 @@
 // @review [ ]
 //! What an ATTRIBUTE macro was handed: its own arguments, and the item they were written on.
 //!
-//! NOTE(#attributed/source-is-a-pair): V[Tr(Validate).Ty(Source) == S(Attributed)], "A derive has
-//! ONE input and an attribute macro has TWO, and until this type existed the second was simply
-//! dropped - the generated entry read `pub fn trace(_attr: TokenStream, input: TokenStream)` and
-//! `#[trace(level = "debug")]` could not be written at all.
+// NOTE(#attributed/source-is-a-pair): V[Tr(Validate).Ty(Source) ==? S(Attributed)], "An attribute macro's Source is a pair: args and item"
+// A derive has ONE input and an attribute macro has TWO, and until this type existed the second was
+// simply dropped - the generated entry read `pub fn trace(_attr: TokenStream, input: TokenStream)`
+// and `#[trace(level = "debug")]` could not be written at all.
 //!
-//! Answer(#pipeline/subject-equals-source-breaks-attributes): the limitation was misdiagnosed and
-//! there is nothing to work around.
+// Answer(#pipeline/subject-equals-source-breaks-attributes): A[ID(pipeline/subject-equals-source-breaks-attributes) ==? S(Attributed)], "Misdiagnosed: the Source was one node, not the binding"
+// the limitation was misdiagnosed and
+// there is nothing to work around.
 //!
 //! It read `Generator::Subject = Validate::Source` as the obstacle and concluded an attribute
 //! macro could not be a pipeline, so the pipeline macro drove its own stages by hand. The binding
 //! was never the problem. The problem was that Ty(Source) was a SINGLE borrowed node, and an
 //! attribute macro's source is a PAIR. Making the pair a node - Copy, Visitable, ToTokens, like
 //! any other - leaves the binding exactly as it was and the special case disappears: the pipeline
-//! macro now runs through F(run) like everything else (NOTE(#pipeline-macro/is-a-pipeline)).
+//! macro now runs through F(run) like everything else (ID(pipeline-macro/is-a-pipeline)).
 //!
 //! Worth keeping as a caution rather than deleting. The original note was well argued and wrong,
 //! and it stood long enough to shape ~60 lines of bespoke orchestration around it"
 
-// TODO[x](#attribute/source-is-a-pair): C[S(Attributed)] && C[Tr(Annotated)], "An attribute
-// macro has TWO inputs and Ty(Source) was one borrowed node, so the arguments were discarded -
-// the generated entry read `_attr: TokenStream`. A pair that is itself a node carries both, and
-// Tr(Annotated) makes the macro KIND a fact the compiler checks rather than a promise
-// E(MacroKind) makes"
+// TODO[x](#attribute/source-is-a-pair): C[S(Attributed)] && C[Tr(Annotated)], "Attributed carries both inputs of an attribute macro"
+// An attribute macro has TWO inputs and Ty(Source) was one borrowed node, so the arguments were
+// discarded - the generated entry read `_attr: TokenStream`. A pair that is itself a node carries
+// both, and Tr(Annotated) makes the macro KIND a fact the compiler checks rather than a promise
+// E(MacroKind) makes
 
 use quote::ToTokens;
 use syn::visit::Visit;
@@ -33,13 +34,13 @@ use crate::visitable::Visitable;
 /// The two halves of an attribute macro's invocation.
 ///
 /// Two references, so `Copy` is free and `Tr(Pipeline)::run`'s `Source: Copy` bound is met without
-/// anything being cloned. Nothing here owns an AST node, per NOTE(#no-owned-nodes).
+/// anything being cloned. Nothing here owns an AST node, per ID(no-owned-nodes).
 pub struct Attributed<'ast, A, I> {
     /// The attribute's own arguments, ALREADY READ into the grammar type that declared them.
     ///
     /// Not a token stream: `args = TraceArgs` names an ordinary `#[derive(Syntax)]` grammar, and
     /// the entry function reads it with the same reader a helper attribute goes through. See
-    /// NOTE(#attributed/args-are-a-grammar).
+    /// ID(attributed/args-are-a-grammar).
     args: &'ast A,
     /// The item the attribute was written on.
     item: &'ast I,
@@ -73,15 +74,15 @@ impl<'ast, A, I> Attributed<'ast, A, I> {
 
 /// A source that carries an item an attribute macro must hand BACK.
 ///
-/// NOTE(#attributed/annotated-decides-the-kind): V[Impl(Annotated).for(Attributed).only], "This
-/// trait is what makes a macro's KIND a fact the compiler checks rather than a promise
+/// NOTE(#attributed/annotated-decides-the-kind): V[Impl(Annotated).for(Attributed)], "Annotated makes the macro kind a fact the compiler checks"
+/// This trait is what makes a macro's KIND a fact the compiler checks rather than a promise
 /// E(MacroKind) makes. `&'ast DeriveInput` has no impl, so F(run_attribute) is UNCALLABLE on a
 /// derive pipeline - and equally uncallable on an attribute pipeline whose extractor forgot to
 /// declare `args`, because its Source is then still a bare node.
 ///
 /// Before this the kind was a string in an attribute that nothing could check, and getting it
 /// wrong produced a macro that silently discarded half its input. ID(type-backed) is exactly the
-/// rule that says a mistake like that should not be expressible"
+/// rule that says a mistake like that should not be expressible
 pub trait Annotated<'ast>: Copy {
     /// The half that goes back out - never the arguments, which were consumed reading them.
     type Item: ToTokens;
@@ -112,8 +113,9 @@ impl<A: ToTokens, I: ToTokens> ToTokens for Attributed<'_, A, I> {
 
 /// Visiting the pair visits THE ITEM, and the omission is the honest answer rather than a gap.
 ///
-/// NOTE(#attributed/only-the-item-is-visitable): V[Impl(Visitable).for(Attributed).!bounds(A)],
-/// "The first draft required `&'ast A: Visitable<'ast>` and visited both halves. That does not
+/// NOTE(#attributed/only-the-item-is-visitable): V[Impl(Visitable).for(Attributed) != bounds(A)], "Visiting the pair visits the item; args are a grammar value"
+///
+/// The first draft required `&'ast A: Visitable<'ast>` and visited both halves. That does not
 /// compile for any real pipeline, and finding out why corrected the design: the args are a GRAMMAR
 /// VALUE, not a syn node. `TraceArgs` is the author's own struct, already read out of the tokens
 /// by Tr(FromBody), so there is no `visit_trace_args` and there never will be.
@@ -121,7 +123,7 @@ impl<A: ToTokens, I: ToTokens> ToTokens for Attributed<'_, A, I> {
 /// Tr(Visitable) exists so a stage can drive a `syn::Visit` over its source (it is 'how do we get
 /// there', the second of the two questions an extractor answers). By the time a pipeline holds an
 /// S(Attributed) the arguments have already been got to; what is left to walk is the item. So the
-/// bound is on `I` alone, and an args type is free to be any shape its author likes"
+/// bound is on `I` alone, and an args type is free to be any shape its author likes
 impl<'ast, A, I> Visitable<'ast> for Attributed<'ast, A, I>
 where
     &'ast I: Visitable<'ast>,

@@ -1,16 +1,16 @@
 // @review [ ]
 //! The pipeline macro: an extractor, a processor and a generator, like everything else.
 //!
-//! NOTE(#pipeline-macro/no-bespoke-orchestration): V[F(expand).body == parse + run], "This file
-//! used to hold ~60 lines running the three stages by hand, because
-//! ID(pipeline/subject-equals-source-breaks-attributes) had concluded Tr(Pipeline) could not
-//! express an attribute macro. It can - see NOTE(#pipeline-macro/is-a-pipeline) for why the
-//! original diagnosis was wrong - so what is left here is the only thing rustc's signature forces:
-//! turn two token streams into a node, and turn what comes back into one.
-//!
-//! That is the same shape every entry function Attr(pipeline) GENERATES has. The macro and the
-//! macros it writes now differ in no way that matters, which is the proof the abstraction is real
-//! rather than merely present."
+// NOTE(#pipeline-macro/no-bespoke-orchestration): V[F(expand).has(parse + run)], "No bespoke orchestration: expand is parse plus run"
+// This file used to hold ~60 lines running the three stages by hand, because
+// ID(pipeline/subject-equals-source-breaks-attributes) had concluded Tr(Pipeline) could not express
+// an attribute macro. It can - see ID(pipeline-macro/is-a-pipeline) for why the original diagnosis
+// was wrong - so what is left here is the only thing rustc's signature forces: turn two token
+// streams into a node, and turn what comes back into one.
+//
+// That is the same shape every entry function Attr(pipeline) GENERATES has. The macro and the
+// macros it writes now differ in no way that matters, which is the proof the abstraction is real
+// rather than merely present.
 
 pub(crate) mod extractor;
 pub(crate) mod generator;
@@ -26,10 +26,11 @@ use extractor::{PipelineExtraction, PipelineSource};
 use generator::{PipelineArgs, PipelineExpansion};
 
 /// The wiring this macro runs through - the same marker type it generates for everyone else.
-// TODO[x](#pipeline/macro-is-a-pipeline): C[Impl(Pipeline).for(PipelineWiring)] && D[F(expand).orchestration],
-// "The macro that writes pipelines drove its own three stages by hand, because
+// TODO[x](#pipeline/macro-is-a-pipeline): C[Impl(Pipeline).for(PipelineWiring)] && D[F(expand).orchestration], "The pipeline macro is itself a Pipeline"
+//
+// The macro that writes pipelines drove its own three stages by hand, because
 // ID(pipeline/subject-equals-source-breaks-attributes) concluded Tr(Pipeline) could not express an
-// attribute macro. It can - the binding was never the obstacle, a single-node Ty(Source) was"
+// attribute macro. It can - the binding was never the obstacle, a single-node Ty(Source) was
 pub(crate) struct PipelineWiring;
 
 impl<'ast> Pipeline<'ast> for PipelineWiring {
@@ -44,7 +45,7 @@ impl<'ast> Pipeline<'ast> for PipelineWiring {
 ///
 /// `run` and not `run_attribute`: this macro REWRITES the module it was applied to - the stripped
 /// module is the first thing S(PipelineExpansion) emits - so handing the item back as well would
-/// emit it twice. That is `emits = replace` (NOTE(#pipeline-macro/emission-must-be-declared)),
+/// emit it twice. That is `emits = replace` (ID(pipeline-macro/emission-must-be-declared)),
 /// declared here by being written this way.
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
     let module = match syn::parse2::<ItemMod>(item.clone()) {
@@ -76,7 +77,7 @@ mod tests {
     use proc_macro_flow_traits::extractor::Validate;
     use quote::quote;
 
-    /// The claim of NOTE(#pipeline-macro/is-a-pipeline), asserted at the type level.
+    /// The claim of ID(pipeline-macro/is-a-pipeline), asserted at the type level.
     ///
     /// Tr(Pipeline) binds all three stages to agree, so an impl existing at all is the proof that
     /// the macro's stages line up the way every generated pipeline's must. This function is never
@@ -122,7 +123,7 @@ mod tests {
     #[test]
     fn the_module_is_emitted_exactly_once() {
         // `run`, not `run_attribute` - this macro REWRITES the module, so re-emitting it as well
-        // would define `mod stages` twice. See NOTE(#pipeline-macro/emission-must-be-declared).
+        // would define `mod stages` twice. See ID(pipeline-macro/emission-must-be-declared).
         let out = expand(quote!(derive = Thing), quote! {
             mod stages {
                 #[extractor(source = DeriveInput)] struct Read;
@@ -137,7 +138,7 @@ mod tests {
 
     #[test]
     fn a_complaint_is_emitted_exactly_once() {
-        // REGRESSION for NOTE(#processor/reasons-are-new-not-inherited). Six processors copied
+        // REGRESSION for ID(processor/reasons-are-new-not-inherited). Six processors copied
         // their input's reasons forward, and F(run) had already rendered those from the tree, so
         // every diagnostic in the crate came out TWICE. Nothing caught it because every test
         // asserted a complaint was present and none asserted how many.

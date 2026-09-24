@@ -1,20 +1,21 @@
 // @review [ ]
 //! The concrete generator for the extractor stage, as a PARENT and two LEAVES.
 //!
-//! NOTE(#generator/base-scope): a generator emits the FULL body when there is a value and a STUB of
-//! the same type when there is not. Both are the same item from a use site's view, which is all
-//! ID(generator/stub-is-not-empty) needs.
+// NOTE(#generator/base-scope): V[F(generate).has(full body or stub)], "Full body with a value, a stub of the same shape without"
+// a generator emits the FULL body when there is a value and a STUB of
+// the same type when there is not. Both are the same item from a use site's view, which is all
+// ID(generator/stub-is-not-empty) needs.
 //!
-//! NOTE(#generator/newtypes-here): V[S(Block) && S(Fields) && S(Shapes)], "The first real use of
-//! ID(generation/newtype-per-item). What used to be one generator returning a bare ItemImpl is a
-//! parent and two leaves, each its own TYPE - which is what makes a failure attributable: the thing
-//! that failed has a name, because it IS a name.
-//!
-//! The leaves take OWNED inputs (`Vec<String>`) rather than borrowing the parent's processed value,
-//! and that is not laziness. Tr(Generator) carries no lifetime parameter, so an Ty(Input) that
-//! borrows would force every newtype to carry 'ast through PhantomData just to name it. Owned
-//! inputs also state the rule ID(generation/parent-feeds-children) means literally: a child gets
-//! exactly what it needs and cannot reach for anything else"
+// NOTE(#generator/newtypes-here): V[S(Block) && S(Fields) && S(Shapes)], "The first real use of one newtype per generated item"
+// The first real use of ID(generation/newtype-per-item). What used to be one generator returning a
+// bare ItemImpl is a parent and two leaves, each its own TYPE - which is what makes a failure
+// attributable: the thing that failed has a name, because it IS a name.
+//
+// The leaves take OWNED inputs (`Vec<String>`) rather than borrowing the parent's processed value,
+// and that is not laziness. Tr(Generator) carries no lifetime parameter, so an Ty(Input) that
+// borrows would force every newtype to carry 'ast through PhantomData just to name it. Owned
+// inputs also state the rule ID(generation/parent-feeds-children) means literally: a child gets
+// exactly what it needs and cannot reach for anything else
 
 use proc_macro_flow_traits::extractor::{Extraction, Reason, ReasonKind};
 use proc_macro_flow_traits::generator::Generator;
@@ -37,14 +38,15 @@ pub(crate) struct Shapes(pub(crate) ImplItem);
 
 /// ONE field's shape, as the expression that goes inside `SHAPES`.
 ///
-/// NOTE(#generator/levels-differ): V[S(Shape).T(Expr) && S(Shapes).T(ImplItem)], "A child at the
-/// EXPRESSION level inside a parent at the ITEM level, which is exactly why Ty(Output) is an
-/// associated type (NOTE(#typed-output/level-is-associated)). Fixing Output to `syn::Item` would
-/// have forced this leaf to lower to tokens early - the thing typing it was meant to stop.
+/// NOTE(#generator/levels-differ): V[S(Shape).T(Expr) && S(Shapes).T(ImplItem)], "An expression-level child inside an item-level parent"
+/// A child at the EXPRESSION level inside a parent at the ITEM level, which is exactly why
+/// Ty(Output) is an associated type (ID(typed-output/level-is-associated)). Fixing Output to
+/// `syn::Item` would have forced this leaf to lower to tokens early - the thing typing it was meant
+/// to stop.
 ///
 /// It is also what makes fail-upward REAL: this child is 1:1 with a field, so a failure has exactly
 /// one piece of the author's syntax to point at. The aggregate it replaced could only have pointed
-/// at the whole struct"
+/// at the whole struct
 pub(crate) struct Shape(pub(crate) syn::Expr);
 
 impl ToTokens for Block {
@@ -72,7 +74,7 @@ impl ToTokens for Shape {
 }
 
 /// `Shape` BORROWS the processed field it describes - which the trait's `'ast` makes expressible
-/// without S(Shape) carrying a lifetime of its own. See NOTE(#pipeline/one-shape-per-stage).
+/// without S(Shape) carrying a lifetime of its own. See ID(pipeline/one-shape-per-stage).
 impl<'ast> Generator<'ast> for Shape {
     type Input = &'ast ProcessedField<'ast>;
     type Subject = ();
@@ -114,7 +116,7 @@ impl<'ast> Generator<'ast> for Shape {
 /// Build one item, or say why not — the shape every leaf shares.
 ///
 /// `Internal` and not `Syntax`: these tokens are ours, assembled from names we already hold, so a
-/// parse failure here is a FRAMEWORK bug. NOTE(#reason/fault-is-declared) is why that is declared
+/// parse failure here is a FRAMEWORK bug. ID(reason/fault-is-declared) is why that is declared
 /// at the raise site rather than guessed.
 fn leaf<T>(tokens: proc_macro2::TokenStream, wrap: fn(ImplItem) -> T) -> Extraction<T> {
     match parse2::<ImplItem>(tokens) {
@@ -124,7 +126,7 @@ fn leaf<T>(tokens: proc_macro2::TokenStream, wrap: fn(ImplItem) -> T) -> Extract
 }
 
 impl<'ast> Generator<'ast> for Fields {
-    /// The field names, already reduced. See NOTE(#generator/newtypes-here).
+    /// The field names, already reduced. See ID(generator/newtypes-here).
     type Input = Vec<String>;
     type Subject = ();
     type Output = Self;
@@ -392,12 +394,13 @@ mod tests {
         assert!(field.attrs[0].attribute.path().is_ident("shape"));
     }
 
-    // TODO[ ](#generator/inject-a-failing-child):V[test.parent_isolation], "The plan's per-child
-    // isolation assertion - a parent whose SECOND child fails still emits the first - cannot be
-    // written yet: S(ProcessedStruct) calls S(Fields) and S(Shapes) inline, so there is no seam to
-    // inject a failure through, and adding one purely for a test would be worse than waiting. It
-    // becomes writable the moment ID(generation/composition-derive) generates the composition,
-    // because the children are then named by the attribute and a test can declare its own"
+    // TODO[ ](#generator/inject-a-failing-child): V[test.has(parent isolation)], "Per-child isolation cannot be tested until a child can be injected"
+    // The plan's per-child isolation assertion - a parent whose SECOND child fails still emits the
+    // first - cannot be written yet: S(ProcessedStruct) calls S(Fields) and S(Shapes) inline, so
+    // there is no seam to inject a failure through, and adding one purely for a test would be worse
+    // than waiting. It becomes writable the moment ID(generation/composition-derive) generates the
+    // composition, because the children are then named by the attribute and a test can declare its
+    // own
 
     #[test]
     fn a_leaf_stub_is_the_same_shape_as_its_success() {

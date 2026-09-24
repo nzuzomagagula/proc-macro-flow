@@ -112,7 +112,7 @@ impl<'ast> Validate<'ast> for GeneratorDeclaration<'ast> {
     /// ID(generation/newtype-per-item) is the whole shape this derive exists to support.
     ///
     /// N unnamed fields, not one. A multi-field tuple struct is how a generator states that it
-    /// emits EXACTLY these items of EXACTLY these types - see NOTE(#pipeline/expansion-is-typed).
+    /// emits EXACTLY these items of EXACTLY these types - see ID(pipeline/expansion-is-typed).
     fn validate(input: Self::Source) -> ::std::result::Result<Self::Valid, Reason> {
         match &input.data {
             Data::Struct(data) => match &data.fields {
@@ -266,7 +266,7 @@ impl Child {
         };
 
         // A STATEMENT, parsed here rather than handed on as loose tokens - nothing malformed
-        // leaves this function. See NOTE(#pipeline/expansion-is-typed).
+        // leaves this function. See ID(pipeline/expansion-is-typed).
         parse2(tokens)
     }
 
@@ -288,7 +288,7 @@ impl Child {
         };
 
         // A STATEMENT, parsed here rather than handed on as loose tokens - nothing malformed
-        // leaves this function. See NOTE(#pipeline/expansion-is-typed).
+        // leaves this function. See ID(pipeline/expansion-is-typed).
         parse2(tokens)
     }
 }

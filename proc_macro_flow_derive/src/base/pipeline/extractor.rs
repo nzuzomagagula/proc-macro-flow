@@ -1,15 +1,15 @@
 // @review [ ]
 //! Reading a `#[pipeline]` module: which items are stages, and which is the helper vocabulary.
 //!
-//! NOTE(#pipeline-macro/is-a-pipeline): V[N(base/pipeline).has(extractor, processor, generator)]
-//! && V[Impl(Pipeline).for(PipelineWiring)], "The macro that writes macros is itself written as
-//! extractor -> processor -> generator, and now RUNS through Tr(Pipeline)::run like any other.
-//! That is dogfooding with a purpose rather than symmetry for its own sake: if the pattern could
-//! not express its own macro, that is a finding worth having early.
-//!
-//! It did not always. This module used to drive the three stages by hand, and the exception was
-//! recorded as a real limitation - see Answer(#pipeline/subject-equals-source-breaks-attributes)
-//! for the finding that the limitation was never there"
+// NOTE(#pipeline-macro/dogfoods-the-pattern): V[N(base/pipeline).has(extractor, processor, generator)] && V[Impl(Pipeline).for(PipelineWiring)], "The macro that writes macros is written as a pipeline"
+// The macro that writes macros is itself written as extractor -> processor -> generator, and now
+// RUNS through Tr(Pipeline)::run like any other. That is dogfooding with a purpose rather than
+// symmetry for its own sake: if the pattern could not express its own macro, that is a finding
+// worth having early.
+//
+// It did not always. This module used to drive the three stages by hand, and the exception was
+// recorded as a real limitation - see ID(pipeline/subject-equals-source-breaks-attributes)
+// for the finding that the limitation was never there
 
 use proc_macro_flow_traits::extractor::{Extracted, Extraction, Extractor, Reason, ReasonKind, Validate};
 use proc_macro_flow_traits::assert::Assert;
@@ -36,16 +36,16 @@ proc_macro_flow_traits::vocabulary! {
 proc_macro_flow_traits::vocabulary! {
     /// What a generator does to the item its attribute macro was applied to.
     ///
-    /// NOTE(#pipeline-macro/emission-must-be-declared): V[E(Emission).declared], "F(run_attribute)
-    /// hands the annotated item back and the generator adds beside it; a generator that REWRITES
-    /// the item must not go through it, or the item is emitted twice. Which of the two a pipeline
-    /// is doing cannot be read off the generator's Ty(Output) - the framework sees a Tr(ToTokens)
-    /// and no more - so it is declared.
+    /// NOTE(#pipeline-macro/emission-must-be-declared): V[E(Emission).is(declared)], "A generator that rewrites the item must declare it"
+    /// F(run_attribute) hands the annotated item back and the generator adds beside it; a generator
+    /// that REWRITES the item must not go through it, or the item is emitted twice. Which of the
+    /// two a pipeline is doing cannot be read off the generator's Ty(Output) - the framework sees a
+    /// Tr(ToTokens) and no more - so it is declared.
     ///
     /// It sits on the GENERATOR role rather than on Attr(pipeline) because that is whose property
     /// it is: the generator is the thing that either includes the item in what it builds or does
     /// not. Attr(pipeline) itself is the worked example - it re-emits a STRIPPED module, so it
-    /// declares `replace`"
+    /// declares `replace`
     pub enum Emission {
         Beside = "beside",
         Replace = "replace",
@@ -65,21 +65,22 @@ pub(crate) struct PipelineExtraction<'ast> {
     /// Every item that declares a role. Items that declare none extract to nothing.
     pub(crate) components: Vec<Extracted<ComponentExtraction<'ast>, &'ast Item>>,
     /// Every `vocabulary!` the module declares, so the processor can find the one named by
-    /// `helpers = ..` - see NOTE(#pipeline-macro/helpers-are-read).
+    /// `helpers = ..` - see ID(pipeline-macro/helpers-are-read).
     pub(crate) vocabularies: Vec<Extracted<VocabularyExtraction<'ast>, &'ast Item>>,
 }
 
 /// What `#[pipeline]` is handed: its own arguments, and the module they were written on.
 ///
-/// NOTE(#pipeline-macro/is-a-pipeline): V[Impl(Pipeline).for(PipelineWiring)], "This macro used to
-/// drive its own three stages by hand, and ID(pipeline/subject-equals-source-breaks-attributes)
-/// recorded why: Tr(Pipeline) binds `Generator::Subject = Validate::Source`, and an attribute
-/// macro has TWO inputs, so no Source could carry both. That diagnosis was wrong about the cause.
-/// The binding was never the obstacle - `Source` being a SINGLE NODE was. S(Attributed) is a node
-/// carrying both, so the binding holds unchanged and the special case disappears.
+/// NOTE(#pipeline-macro/is-a-pipeline): V[Impl(Pipeline).for(PipelineWiring)], "The pipeline macro runs through Pipeline::run like any other"
+/// This macro used to drive its own three stages by hand, and
+/// ID(pipeline/subject-equals-source-breaks-attributes) recorded why: Tr(Pipeline) binds
+/// `Generator::Subject = Validate::Source`, and an attribute macro has TWO inputs, so no Source
+/// could carry both. That diagnosis was wrong about the cause. The binding was never the obstacle -
+/// `Source` being a SINGLE NODE was. S(Attributed) is a node carrying both, so the binding holds
+/// unchanged and the special case disappears.
 ///
 /// The macro is now its own worked example: if the pipeline macro can be written as a pipeline,
-/// an author's attribute macro can be."
+/// an author's attribute macro can be.
 pub(crate) type PipelineSource<'ast> = Attributed<'ast, PipelineArgs, ItemMod>;
 
 impl<'ast> Validate<'ast> for PipelineExtraction<'ast> {
@@ -125,11 +126,11 @@ impl<'ast> Diagnose for PipelineExtraction<'ast> {
 pub(crate) struct ComponentExtraction<'ast> {
     /// EVERY role this item declares, not the first.
     ///
-    /// NOTE(#pipeline-macro/one-type-many-roles): V[S(Component).P(roles).many], "A type is
-    /// routinely its own processor - ID(pipeline/no-processor-is-the-extractor) is the rule, and
-    /// StructExtraction is the example - so `#[extractor(..)]` and `#[processor(from = ..)]` on one
-    /// item has to work. Reading only the first role found silently dropped the second, which made
-    /// the commonest pipeline of all inexpressible"
+    /// NOTE(#pipeline-macro/one-type-many-roles): V[S(Component).P(roles).has(many)], "One type may carry several roles"
+    /// A type is routinely its own processor - ID(pipeline/no-processor-is-the-extractor) is the
+    /// rule, and StructExtraction is the example - so `#[extractor(..)]` and `#[processor(from =
+    /// ..)]` on one item has to work. Reading only the first role found silently dropped the
+    /// second, which made the commonest pipeline of all inexpressible
     pub(crate) roles: Vec<Role>,
     /// The item's own name - what a sibling's `from = ..` has to match.
     pub(crate) name: &'ast syn::Ident,
@@ -200,10 +201,10 @@ impl<'ast> Diagnose for ComponentExtraction<'ast> {
 
 /// A `vocabulary!` declared in the module.
 ///
-/// NOTE(#pipeline-macro/helpers-are-read): V[S(VocabularyExtraction).lifts(literal)], "The helper
-/// spellings are LIFTED FROM TOKENS, never redeclared. A proc macro cannot resolve types, so it can
-/// never ask `SyntaxHelper` what its variants are - but M(vocabulary) writes them as string
-/// LITERALS, and those are right there in the module's token stream.
+/// NOTE(#pipeline-macro/helpers-are-read): V[S(VocabularyExtraction).has(lifted literals)], "Helper spellings are lifted from tokens, never redeclared"
+/// The helper spellings are LIFTED FROM TOKENS, never redeclared. A proc macro cannot resolve
+/// types, so it can never ask `SyntaxHelper` what its variants are - but M(vocabulary) writes them
+/// as string LITERALS, and those are right there in the module's token stream.
 ///
 /// So `helpers = SyntaxHelper` names a vocabulary and this stage finds it by that name, textually,
 /// within the module. One declaration, two consumers: the matcher the author already had, and the
@@ -211,7 +212,7 @@ impl<'ast> Diagnose for ComponentExtraction<'ast> {
 /// no second list and no assertion to keep in step.
 ///
 /// The price, and it is the right one: the vocabulary must live INSIDE the pipeline module. Naming
-/// one that is not there is an error this stage can raise precisely, which beats today's silence"
+/// one that is not there is an error this stage can raise precisely, which beats today's silence
 pub(crate) struct VocabularyExtraction<'ast> {
     #[allow(dead_code, reason = "'ast is carried for the stage traits, not for a field")]
     pub(crate) _marker: std::marker::PhantomData<&'ast ()>,
@@ -290,16 +291,16 @@ fn read_vocabulary(item: &syn::ItemMacro) -> syn::Result<(syn::Ident, Vec<syn::L
         syn::Error::new_spanned(item, "expected `enum <Name> { .. }` inside the vocabulary")
     })?;
 
-    // NOTE(#pipeline-macro/spellings-follow-an-equals): V[F(read_vocabulary).!reads(doc)], "A
-    // spelling is a literal in a `Variant = \"name\"` position, and finding it needs BOTH halves
-    // of the shape below. Taking every literal inside every top-level group instead - which is
-    // what this did - swallows the text of any doc comment written above the enum: rustc turns
-    // `///` into `#[doc = \"..\"]` even inside a macro invocation, and that bracket is a
-    // top-level group holding a top-level literal.
+    // NOTE(#pipeline-macro/spellings-follow-an-equals): V[F(read_vocabulary) != reads(doc)], "A spelling follows an equals sign, so doc text is never read"
+    // A spelling is a literal in a `Variant = \"name\"` position, and finding it needs BOTH halves
+    // of the shape below. Taking every literal inside every top-level group instead - which is what
+    // this did - swallows the text of any doc comment written above the enum: rustc turns `///`
+    // into `#[doc = \"..\"]` even inside a macro invocation, and that bracket is a top-level group
+    // holding a top-level literal.
     //
     // The result was a vocabulary whose spellings included whole sentences, which then failed
     // ID(pipeline-macro/helpers-are-idents) - correctly, and pointing at the doc comment. A
-    // DOCUMENTED vocabulary in a pipeline module simply did not work."
+    // DOCUMENTED vocabulary in a pipeline module simply did not work.
     let body = item
         .mac
         .tokens
@@ -344,14 +345,14 @@ fn to_reason(error: syn::Error) -> Reason {
 
 /// The module with its role attributes REMOVED.
 ///
-/// NOTE(#pipeline-macro/roles-are-stripped): V[F(stripped).removes(Role)], "`#[extractor(..)]` and
-/// friends are markers read by this macro and registered with rustc by NOBODY - so leaving them on
-/// the re-emitted items is `cannot find attribute` at the author's site. An attribute macro owns
-/// what it emits, and that includes removing the markers it consumed.
+/// NOTE(#pipeline-macro/roles-are-stripped): V[F(stripped).has(removes Role)], "Role markers are stripped from the re-emitted items"
+/// `#[extractor(..)]` and friends are markers read by this macro and registered with rustc by
+/// NOBODY - so leaving them on the re-emitted items is `cannot find attribute` at the author's
+/// site. An attribute macro owns what it emits, and that includes removing the markers it consumed.
 ///
 /// It is the same obligation ID(pipeline/helpers-are-syntactic) describes from the other end: an
 /// attribute either gets registered or gets removed, and a marker this macro invented can only be
-/// the second"
+/// the second
 pub(crate) fn stripped(module: &ItemMod) -> ItemMod {
     let mut module = module.clone();
 
@@ -390,7 +391,7 @@ mod tests {
     ///
     /// These tests are about the MODULE, not the invocation, so every one of them uses the same
     /// arguments. It has to exist because the source is a pair now - see
-    /// NOTE(#pipeline-macro/is-a-pipeline).
+    /// ID(pipeline-macro/is-a-pipeline).
     fn invocation() -> PipelineArgs {
         PipelineArgs {
             kind: super::super::generator::MacroKind::Derive,
@@ -462,7 +463,7 @@ mod tests {
 
     #[test]
     fn a_documented_vocabulary_does_not_leak_its_prose_into_the_helpers() {
-        // REGRESSION for NOTE(#pipeline-macro/spellings-follow-an-equals). Every literal inside
+        // REGRESSION for ID(pipeline-macro/spellings-follow-an-equals). Every literal inside
         // every top-level group was taken as a spelling, and `///` is `#[doc = ".."]` by the time
         // a macro sees it - so a documented vocabulary registered its own prose as helper
         // attributes and then failed for not being idents.
@@ -489,7 +490,7 @@ mod tests {
 
     #[test]
     fn the_helper_spellings_are_lifted_from_the_vocabulary() {
-        // NOTE(#pipeline-macro/helpers-are-read). No type is resolved - the literals are read
+        // ID(pipeline-macro/helpers-are-read). No type is resolved - the literals are read
         // straight out of the macro invocation's tokens.
         let item = module(WHOLE);
         let extracted = read(&item);
@@ -543,7 +544,7 @@ mod tests {
 
     #[test]
     fn one_type_may_wear_several_roles() {
-        // NOTE(#pipeline-macro/one-type-many-roles). The commonest pipeline of all - nothing to
+        // ID(pipeline-macro/one-type-many-roles). The commonest pipeline of all - nothing to
         // process, so the extractor is named twice - was inexpressible while only the first role
         // was read.
         let item = module(
@@ -563,7 +564,7 @@ mod tests {
 
     #[test]
     fn the_re_emitted_module_has_no_role_attributes_left() {
-        // NOTE(#pipeline-macro/roles-are-stripped). Nothing registers `#[extractor]`, so leaving
+        // ID(pipeline-macro/roles-are-stripped). Nothing registers `#[extractor]`, so leaving
         // it on is `cannot find attribute` at the author's site.
         let item = module(WHOLE);
         let out = quote::ToTokens::to_token_stream(&stripped(&item)).to_string();

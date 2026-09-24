@@ -1,16 +1,16 @@
 // @review [ ]
 //! Extension traits over the syn types the derives read.
 //!
-//! NOTE(#derive/helpers-belong-to-types): V[!N(derive).F(free)], "These were free functions taking
-//! a syn node as their first argument - `find_one(attrs, name)`, `expr_arg(attr)`,
-//! `unwrap_generic(ty, name)` - which is a method with the receiver written out. They are extension
-//! TRAITS for the same reason the whole vocab suite is (ID(vocab/orphan-shapes-the-api)): the types
-//! are foreign, so an inherent impl is impossible and a local trait is the only way to put the
-//! operation where it belongs.
-//!
-//! This is ID(pipeline/no-free-functions) applied to the derive crate. The argument there was about
-//! procedural-macro ergonomics; here it is plainer - `field.named_ident()?` reads as a question
-//! about the field, and `named_ident(field)?` reads as a question about nothing in particular"
+// NOTE(#derive/helpers-belong-to-types): V[N(derive) != F(free)], "Helpers are methods on the types they take"
+// These were free functions taking a syn node as their first argument - `find_one(attrs, name)`,
+// `expr_arg(attr)`, `unwrap_generic(ty, name)` - which is a method with the receiver written out.
+// They are extension TRAITS for the same reason the whole vocab suite is
+// (ID(vocab/orphan-shapes-the-api)): the types are foreign, so an inherent impl is impossible and a
+// local trait is the only way to put the operation where it belongs.
+//
+// This is ID(pipeline/no-free-functions) applied to the derive crate. The argument there was about
+// procedural-macro ergonomics; here it is plainer - `field.named_ident()?` reads as a question
+// about the field, and `named_ident(field)?` reads as a question about nothing in particular
 
 use syn::{Attribute, Error, Expr, Field, GenericArgument, Ident, PathArguments, Result, Type};
 
@@ -22,7 +22,7 @@ pub(crate) trait TypeExt {
     ///
     /// The last segment is the point: `std::option::Option<T>` and `Option<T>` are the same thing
     /// here, which is what a proc macro can do and `macro_rules!` cannot
-    /// (NOTE(#syntax-derive/parses-the-type)).
+    /// (ID(syntax-derive/parses-the-type)).
     fn unwrap_generic(&self, name: &str) -> Option<&Type>;
 
     /// Arity, read off the WRITTEN type and never off an attribute (ID(from/arity-from-type)).
@@ -110,12 +110,12 @@ pub(crate) trait DeriveInputExt {
 
     /// The grammar an ATTRIBUTE macro's own arguments are read into, from `#[args(Ty)]`.
     ///
-    /// NOTE(#args/absence-is-the-derive-case): V[F(args_type).R(Option)], "`None` is not a missing
-    /// declaration to complain about - it is what a DERIVE looks like. A derive has one input, so
-    /// its Ty(Source) stays the bare node it always was; an attribute macro has two, so its Source
-    /// becomes S(Attributed). Which macro kind a pipeline is therefore falls out of whether this
-    /// attribute was written, and Tr(Annotated) turns that into something the compiler checks -
-    /// see NOTE(#attributed/annotated-decides-the-kind)"
+    /// NOTE(#args/absence-is-the-derive-case): V[F(args_type).R(Option)], "No args is what a derive looks like, not a missing declaration"
+    /// `None` is not a missing declaration to complain about - it is what a DERIVE looks like. A
+    /// derive has one input, so its Ty(Source) stays the bare node it always was; an attribute
+    /// macro has two, so its Source becomes S(Attributed). Which macro kind a pipeline is therefore
+    /// falls out of whether this attribute was written, and Tr(Annotated) turns that into something
+    /// the compiler checks - see ID(attributed/annotated-decides-the-kind)
     fn args_type(&self) -> Result<Option<Type>>;
 }
 
@@ -189,7 +189,7 @@ pub(crate) trait FieldExt {
     ///
     /// Both derives reach this only after matching `Fields::Named`, so `None` is unreachable - and
     /// an unreachable `.expect()` inside a proc macro is still a panic during the AUTHOR'S compile,
-    /// reported as an opaque macro failure with no span. See NOTE(#derive/no-panics).
+    /// reported as an opaque macro failure with no span. See ID(derive/no-panics).
     fn named_ident(&self) -> Result<&Ident>;
 }
 

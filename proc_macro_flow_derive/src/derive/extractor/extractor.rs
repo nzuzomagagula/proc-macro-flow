@@ -1,11 +1,11 @@
 // @review [ ]
 //! Reading an extraction type: its `#[source]`, and where each field's children come from.
 //!
-//! NOTE(#extractor-derive/declaration-is-a-child): V[S(ExtractorExtraction).P(declaration)], "The
-//! `#[source(Ty)]` reading is a CHILD EXTRACTION rather than a field read inline, which is what
-//! lets its reasons reach the output through the ordinary walk instead of being threaded by hand.
-//! It is also what lets this derive share a reader with the two trivial ones
-//! (NOTE(#stage/one-reader-two-generators)) rather than reading the same attribute a third time."
+// NOTE(#extractor-derive/declaration-is-a-child): V[S(ExtractorExtraction).P(declaration)], "#[source] is read as a child extraction"
+// The `#[source(Ty)]` reading is a CHILD EXTRACTION rather than a field read inline, which is what
+// lets its reasons reach the output through the ordinary walk instead of being threaded by hand. It
+// is also what lets this derive share a reader with the two trivial ones
+// (ID(stage/one-reader-two-generators)) rather than reading the same attribute a third time.
 
 use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::extractor::{
@@ -34,15 +34,16 @@ pub(crate) struct ChildDeclaration<'ast> {
     pub(crate) reach: Reach,
 }
 
-// TODO[x](#extractor/fields-may-hold-values): C[Attr(value)], "Attr(derive(Extractor)) accepted
-// only fields that were child EXTRACTIONS, so a stage reading plain data off the AST could not use
-// it at all - it hand-wrote extract_from and then owed two empty impls. A third head says the field
-// holds a value; marking it apart rather than inferring it from the type keeps the `Extracted<T, I>`
-// error where it belongs"
+// TODO[x](#extractor/fields-may-hold-values): C[Attr(value)], "#[value] lets a stage field hold plain data"
+// Attr(derive(Extractor)) accepted only fields that were child EXTRACTIONS, so a stage reading
+// plain data off the AST could not use it at all - it hand-wrote extract_from and then owed two
+// empty impls. A third head says the field holds a value; marking it apart rather than inferring it
+// from the type keeps the `Extracted<T, I>` error where it belongs
 /// What a field holds, and how to get there.
 ///
-/// NOTE(#extractor-derive/children-are-marked-not-inferred): V[E(Reach).V(Value).declared],
-/// "Whether a field holds a CHILD EXTRACTION or a plain VALUE is DECLARED, never read off its type.
+/// NOTE(#extractor-derive/children-are-marked-not-inferred): V[E(Reach).V(Value).is(declared)], "Child or value is declared, never inferred from the type"
+///
+/// Whether a field holds a CHILD EXTRACTION or a plain VALUE is DECLARED, never read off its type.
 /// Inferring it - `Extracted<T, I>` means child, anything else means value - was considered and is
 /// wrong twice over.
 ///
@@ -53,7 +54,7 @@ pub(crate) struct ChildDeclaration<'ast> {
 ///
 /// The type still decides everything it decided before - arity for a child comes off it and
 /// nothing may contradict that (ID(from/arity-from-type)). What it does not decide is which
-/// question is being asked of it"
+/// question is being asked of it
 pub(crate) enum Reach {
     /// `#[from(expr)]` - a CHILD, reached by an expression evaluated with `source` in scope.
     From(Expr),

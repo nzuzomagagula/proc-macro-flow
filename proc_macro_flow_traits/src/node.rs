@@ -1,17 +1,17 @@
 // @review [ ]
 //! The reflection table each grammar node emits, and the one thing diagnostics render against.
 //!
-//! NOTE(#keys/one-table): V[S(Node).derived_from(Tr(Keys))], "ID(node-table) and the key set are
-//! the SAME STRUCTURE seen twice, so this is a VIEW over Tr(Keys) rather than a second declaration.
-//! The direction is what matters: a Ty(Node) is built from the names that actually match, so it
-//! cannot describe a key the walker would reject or omit one it accepts. Two independent lists
-//! could, and that is the drift ID(type-backed) is aimed at.
-//!
-//! WHY STRINGS ARE CORRECT HERE, given NOTE(#keys/table-is-strings-the-rest-is-not) says to keep
-//! them out of everything else: this is the one place a string is the OUTPUT. Ty(Node) exists to
-//! render `expected one of: a, b, c`, and a message is text. Nothing RESOLVES against a Ty(Node) -
-//! resolution is Tr(Keys)::resolve and only that - so no spelling here can decide whether something
-//! matches. It can only decide how a failure reads"
+// NOTE(#keys/one-table): V[S(Node).has(derived from Tr(Keys))], "Node is a view over the key set, never a second declaration"
+// ID(node-table) and the key set are the SAME STRUCTURE seen twice, so this is a VIEW over Tr(Keys)
+// rather than a second declaration. The direction is what matters: a Ty(Node) is built from the
+// names that actually match, so it cannot describe a key the walker would reject or omit one it
+// accepts. Two independent lists could, and that is the drift ID(type-backed) is aimed at.
+//
+// WHY STRINGS ARE CORRECT HERE, given ID(keys/table-is-strings-the-rest-is-not) says to keep
+// them out of everything else: this is the one place a string is the OUTPUT. Ty(Node) exists to
+// render `expected one of: a, b, c`, and a message is text. Nothing RESOLVES against a Ty(Node) -
+// resolution is Tr(Keys)::resolve and only that - so no spelling here can decide whether something
+// matches. It can only decide how a failure reads
 
 use crate::meta::ShapeKind;
 

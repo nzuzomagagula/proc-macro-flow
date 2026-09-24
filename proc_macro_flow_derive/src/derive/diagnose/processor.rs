@@ -19,7 +19,7 @@ impl<'ast> Processor<'ast> for WalkDeclaration<'ast> {
     type Output = ProcessedWalk<'ast>;
 
     fn process(input: Self::Input) -> Extraction<Self::Output> {
-        // NOTE(#processor/reasons-are-new-not-inherited).
+        // ID(processor/reasons-are-new-not-inherited).
         let mut out: Extraction<Self::Output> = Extraction::default();
 
         let Some(value) = input.into_extraction().value else {

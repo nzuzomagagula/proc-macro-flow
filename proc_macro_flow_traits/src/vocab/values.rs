@@ -3,17 +3,19 @@
 //!
 //! Closes the struct half of ID(attribute/name-value): "Name-value pattern maps to a struct."
 //!
-//! NOTE(#name-value/no-key): V[M(name_value).!takes(key)], "A name-value node does NOT own the key
-//! it is written under. `name = \"thing\"` puts `name` on the FIELD of the containing struct, not on
-//! ConfigName - which is what lets one newtype sit behind two differently-named fields, and what
-//! `#[alias(label)]` adjusts. This is the asymmetry ID(syntax/names) already states: KEYS ARE
-//! IDENTS, VALUES ARE PATHS. A key belongs to the structure; a value belongs to the type"
+// NOTE(#name-value/no-key): V[MacDef(name_value) != takes(key)], "A name-value node does not own the key it is written under"
+// A name-value node does NOT own the key it is written under. `name = \"thing\"` puts `name` on the
+// FIELD of the containing struct, not on ConfigName - which is what lets one newtype sit behind two
+// differently-named fields, and what `#[alias(label)]` adjusts. This is the asymmetry
+// ID(syntax/names) already states: KEYS ARE IDENTS, VALUES ARE PATHS. A key belongs to the
+// structure; a value belongs to the type
 //!
-//! NOTE(#name-value/why-newtype): V[S(ConfigName).T(LitStr)], "The wrapper is not ceremony. A bare
-//! `LitStr` field says only 'a string goes here'; ConfigName says WHICH string, so two fields of
-//! the same underlying terminal stay distinct types and cannot be swapped. It is also the hook for
-//! a validating constructor later - the place ID(pipeline/validity-scope)'s surface checks would
-//! attach, since 'is this value within a bound' is exactly a newtype's business"
+// NOTE(#name-value/why-newtype): V[S(ConfigName).T(LitStr)], "The newtype says which string, so same-typed fields cannot swap"
+// The wrapper is not ceremony. A bare `LitStr` field says only 'a string goes here'; ConfigName
+// says WHICH string, so two fields of the same underlying terminal stay distinct types and cannot
+// be swapped. It is also the hook for a validating constructor later - the place
+// ID(pipeline/validity-scope)'s surface checks would attach, since 'is this value within a bound'
+// is exactly a newtype's business
 
 /// Declare a newtype over a leaf.
 ///
@@ -61,9 +63,14 @@ macro_rules! name_value {
             }
 
             // Askable, so a grammar holding one can descend into its fields -
-            // NOTE(#assert/leaves-are-askable). It states no rules; what matters is that it can
+            // ID(assert/leaves-are-askable). It states no rules; what matters is that it can
             // be asked.
             impl $crate::assert::Assert for $name {}
+
+            // And walkable - ID(diagnose/values-are-walkable).
+            impl $crate::render::Diagnose for $name {
+                fn diagnose(&self, _: &mut ::std::vec::Vec<$crate::syn::Error>) {}
+            }
 
             impl $crate::vocab::leaves::FromMeta for $name {
                 fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {

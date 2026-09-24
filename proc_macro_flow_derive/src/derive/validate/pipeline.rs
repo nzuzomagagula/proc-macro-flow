@@ -6,15 +6,16 @@ use proc_macro_flow_traits::pipeline::Pipeline;
 use super::extractor::StageDeclaration;
 use super::generator::ValidateExpansion;
 
-// TODO[x](#processor/trivial-derives-are-pipelines): R[F(derive_validate) -> S(ValidateWiring)] && R[F(derive_processor) -> S(ProcessorWiring)],
-// "The two identity derives, converted first because they prove the shape against 47 and 49 lines
-// before it meets 337. They share one declaration reader and part company at the generator"
+// TODO[x](#processor/trivial-derives-are-pipelines): R[F(derive_validate) -> S(ValidateWiring)] && R[F(derive_processor) -> S(ProcessorWiring)], "The trivial derives are pipelines too"
+//
+// The two identity derives, converted first because they prove the shape against 47 and 49 lines
+// before it meets 337. They share one declaration reader and part company at the generator
 pub(crate) struct ValidateWiring;
 
 impl<'ast> Pipeline<'ast> for ValidateWiring {
     type Extractor = StageDeclaration<'ast>;
     /// The extractor names itself, which ID(pipeline/no-processor-is-the-extractor) permits - and
-    /// what it does here is real, if small: see NOTE(#stage/lifetime-is-the-processing).
+    /// what it does here is real, if small: see ID(stage/lifetime-is-the-processing).
     type Processor = StageDeclaration<'ast>;
     type Generator = ValidateExpansion;
 }
@@ -58,7 +59,7 @@ mod tests {
     #[test]
     fn a_type_with_no_lifetime_gets_one_introduced() {
         // ID(derive/lifetime-is-introduced-when-absent), and the one real decision this pipeline's
-        // processor makes - NOTE(#stage/lifetime-is-the-processing).
+        // processor makes - ID(stage/lifetime-is-the-processing).
         let out = expand("#[source(DeriveInput)] struct Read;");
 
         assert!(out.contains("impl < 'ast > :: proc_macro_flow_traits"), "{out}");
@@ -90,7 +91,7 @@ mod tests {
 
     #[test]
     fn no_args_means_no_args_assertion() {
-        // The absence is the derive case, not an omission - NOTE(#args/absence-is-the-derive-case).
+        // The absence is the derive case, not an omission - ID(args/absence-is-the-derive-case).
         let out = expand("#[source(DeriveInput)] struct Read<'ast> { _p: &'ast () }");
 
         assert!(!out.contains("FromBody"), "{out}");
@@ -105,7 +106,7 @@ mod tests {
 
     #[test]
     fn a_missing_source_is_reported_and_no_impl_is_guessed() {
-        // NOTE(#derive/the-impl-is-the-product). The source type IS the content of the impl, so
+        // ID(derive/the-impl-is-the-product). The source type IS the content of the impl, so
         // there is nothing to stub - a guessed one would compile and be wrong.
         let out = expand("struct Read<'ast> { _p: &'ast () }");
 

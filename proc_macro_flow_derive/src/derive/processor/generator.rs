@@ -61,7 +61,7 @@ impl<'ast> Generator<'ast> for ProcessorExpansion {
         }
     }
 
-    /// No vacant form, for the reason NOTE(#derive/the-impl-is-the-product) gives: without the
+    /// No vacant form, for the reason ID(derive/the-impl-is-the-product) gives: without the
     /// source type there is no impl to shape, and a guessed one would compile and be wrong.
     fn stub(subject: &'ast DeriveInput) -> syn::Result<Self> {
         Err(syn::Error::new_spanned(

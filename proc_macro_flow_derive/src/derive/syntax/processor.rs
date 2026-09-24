@@ -13,11 +13,11 @@ use super::extractor::{AliasDeclaration, GrammarDeclaration};
 
 /// A grammar node, as declared.
 ///
-/// NOTE(#syntax-derive/grammar-is-a-type): V[S(Grammar).M(node) && S(Grammar).M(reader)], "The
-/// three builders were free functions over `&[Field]` plus whichever other argument each needed -
-/// `node_const(entry, fields)`, `reader(name, fields)`, `shape_bounds(fields)`. Three functions
+/// NOTE(#syntax-derive/grammar-is-a-type): V[S(Grammar).F(node) && S(Grammar).F(reader)], "The builders are methods on Grammar, not free functions"
+/// The three builders were free functions over `&[Field]` plus whichever other argument each needed
+/// - `node_const(entry, fields)`, `reader(name, fields)`, `shape_bounds(fields)`. Three functions
 /// sharing a parameter list IS a type, and writing it down means the entry name and the fields
-/// cannot be passed in the wrong order or forgotten. ID(derive/helpers-belong-to-types)"
+/// cannot be passed in the wrong order or forgotten. ID(derive/helpers-belong-to-types)
 pub(crate) struct Grammar<'ast> {
     /// The type being derived on.
     pub(crate) name: &'ast syn::Ident,
@@ -31,14 +31,15 @@ pub(crate) struct Grammar<'ast> {
 
 /// One rule, as written.
 ///
-/// NOTE(#assert/rules-are-checked-at-derive-time): V[F(check).before(emit)], "A rule names KEYS,
-/// and whether those keys exist and can be absent is decidable HERE - the derive is looking at the
-/// struct. So a rule that names a field which is not there, or a field whose type says it is
-/// always present, is a compile error at the attribute rather than a check that can never fire.
+/// NOTE(#assert/rules-are-checked-at-derive-time): V[F(check).has(before emit)], "A rule's keys are checked at derive time, not at run time"
+/// A rule names KEYS, and whether those keys exist and can be absent is decidable HERE - the derive
+/// is looking at the struct. So a rule that names a field which is not there, or a field whose type
+/// says it is always present, is a compile error at the attribute rather than a check that can
+/// never fire.
 ///
 /// The second of those is ID(from/arity-from-type) in its strongest form: `one_of(a, b)` asks
 /// which of two keys was written, and for `a: T` the type has already answered 'always'. The rule
-/// is not merely redundant, it is a statement the type contradicts."
+/// is not merely redundant, it is a statement the type contradicts.
 pub(crate) enum Rule<'ast> {
     /// A built-in, and the fields it names.
     Builtin {
@@ -74,9 +75,9 @@ impl<'ast> Processor<'ast> for GrammarDeclaration<'ast> {
     /// The casings come from heck at EXPANSION time, so every spelling is a literal by the time it
     /// reaches a match and ID(vocabulary/exact) holds. Arity comes off the written type, which is
     /// where a proc macro beats `macro_rules!` - `std::option::Option<T>` and `Option<T>` are the
-    /// same thing here because the type is PARSED (NOTE(#syntax-derive/parses-the-type)).
+    /// same thing here because the type is PARSED (ID(syntax-derive/parses-the-type)).
     fn process(input: Self::Input) -> Extraction<Self::Output> {
-        // NOTE(#processor/reasons-are-new-not-inherited).
+        // ID(processor/reasons-are-new-not-inherited).
         let mut out: Extraction<Self::Output> = Extraction::default();
 
         let Some(value) = input.into_extraction().value else {

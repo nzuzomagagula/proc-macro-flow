@@ -1,14 +1,14 @@
 // @review [ ]
 //! Narrowing a pipeline module to what generation needs, and checking the graph on the way.
 //!
-//! NOTE(#pipeline-macro/graph-check-is-processing): V[F(process).resolves(from)], "Whether every
-//! `from = X` names something PRESENT is the processor's business and not the extractor's, and the
-//! division is the usual one. Extraction walks and carries: it can see that an attribute says
-//! `from = Nope`, but not whether `Nope` exists, because it is looking at one item at a time.
-//! Processing sees the whole module at once, which is exactly what resolving a name needs.
-//!
-//! Every failure here is spanned against the ATTRIBUTE that caused it, so an author is pointed at
-//! their own declaration rather than at the module"
+// NOTE(#pipeline-macro/graph-check-is-processing): V[F(process).has(resolves from)], "Whether each from = X names something present is processing"
+// Whether every `from = X` names something PRESENT is the processor's business and not the
+// extractor's, and the division is the usual one. Extraction walks and carries: it can see that an
+// attribute says `from = Nope`, but not whether `Nope` exists, because it is looking at one item at
+// a time. Processing sees the whole module at once, which is exactly what resolving a name needs.
+//
+// Every failure here is spanned against the ATTRIBUTE that caused it, so an author is pointed at
+// their own declaration rather than at the module
 
 use proc_macro_flow_traits::extractor::{Extracted, Extraction, Reason, ReasonKind};
 use proc_macro_flow_traits::processor::Processor;
@@ -31,17 +31,17 @@ pub(crate) struct ProcessedPipeline<'ast> {
 
     /// The node the extractor reads, from `source = Ty` on the extractor role.
     ///
-    /// NOTE(#pipeline-macro/source-was-never-read): V[S(ProcessedPipeline).P(source)], "`source`
-    /// has been written in every pipeline test since the macro existed and read by NOTHING - the
-    /// processor looked only at `from` and `helpers`. It went unnoticed because the entry function
-    /// hardcoded Ty(DeriveInput) for a derive, which is right for a derive and silently wrong for
-    /// everything else. Reading it is what lets an entry parse the node its pipeline actually
-    /// declared, and it is resolution over the whole module, which is this stage's job"
+    /// NOTE(#pipeline-macro/source-was-never-read): V[S(ProcessedPipeline).P(source)], "source was written in every test and read by nothing"
+    /// `source` has been written in every pipeline test since the macro existed and read by NOTHING
+    /// - the processor looked only at `from` and `helpers`. It went unnoticed because the entry
+    /// function hardcoded Ty(DeriveInput) for a derive, which is right for a derive and silently
+    /// wrong for everything else. Reading it is what lets an entry parse the node its pipeline
+    /// actually declared, and it is resolution over the whole module, which is this stage's job
     pub(crate) source: Type,
 
     /// The grammar the attribute's own arguments are read into, from `args = Ty`.
     ///
-    /// `None` is a derive - see NOTE(#args/absence-is-the-derive-case).
+    /// `None` is a derive - see ID(args/absence-is-the-derive-case).
     pub(crate) args: Option<Type>,
 
     /// What the generator does to the item it was applied to, from `emits = ..`.
@@ -49,12 +49,13 @@ pub(crate) struct ProcessedPipeline<'ast> {
 
     /// The module itself, so the generator can re-emit it stripped.
     ///
-    /// NOTE(#pipeline-macro/processed-carries-the-node): V[S(ProcessedPipeline).P(module)],
-    /// "S(PipelineInput) used to exist to carry these two alongside the processed value, because
+    /// NOTE(#pipeline-macro/processed-carries-the-node): V[S(ProcessedPipeline).P(module)], "ProcessedPipeline carries the module node"
+    ///
+    /// S(PipelineInput) used to exist to carry these two alongside the processed value, because
     /// the generator needed them and Tr(Processor)::Output could not reach them. It can: the
     /// processor is handed the whole S(Extracted), source included, so it can put on its output
     /// whatever the next stage needs. That is ID(processor/receives-whole) being spent rather than
-    /// merely stated, and S(PipelineInput) collapses into this."
+    /// merely stated, and S(PipelineInput) collapses into this.
     pub(crate) module: &'ast ItemMod,
 
     /// What `#[pipeline(..)]` ITSELF was invoked with.
@@ -84,13 +85,13 @@ impl Parse for Arg {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let key = input.parse()?;
         input.parse::<Token![=]>()?;
-        // NOTE(#pipeline-macro/values-are-types): V[S(Arg).P(value).T(Type)], "Was Ty(Ident),
-        // which was right while the only values were `from = Struct` and `helpers = Vocabulary` -
-        // both of which name a SIBLING in this module, and a sibling is a bare name. `source` and
-        // `args` are not siblings: they name TYPES, and a type may be qualified
+        // NOTE(#pipeline-macro/values-are-types): V[S(Arg).P(value).T(Type)], "Argument values are types, not idents"
+        // Was Ty(Ident), which was right while the only values were `from = Struct` and `helpers =
+        // Vocabulary` - both of which name a SIBLING in this module, and a sibling is a bare name.
+        // `source` and `args` are not siblings: they name TYPES, and a type may be qualified
         // (`proc_macro2::TokenStream`) or generic. So the value widens to Ty(Type) and the two
         // sibling-naming keys narrow back with F(as_ident), which answers None for anything that
-        // could not be a sibling in the first place"
+        // could not be a sibling in the first place
         let value = input.parse()?;
         Ok(Arg { key, value })
     }
@@ -110,10 +111,11 @@ impl Args {
     }
 }
 
-// TODO[x](#pipeline/declarations-are-read): U[S(ProcessedPipeline).P(source)] && C[E(Emission)],
-// "`source = Ty` was written in every pipeline test since the macro existed and read by NOTHING -
+// TODO[x](#pipeline/declarations-are-read): U[S(ProcessedPipeline).P(source)] && C[E(Emission)], "source is read, and emission is declared"
+//
+// `source = Ty` was written in every pipeline test since the macro existed and read by NOTHING -
 // the entry hardcoded Ty(DeriveInput), which is right for a derive and silently wrong for
-// everything else. Resolving it needs the whole module at once, which is this stage's job"
+// everything else. Resolving it needs the whole module at once, which is this stage's job
 impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
     type Input = Extracted<PipelineExtraction<'ast>, PipelineSource<'ast>>;
     type Output = ProcessedPipeline<'ast>;
@@ -123,7 +125,7 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
         let (module, written) = (node.item(), node.args());
         let extraction = input.into_extraction();
 
-        // NOTE(#processor/reasons-are-new-not-inherited): the extraction's own reasons are the
+        // ID(processor/reasons-are-new-not-inherited): the extraction's own reasons are the
         // walk's to render, not this stage's to repeat.
         let mut out: Extraction<ProcessedPipeline<'ast>> = Extraction::default();
 
@@ -200,7 +202,7 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
                     Some(vocabulary) => vocabulary.spellings.clone(),
                     None => {
                         // NAMED BUT ABSENT. Precisely reportable, which is the whole gain over
-                        // the hand-synced list - see NOTE(#pipeline-macro/helpers-are-read).
+                        // the hand-synced list - see ID(pipeline-macro/helpers-are-read).
                         out.reasons.push(Reason::at(ReasonKind::UnknownKey, named));
                         Vec::new()
                     }
@@ -210,7 +212,7 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
 
         // `source = Ty` on the EXTRACTOR, which is the role that declares what it reads. Required:
         // without it an entry function has no node to parse - see
-        // NOTE(#pipeline-macro/source-was-never-read).
+        // ID(pipeline-macro/source-was-never-read).
         let declared = |role: Role, key: &str| -> Option<Type> {
             components
                 .iter()
@@ -227,7 +229,7 @@ impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
                 .push(Reason::at(ReasonKind::Missing, &module.ident));
         }
 
-        // `emits = ..` on the GENERATOR - NOTE(#pipeline-macro/emission-must-be-declared).
+        // `emits = ..` on the GENERATOR - ID(pipeline-macro/emission-must-be-declared).
         let emission = match declared(Role::Generator, "emits") {
             None => Emission::default(),
             Some(written) => match written.as_ident().and_then(|name| {
@@ -309,7 +311,7 @@ mod tests {
 
     #[test]
     fn a_dangling_from_is_caught() {
-        // The graph check - NOTE(#pipeline-macro/graph-check-is-processing). Extraction could see
+        // The graph check - ID(pipeline-macro/graph-check-is-processing). Extraction could see
         // the attribute; only processing can see whether `Nope` exists.
         let out = processed(
             r#"mod m {
@@ -376,7 +378,7 @@ mod tests {
     }
     #[test]
     fn the_source_is_read_off_the_extractor() {
-        // NOTE(#pipeline-macro/source-was-never-read). This declaration had been written in every
+        // ID(pipeline-macro/source-was-never-read). This declaration had been written in every
         // test since the macro existed and read by nothing.
         let out = processed(
             r#"mod m {

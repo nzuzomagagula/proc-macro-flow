@@ -17,3 +17,18 @@
 # Verified, not assumed. The per-crate files are written for the recursive nuts;
 # if a working goal view is wanted before then, mirror them back here and delete
 # the mirror once recursion lands.
+
+# The one exception: work that spans every crate at once has no single owner, so it is declared
+# here, where a goal is measured against the whole workspace.
+
+[[goal]]
+title  = "Structural cleanup"
+prefix = "cleanup/"
+done   = "all"
+why    = """
+Retire the prototypes the live code outgrew - base/extractor (FieldNames), base/syntax and
+traits::resolution - move #[pipeline] out of base, define Arity once, split the facade's test
+modules and bring the design docs up to date. The point is not tidiness: with the dead weight
+gone, what is genuinely MISSING stands out, and every such gap is recorded as its own open item
+in the namespace of the feature it belongs to.
+"""

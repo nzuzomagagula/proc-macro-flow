@@ -12,15 +12,15 @@ use super::super::ext::{AttributesExt, FieldExt};
 
 /// A grammar type as WRITTEN, before anything is derived from it.
 ///
-/// NOTE(#syntax-derive/declaration-before-derivation): V[S(GrammarDeclaration).!computes], "This
-/// stage carries what the author wrote and derives nothing from it: the `#[alias]` form rather
+/// NOTE(#syntax-derive/declaration-before-derivation): V[S(GrammarDeclaration) != computes], "Declaration carries what was written; derivation happens later"
+/// This stage carries what the author wrote and derives nothing from it: the `#[alias]` form rather
 /// than the spellings it expands to, the field's type rather than its arity, the rule metas rather
 /// than the fields they resolve against. Everything computed - heck's casings, the entry head,
 /// arity, and whether a rule names a field that exists and can be absent - is processing, and
 /// belongs where the whole type is visible at once.
 ///
 /// Splitting it this way is what lets the three derive-time checks live in one place with the
-/// field list in hand, instead of being threaded through a read that is looking at one field."
+/// field list in hand, instead of being threaded through a read that is looking at one field.
 pub(crate) struct GrammarDeclaration<'ast> {
     pub(crate) name: &'ast syn::Ident,
     pub(crate) generics: &'ast syn::Generics,

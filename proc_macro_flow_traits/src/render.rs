@@ -5,28 +5,29 @@
 //! recorded theirs faithfully and nobody ever read them, which made `#no-result`'s guarantee half
 //! a promise: no sibling was dropped, but no sibling was reported either.
 //!
-//! NOTE(#render/who-renders): V[Impl(Diagnose).for(Extracted).renders], "The split is deliberate.
-//! `Extracted` renders a node's OWN reasons, because it is the only thing that knows the node they
-//! span against - a reason carries a Span only when it has something finer to point at, and falls
-//! back to the node otherwise (ID(reason/span-not-node)). A VALUE implements Diagnose only to say
-//! where its children are. So a grammar type never has to know how a reason becomes an error, and
-//! the fallback can never be forgotten"
+// NOTE(#render/who-renders): V[Impl(Diagnose).for(Extracted).has(renders reasons)], "Extracted renders its own reasons; the walk finds children"
+// The split is deliberate. `Extracted` renders a node's OWN reasons, because it is the only thing
+// that knows the node they span against - a reason carries a Span only when it has something finer
+// to point at, and falls back to the node otherwise (ID(reason/span-not-node)). A VALUE implements
+// Diagnose only to say where its children are. So a grammar type never has to know how a reason
+// becomes an error, and the fallback can never be forgotten
 //!
-//! NOTE(#render/traversal-is-source-order): V[F(render).!sorts], "ID(syntax/render) asked for the
-//! errors to be SORTED BY SPAN. That is not possible and does not need to be. VERIFIED: ordering
-//! spans requires Span::start(), which is gated on proc-macro2's `span-locations` feature, and
-//! inside a real proc macro the compiler branch returns LineColumn { line: 0, column: 0 } - every
-//! span compares equal, so a sort would be a no-op that looked like a guarantee. It is also
-//! unnecessary: the walk is depth-first over a syn tree that was built in source order, so the
-//! errors come out in source order already. The requirement was satisfied by the traversal rather
-//! than by a comparator"
+// NOTE(#render/traversal-is-source-order): V[F(render) != sorts], "Errors come out in traversal order, which is source order"
+// ID(syntax/render) asked for the errors to be SORTED BY SPAN. That is not possible and does not
+// need to be. VERIFIED: ordering spans requires Span::start(), which is gated on proc-macro2's
+// `span-locations` feature, and inside a real proc macro the compiler branch returns LineColumn {
+// line: 0, column: 0 } - every span compares equal, so a sort would be a no-op that looked like a
+// guarantee. It is also unnecessary: the walk is depth-first over a syn tree that was built in
+// source order, so the errors come out in source order already. The requirement was satisfied by
+// the traversal rather than by a comparator
 
 use syn::Error;
 
-// TODO[x](#assert/rules-ride-the-walk): U[Tr(Diagnose)], "Tr(Assert) becomes a SUPERTRAIT. A rule stated three
-// levels down must reach the top, spanned against its own node. F(render) already descends every
-// child and already knows that node, so making Tr(Assert) a supertrait gets propagation with no
-// second traversal - see NOTE(#assert/diagnose-requires-assert) for what it costs"
+// TODO[x](#assert/rules-ride-the-walk): U[Tr(Diagnose)], "Assert is Diagnose's supertrait, so rules ride the one walk"
+// Tr(Assert) becomes a SUPERTRAIT. A rule stated three levels down must reach the top, spanned
+// against its own node. F(render) already descends every child and already knows that node, so
+// making Tr(Assert) a supertrait gets propagation with no second traversal - see
+// ID(assert/diagnose-requires-assert) for what it costs
 
 use crate::assert::Assert;
 use crate::extractor::{Extracted, Reason, ReasonKind};
@@ -36,17 +37,31 @@ use crate::extractor::{Extracted, Reason, ReasonKind};
 /// Implementors do NOT render their own reasons - the `Extracted` wrapping them does that, because
 /// it holds the node those reasons span against.
 ///
-/// NOTE(#assert/diagnose-requires-assert): V[Tr(Diagnose).super(Tr(Assert))], "Tr(Assert) is a
-/// SUPERTRAIT, so a type that can be diagnosed can always be asked what rules it breaks - even
-/// when the answer is none. That is what lets the rules ride this walk instead of needing one of
-/// their own: F(render) already descends every child and already knows the node each reason spans
-/// against, so a rule stated three levels down arrives correctly placed for free.
+/// NOTE(#assert/diagnose-requires-assert): V[Tr(Diagnose).impl(Assert)], "Diagnose requires Assert, so every walked type can be asked"
+/// Tr(Assert) is a SUPERTRAIT, so a type that can be diagnosed can always be asked what rules it
+/// breaks - even when the answer is none. That is what lets the rules ride this walk instead of
+/// needing one of their own: F(render) already descends every child and already knows the node each
+/// reason spans against, so a rule stated three levels down arrives correctly placed for free.
 ///
 /// THE COST, recorded rather than discovered later: every Tr(Diagnose) implementor now needs an
 /// `impl Assert for X {}` as well. The method is defaulted so that is one line
-/// (NOTE(#assert/default-is-empty)), but it is a line an author hand-writing an extraction type has
+/// (ID(assert/default-is-empty)), but it is a line an author hand-writing an extraction type has
 /// to write, and forgetting it is `the trait bound X: Assert is not satisfied`. Paid deliberately:
-/// a second walk would have duplicated this one, and two traversals of the same tree drift."
+/// a second walk would have duplicated this one, and two traversals of the same tree drift.
+///
+/// NOTE(#diagnose/values-are-walkable): V[Impl(Diagnose).has(grammar, leaf, vocab)], "Every askable value is walkable, with an empty walk"
+/// Every askable VALUE is walkable too, with an empty walk - it holds no S(Extracted), so there is
+/// nothing beneath it to reach, and saying so is the true answer rather than a stub.
+///
+/// Without it a grammar-typed field could not be walked, so Attr(derive(Diagnose)) refused it
+/// with `Column: Diagnose is not satisfied` and the author reached for Attr(skip) - which compiled,
+/// and silently dropped every rule the grammar stated. That was ID(diagnose-derive/walk-all-and-
+/// skip)'s cheap mistake turned into its expensive one, and it happened: the demo's
+/// `conflicts(skip, key)` never fired. Walkable values are what put Attr(skip) back on the fields
+/// that genuinely have nothing to say, like a borrowed Ident.
+///
+/// Not a defaulted method: a hand-written walk that FORGOT its children would then compile, and
+/// that is the silent failure this trait is shaped to prevent.
 pub trait Diagnose: Assert {
     fn diagnose(&self, out: &mut Vec<Error>);
 
@@ -71,15 +86,15 @@ pub trait Diagnose: Assert {
 
 /// DELIBERATELY EMPTY, and the emptiness is the design rather than a stub.
 ///
-/// NOTE(#assert/extracted-is-the-handoff): V[Impl(Assert).for(Extracted).empty], "The two walks
-/// cover different ground and meet exactly here. Tr(Assert) descends WITHIN a value - into the
-/// grammar nodes and collections a value holds. Tr(Diagnose) descends ACROSS S(Extracted)
+/// NOTE(#assert/extracted-is-the-handoff): V[Impl(Assert).for(Extracted).is(empty)], "Assert on Extracted is empty so each rule reports once"
+/// The two walks cover different ground and meet exactly here. Tr(Assert) descends WITHIN a value -
+/// into the grammar nodes and collections a value holds. Tr(Diagnose) descends ACROSS S(Extracted)
 /// boundaries, and asks each value it reaches for its rules on the way past.
 ///
 /// So an S(Extracted) reached during an ASSERT walk must not descend, or its value's rules are
 /// reported twice: once by the parent's assert walk and once when the diagnose walk arrives at it
 /// independently. Making this empty is what keeps every rule reported exactly once, and it is the
-/// kind of thing that would otherwise be found as a duplicated diagnostic long after."
+/// kind of thing that would otherwise be found as a duplicated diagnostic long after.
 impl<T, I> Assert for Extracted<T, I> {}
 
 impl<T, I> Diagnose for Extracted<T, I>
@@ -97,7 +112,7 @@ where
         // already taken above, which is the case that matters most.
         if let Some(value) = self.value() {
             // THE ONE PLACE a rule becomes an error, and it is here for the same reason a reason
-            // is (NOTE(#render/who-renders)): this is what holds the node to span against. A rule
+            // is (ID(render/who-renders)): this is what holds the node to span against. A rule
             // is about a value, so there is nothing to check when extraction produced none.
             let mut violations = Vec::new();
             value.assert(&mut violations);
@@ -123,6 +138,14 @@ impl<T: Diagnose> Diagnose for Option<T> {
         if let Some(child) = self {
             child.diagnose(out);
         }
+    }
+}
+
+// Matches Tr(Assert)'s forwarding set, so a grammar holding `Box<Nested>` is walkable wherever it
+// is askable - ID(diagnose/values-are-walkable).
+impl<T: Diagnose + ?Sized> Diagnose for Box<T> {
+    fn diagnose(&self, out: &mut Vec<Error>) {
+        (**self).diagnose(out);
     }
 }
 
@@ -322,7 +345,7 @@ mod tests {
     fn a_carried_error_is_not_flattened() {
         // THE property that justifies the kind holding a syn::Error rather than a String.
         // `Error::combine` keeps each sub-error's own span; rebuilding from `.to_string()` would
-        // collapse both into one message at one span. See NOTE(#reason/error-is-carried-not-rebuilt).
+        // collapse both into one message at one span. See ID(reason/error-is-carried-not-rebuilt).
         let tree = Extracted::new(
             Extraction::value(Parent {
                 children: vec![child(
@@ -351,7 +374,7 @@ mod tests {
 
     #[test]
     fn internal_is_distinguishable_from_the_authors_fault() {
-        // The one bit fail-upward is gated on - NOTE(#reason/fault-is-declared).
+        // The one bit fail-upward is gated on - ID(reason/fault-is-declared).
         let ours = Reason::new(ReasonKind::Internal(combined_error()));
         let theirs = Reason::new(ReasonKind::Syntax(combined_error()));
 

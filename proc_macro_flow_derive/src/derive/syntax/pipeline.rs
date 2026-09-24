@@ -7,10 +7,10 @@ use super::extractor::GrammarDeclaration;
 use super::generator::SyntaxExpansion;
 
 /// `#[derive(Syntax)]`, wired.
-// TODO[x](#syntax/derive-is-a-pipeline): R[F(derive_syntax) -> S(SyntaxWiring)], "The largest
-// split: extraction carries Attr(alias), Attr(shape) and the rule metas AS WRITTEN, and everything
-// derived - heck's casings, the entry head, arity, and the three rule checks - is processing,
-// which is the only stage that sees every field at once"
+// TODO[x](#syntax/derive-is-a-pipeline): R[F(derive_syntax) -> S(SyntaxWiring)], "derive(Syntax) is a pipeline; extraction carries what was written"
+// The largest split: extraction carries Attr(alias), Attr(shape) and the rule metas AS WRITTEN, and
+// everything derived - heck's casings, the entry head, arity, and the three rule checks - is
+// processing, which is the only stage that sees every field at once
 pub(crate) struct SyntaxWiring;
 
 impl<'ast> Pipeline<'ast> for SyntaxWiring {
@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn the_generated_key_set_cannot_shadow_a_type_the_author_named() {
-        // REGRESSION for NOTE(#syntax-derive/the-key-set-cannot-shadow). The reader declares its
+        // REGRESSION for ID(syntax-derive/the-key-set-cannot-shadow). The reader declares its
         // key enum INSIDE its own body, and calling it `Key` shadowed any type the author had of
         // that name - including one used as a field's type in the same grammar. The failure named
         // a path nobody wrote: `<Column as FromBody>::from_body::Key: FromMeta is not satisfied`.

@@ -1,20 +1,21 @@
 // @review [ ]
 //! Rules a grammar states about itself, and what it means to break one.
 //!
-//! NOTE(#assert/a-rule-is-a-reason): V[Tr(Assert).R(Reason)], "An assert produces a E(Reason), and
-//! that one decision is what makes propagation free. A E(Reason) already knows how to be rendered
-//! against the node it sits on (ID(reason/span-not-node)), already accumulates rather than
-//! returning early (ID(no-result)), and is already collected from every level of the tree by the
-//! render walk. So a rule declared three levels down needs NO new machinery to reach the top - it
-//! is carried by the same walk that carries an unknown key.
-//!
-//! The alternative, a second traversal invoked beside F(render), would have duplicated a walk that
-//! already works. See NOTE(#assert/diagnose-requires-assert) for what the shortcut costs."
+// NOTE(#assert/a-rule-is-a-reason): V[Tr(Assert).R(Reason)], "An assert produces a Reason, which is what makes propagation free"
+// An assert produces a E(Reason), and that one decision is what makes propagation free. A E(Reason)
+// already knows how to be rendered against the node it sits on (ID(reason/span-not-node)), already
+// accumulates rather than returning early (ID(no-result)), and is already collected from every
+// level of the tree by the render walk. So a rule declared three levels down needs NO new machinery
+// to reach the top - it is carried by the same walk that carries an unknown key.
+//
+// The alternative, a second traversal invoked beside F(render), would have duplicated a walk that
+// already works. See ID(assert/diagnose-requires-assert) for what the shortcut costs.
 
-// TODO[x](#assert/rules-are-declared): C[Tr(Assert)] && C[Tr(Rule)] && C[S(Violation)] && C[E(AssertKind)],
-// "A grammar can state a key's shape, arity and requiredness off the field's type, and cannot say
+// TODO[x](#assert/rules-are-declared): C[Tr(Assert)] && C[Tr(Rule)] && C[S(Violation)] && C[E(AssertKind)], "A grammar can state rules like exactly one of these two"
+//
+// A grammar can state a key's shape, arity and requiredness off the field's type, and cannot say
 // 'exactly one of these two' - the commonest real constraint there is. A rule produces a E(Reason),
-// which is what makes it cost nothing to propagate"
+// which is what makes it cost nothing to propagate
 
 use crate::extractor::Reason;
 
@@ -42,14 +43,14 @@ crate::vocabulary! {
 
 /// A rule that was broken, named rather than worded.
 ///
-/// NOTE(#assert/violation-is-not-a-message): V[S(Violation).!P(String)], "It holds the RULE and the
-/// FIELDS, and the wording is produced later by F(message). That is ID(reason/message)'s
-/// requirement - a message baked at record time is out of reach of anything that might want to
-/// rephrase it - and it is also what keeps E(ReasonKind) interpretable: a caller can ask WHICH rule
-/// failed and act on the answer, which a string would not allow.
+/// NOTE(#assert/violation-is-not-a-message): V[S(Violation) != P(String)], "A Violation holds the rule and fields; wording comes later"
+/// It holds the RULE and the FIELDS, and the wording is produced later by F(message). That is
+/// ID(reason/message)'s requirement - a message baked at record time is out of reach of anything
+/// that might want to rephrase it - and it is also what keeps E(ReasonKind) interpretable: a caller
+/// can ask WHICH rule failed and act on the answer, which a string would not allow.
 ///
 /// Both fields are `&'static`, because the derive emits them as literals. Nothing here is built at
-/// runtime from anything the author wrote"
+/// runtime from anything the author wrote
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Violation {
     pub rule: AssertKind,
@@ -84,11 +85,11 @@ impl Violation {
                 // from a compiled grammar - worded rather than panicked on all the same.
                 _ => format!("a dependency between {keys} was not satisfied"),
             },
-            // NOTE(#assert/with-never-violates): V[E(AssertKind).V(With).!in(Violation)], "An
-            // author's rule words its OWN reason through Tr(AuthorReason), so it raises a
+            // NOTE(#assert/with-never-violates): V[E(AssertKind).V(With) != in(Violation)], "With is a spelling #[assert] accepts, never a Violation kind"
+            // An author's rule words its OWN reason through Tr(AuthorReason), so it raises a
             // E(ReasonKind)::Custom and never reaches here. `With` is in this vocabulary because it
             // is a spelling `#[assert(..)]` accepts, not because it is a failure we can describe -
-            // the asymmetry is real and is recorded rather than smoothed over."
+            // the asymmetry is real and is recorded rather than smoothed over.
             AssertKind::With => "a rule on this node was not satisfied".to_owned(),
         }
     }
@@ -96,16 +97,18 @@ impl Violation {
 
 /// What rules this value breaks.
 ///
-/// NOTE(#assert/no-result): V[F(assert).A(out) && !F(assert).R(Result)], "Accumulates into a
-/// buffer rather than returning, for the reason ID(no-result) gives: with no `?` there is no early
-/// return, and with no early return a type stating three rules cannot report the first and drop
-/// the other two. Same shape as Tr(Diagnose)::diagnose, deliberately - they are one walk."
+/// NOTE(#assert/no-result): V[F(assert).A(out) && F(assert) != R(Result)], "assert accumulates into a buffer and never returns early"
+/// Accumulates into a buffer rather than returning, for the reason ID(no-result) gives: with no `?`
+/// there is no early return, and with no early return a type stating three rules cannot report the
+/// first and drop the other two. Same shape as Tr(Diagnose)::diagnose, deliberately - they are one
+/// walk.
 ///
-/// NOTE(#assert/default-is-empty): V[F(assert).defaulted], "DEFAULTED, which is the opposite of
-/// what ID(generator/stub-is-a-contract) decided for F(stub), and the difference is what forgetting
-/// costs. A forgotten stub is a missing impl that cascades at every use site, so it is worth making
-/// unforgettable. A type with no rules is the overwhelmingly common case and an empty body is the
-/// correct answer for it, so requiring one would be ceremony that teaches nothing."
+/// NOTE(#assert/default-is-empty): V[F(assert).is(defaulted)], "assert is defaulted because forgetting it costs nothing"
+/// DEFAULTED, which is the opposite of what ID(generator/stub-is-a-contract) decided for F(stub),
+/// and the difference is what forgetting costs. A forgotten stub is a missing impl that cascades at
+/// every use site, so it is worth making unforgettable. A type with no rules is the overwhelmingly
+/// common case and an empty body is the correct answer for it, so requiring one would be ceremony
+/// that teaches nothing.
 pub trait Assert {
     fn assert(&self, out: &mut Vec<Reason>) {
         let _ = out;
@@ -114,11 +117,11 @@ pub trait Assert {
 
 /// An author's own rule, written once and applied wherever it is named.
 ///
-/// NOTE(#assert/rule-is-checked-against-its-subject): V[Tr(Rule).Ty(Subject)], "Ty(Subject) is an
-/// associated type, so `#[assert(with = NoZeroRetries)]` on the wrong grammar is a COMPILE ERROR
-/// rather than a rule that quietly never fires. Same argument as
-/// NOTE(#pipeline/source-is-associated): the type pins it, so no call site has to be trusted to
-/// get it right."
+/// NOTE(#assert/rule-is-checked-against-its-subject): V[Tr(Rule).Ty(Subject)], "Rule's Subject is associated, so a misplaced rule fails to compile"
+/// Ty(Subject) is an associated type, so `#[assert(with = NoZeroRetries)]` on the wrong grammar is
+/// a COMPILE ERROR rather than a rule that quietly never fires. Same argument as
+/// ID(pipeline/source-is-associated): the type pins it, so no call site has to be trusted to get it
+/// right.
 pub trait Rule {
     type Subject: ?Sized;
 

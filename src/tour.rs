@@ -1,12 +1,12 @@
 //! A TOUR: every pattern this crate offers, compiled.
 //!
-//! NOTE(#tour/the-guide-is-compiled): V[N(tour).covers(vocab, grammar, pipeline)], "Written to be
-//! read alongside the guide, and kept because prose about a macro rots silently while this does
-//! not. It exercises the surface the way an AUTHOR meets it - through the facade and nothing else -
-//! which is exactly how it caught ID(vocab/macros-need-the-reexports): M(flag), M(name_value) and
-//! M(variants) emitted bare `::quote::` and `::proc_macro2::` paths, so a crate using them had to
-//! depend on both by those names. Every other test here imports what it needs directly and could
-//! not have noticed."
+// NOTE(#tour/the-guide-is-compiled): V[N(tour).has(vocab, grammar, pipeline)], "The guide's companion is compiled, so it cannot rot silently"
+// Written to be read alongside the guide, and kept because prose about a macro rots silently while
+// this does not. It exercises the surface the way an AUTHOR meets it - through the facade and
+// nothing else - which is exactly how it caught ID(vocab/macros-need-the-reexports): M(flag),
+// M(name_value) and M(variants) emitted bare `::quote::` and `::proc_macro2::` paths, so a crate
+// using them had to depend on both by those names. Every other test here imports what it needs
+// directly and could not have noticed.
 
 #![cfg(test)]
 #![allow(dead_code)]
@@ -204,7 +204,7 @@ mod pipeline_patterns {
     }
     // Both impls WRITTEN FOR US. The walk is the field list, and `Assert` is empty because this
     // type states no rules - neither is a decision anybody makes, so neither is typed out.
-    // See NOTE(#diagnose-derive/why-a-seventh-derive).
+    // See ID(diagnose-derive/why-a-seventh-derive).
 
     // --- processing: real work, so hand-written ---
     pub struct Counted<'ast> { item: &'ast syn::Ident, cols: usize }

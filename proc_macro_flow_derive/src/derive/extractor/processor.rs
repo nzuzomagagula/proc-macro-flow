@@ -27,7 +27,7 @@ pub(crate) struct ProcessedField<'ast> {
     /// Whether the render walk descends into this field.
     ///
     /// False for a `#[value]`, and that is the half of
-    /// NOTE(#extractor-derive/children-are-marked-not-inferred) with teeth: a plain `&'ast Ident`
+    /// ID(extractor-derive/children-are-marked-not-inferred) with teeth: a plain `&'ast Ident`
     /// does not implement Tr(Diagnose), so emitting a visit for one is a compile error in the
     /// AUTHOR'S crate rather than a wrong answer here.
     pub(crate) walked: bool,
@@ -40,13 +40,13 @@ impl<'ast> Processor<'ast> for ExtractorExtraction<'ast> {
     /// The real work: arity off each field's TYPE picks the method, and the reach expression is
     /// spliced into it.
     ///
-    /// NOTE(#extractor-derive/arity-picks-the-method): V[F(process).reads(Ty(field))], "`T`,
-    /// `Vec<T>` and `Option<T>` select F(extract_from), F(extract_each) and F(extract_maybe), and
-    /// the choice is read off the WRITTEN TYPE rather than from anything declared beside it -
+    /// NOTE(#extractor-derive/arity-picks-the-method): V[F(process).has(reads the field type)], "T, Vec and Option pick extract_from, extract_each, extract_maybe"
+    /// `T`, `Vec<T>` and `Option<T>` select F(extract_from), F(extract_each) and F(extract_maybe),
+    /// and the choice is read off the WRITTEN TYPE rather than from anything declared beside it -
     /// ID(from/arity-from-type). These are provided methods on Tr(Extractor), so the call names the
-    /// extractor and needs no turbofish (ID(pipeline/no-free-functions))."
+    /// extractor and needs no turbofish (ID(pipeline/no-free-functions)).
     fn process(input: Self::Input) -> Extraction<Self::Output> {
-        // NOTE(#processor/reasons-are-new-not-inherited): nothing already in the tree is copied
+        // ID(processor/reasons-are-new-not-inherited): nothing already in the tree is copied
         // forward, here or in the per-field loop below.
         let mut out: Extraction<Self::Output> = Extraction::default();
 

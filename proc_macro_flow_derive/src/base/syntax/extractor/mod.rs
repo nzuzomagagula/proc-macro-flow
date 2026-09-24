@@ -11,16 +11,16 @@ use proc_macro_flow_traits::extractor::{Extractor, Validate};
 use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::render::Diagnose;
 
-// NOTE(#heads-are-rustcs):V[F(extract_from).!emits(E(ReasonKind).V(UnknownKey))], "An attribute
-// HEAD we do not recognise is never our complaint, and this stage must stay silent about one.
-// VERIFIED: a derive registers its helpers with attributes(shape, alias), and rustc rejects any
-// other head BEFORE the macro runs - `#[shpae(..)]` gets 'cannot find attribute `shpae` in this
-// scope' plus TWO machine-applicable fixes, one of which names the derive that accepts `shape`.
-// Better than anything we could write, and free. So a head that does reach us and is not ours
-// belongs to ANOTHER macro - #[doc], #[cfg], #[serde] - and reporting it would be actively wrong.
-// A doc comment is an attribute, so the earlier UnknownKey here fired on every documented field.
-// The residue for us is KEYS INSIDE the delimiters, where rustc resolves nothing: `colur(Red)` is
-// still ours to catch, because no compiler pass can see it"
+// NOTE(#heads-are-rustcs): V[F(extract_from) != emits(ReasonKind::UnknownKey)], "An unrecognised attribute head is never our complaint"
+// An attribute HEAD we do not recognise is never our complaint, and this stage must stay silent
+// about one. VERIFIED: a derive registers its helpers with attributes(shape, alias), and rustc
+// rejects any other head BEFORE the macro runs - `#[shpae(..)]` gets 'cannot find attribute `shpae`
+// in this scope' plus TWO machine-applicable fixes, one of which names the derive that accepts
+// `shape`. Better than anything we could write, and free. So a head that does reach us and is not
+// ours belongs to ANOTHER macro - #[doc], #[cfg], #[serde] - and reporting it would be actively
+// wrong. A doc comment is an attribute, so the earlier UnknownKey here fired on every documented
+// field. The residue for us is KEYS INSIDE the delimiters, where rustc resolves nothing:
+// `colur(Red)` is still ours to catch, because no compiler pass can see it
 
 
 proc_macro_flow_traits::vocabulary! {
@@ -34,8 +34,9 @@ proc_macro_flow_traits::vocabulary! {
 
 /// One helper attribute on a grammar field.
 ///
-/// NOTE(#syntax/resolution-is-deferred-not-dead): V[M(resolve).tested && !M(resolve).on_macro_path],
-/// TODO[ ](#syntax/attribute-duplicates-source): `attribute` is read in ONE place - `resolve`,
+/// NOTE(#syntax/resolution-is-deferred-not-dead): V[F(resolve).is(tested) && F(resolve) != on(macro path)], "resolve is tested and deferred, not dead"
+/// TODO[ ](#syntax/attribute-duplicates-source): U[F(resolve).has(attribute) -> F(extract_from)], "attribute is read only by resolve, duplicating the source"
+/// `attribute` is read in ONE place - `resolve`,
 /// moving it into the Parsed value - and otherwise duplicates Extracted::source(). It survives only
 /// because `resolve` returns a bare Extraction with no Extracted wrapper to ask. Making resolution
 /// preserve the wrapper would remove the duplication ID(extractor/two-questions) removed
@@ -66,7 +67,7 @@ pub(crate) enum SyntaxFieldAttributeKind<'ast, S: Stage> {
 }
 
 impl<'ast, S: Stage> SyntaxFieldAttributeExtraction<'ast, S> {
-    #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
+    #[allow(dead_code, reason = "see ID(syntax/resolution-is-deferred-not-dead)")]
     pub(crate) fn kind(&self) -> &SyntaxFieldAttributeKind<'ast, S> {
         &self.kind
     }
@@ -96,7 +97,7 @@ impl<'ast> Extractor<'ast> for SyntaxFieldAttributeExtraction<'ast, Raw> {
 
             // Both arms only CARRY the argument tokens - neither reads them. What `shape` names is
             // resolved by rustc at the splice site; what `alias` names is read later, by whichever
-            // stage asks. See NOTE(#no-parse). They cannot share a constructor despite looking
+            // stage asks. See ID(no-parse). They cannot share a constructor despite looking
             // alike: Shape defers a Type and Alias an Ident, so the payloads differ in type.
             //
             // Exhaustive over SyntaxHelper, and deliberately so - a new helper stops compiling here
@@ -123,7 +124,7 @@ impl<'ast> SyntaxFieldAttributeExtraction<'ast, Raw> {
     /// Note what cannot be written: there is no `resolve` on the `Parsed` form, so resolving twice
     /// is a type error rather than a silent no-op, and nothing downstream has to check a flag to
     /// know which state it is holding.
-    #[allow(dead_code, reason = "see NOTE(#syntax/resolution-is-deferred-not-dead)")]
+    #[allow(dead_code, reason = "see ID(syntax/resolution-is-deferred-not-dead)")]
     pub(crate) fn resolve(self) -> Extraction<SyntaxFieldAttributeExtraction<'ast, Parsed>> {
         let attribute = self.attribute;
 
@@ -167,7 +168,7 @@ impl<'ast, S: Stage> Validate<'ast> for SyntaxFieldAttributeExtraction<'ast, S> 
         SyntaxHelper::try_from(input.path())
             .map(|helper| (input, helper))
             // OFFERED and, by this extractor, DELIBERATELY DROPPED - see
-            // NOTE(#validate/reason-is-offered-not-imposed) and ID(heads-are-rustcs). The reason is
+            // ID(validate/reason-is-offered-not-imposed) and ID(heads-are-rustcs). The reason is
             // constructed so the signature is honest about what failed; extract_from below throws
             // it away because 'not one of ours' is not a complaint.
             .map_err(|_| Reason::at(ReasonKind::UnknownKey, input.path()))
@@ -182,7 +183,7 @@ impl<'ast, S: Stage> Diagnose for SyntaxFieldAttributeExtraction<'ast, S> {
     /// This node's payload is `kind`, which holds CARRIED tokens - an `Unresolved<Type>` or
     /// `Unresolved<Ident>` - not child extractions. Nothing below it has reasons of its own,
     /// because nothing below it has been read: that is ID(no-parse). Its own reasons are rendered
-    /// by the `Extracted` around it, per NOTE(#render/who-renders).
+    /// by the `Extracted` around it, per ID(render/who-renders).
     ///
     /// It stops being a leaf if and when a nested grammar node becomes an extraction in its own
     /// right, which is ID(syntax/extraction)'s business.

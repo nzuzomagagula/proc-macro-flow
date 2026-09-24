@@ -1,18 +1,20 @@
 // @review [ ]
-// TODO[x](#user/the-chain-ends-here): C[N(demo_user)], "Nothing downstream of the macro author was
-// ever compiled, so every claim about what a USER needs was untested. This crate depends on the
-// macro and nothing else, which makes its Cargo.toml the assertion"
+// TODO[x](#user/the-chain-ends-here): C[N(demo_user)], "Nothing downstream of the macro author was ever compiled"
+// Nothing downstream of the macro author was ever compiled, so every claim about what a USER needs
+// was untested. This crate depends on the macro and nothing else, which makes its Cargo.toml the
+// assertion
 //! The furthest user: somebody who writes `#[derive(Columns)]` and never reads this framework.
 //!
-//! NOTE(#user/the-dependency-list-is-the-proof): V[N(user).deps == [demo]], "This crate's whole
-//! claim is in its Cargo.toml. It depends on the MACRO and nothing else - not on syn, not on
-//! quote, not on proc_macro_flow. Anything the generated code names has to resolve from here, so
-//! a single bare `::syn::` path anywhere in the chain fails the build of this crate and no other.
-//!
-//! That is not hypothetical. The bare-path bug was shipped four times and every existing test was
-//! blind to it, because the facade carries syn as a dev-dependency and every test module imports
-//! what it needs directly. ID(hygiene/generated-paths-are-checked) is the text scan that catches
-//! it early; THIS is the compile that cannot be fooled."
+// NOTE(#user/the-dependency-list-is-the-proof): V[N(user).has(deps == demo)], "This crate depends on the macro and nothing else"
+// This crate's whole claim is in its Cargo.toml. It depends on the MACRO and nothing else - not on
+// syn, not on quote, not on proc_macro_flow. Anything the generated code names has to resolve from
+// here, so a single bare `::syn::` path anywhere in the chain fails the build of this crate and no
+// other.
+//
+// That is not hypothetical. The bare-path bug was shipped four times and every existing test was
+// blind to it, because the facade carries syn as a dev-dependency and every test module imports
+// what it needs directly. ID(hygiene/generated-paths-are-checked) is the text scan that catches
+// it early; THIS is the compile that cannot be fooled.
 //!
 //! The chain, end to end:
 //!

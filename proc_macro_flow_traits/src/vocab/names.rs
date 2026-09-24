@@ -74,7 +74,7 @@ macro_rules! names {
             /// Scans the spellings table rather than carrying its own `match` over the same
             /// literals. That match was a THIRD copy of the name set, beside `spellings()` and
             /// Tr(Keys)::resolve, and three copies of one fact is two too many -
-            /// NOTE(#keys/table-is-strings-the-rest-is-not) asks for exactly one place a spelling
+            /// ID(keys/table-is-strings-the-rest-is-not) asks for exactly one place a spelling
             /// is compared, and this is a `&str` entry point to it rather than a rival.
             pub fn from_spelling(text: &str) -> ::std::option::Option<$name> {
                 $name::ALL
@@ -147,7 +147,7 @@ macro_rules! vocabulary {
             /// `impl<T: AsRef<str>> PartialEq<T> for Ident` compares an ident against a `&str`
             /// directly. F(from_spelling) below takes a `&str` and so forces its callers to build
             /// one - `ident.to_string()` - which is a heap allocation per element per walk, to
-            /// answer a question that needed none. See NOTE(#keys/table-is-strings-the-rest-is-not).
+            /// answer a question that needed none. See ID(keys/table-is-strings-the-rest-is-not).
             fn resolve(written: &$crate::syn::Ident) -> ::std::option::Option<Self> {
                 $name::ALL
                     .iter()

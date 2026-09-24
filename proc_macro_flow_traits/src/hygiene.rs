@@ -1,28 +1,28 @@
 // @review [ ]
-// TODO[x](#hygiene/scan-for-bare-paths): C[N(hygiene)], "Shipped FOUR times: a generated path
-// naming syn, quote or proc_macro2 resolves at the CALL SITE, where the author has no reason to
-// depend on any of them. Reviewing for it does not work - eighty-nine sites survived four rounds of
-// it. A text scan does"
+// TODO[x](#hygiene/scan-for-bare-paths): C[N(hygiene)], "Bare syn/quote/proc_macro2 paths are scanned for, not reviewed for"
+// Shipped FOUR times: a generated path naming syn, quote or proc_macro2 resolves at the CALL SITE,
+// where the author has no reason to depend on any of them. Reviewing for it does not work -
+// eighty-nine sites survived four rounds of it. A text scan does
 //! The one check that catches a class of bug this workspace has shipped four times.
 //!
-//! NOTE(#hygiene/generated-paths-are-checked): V[N(workspace).!emits(bare_path)], "Generated code
-//! that names `::syn::`, `::quote::` or `::proc_macro2::` compiles perfectly HERE and fails in the
-//! AUTHOR'S crate with `cannot find syn in the list of imported crates` - because those paths
-//! resolve at the CALL SITE, where the author has no reason to depend on any of them.
-//!
-//! It has been found four times, each by accident and each the same way: a crate that depends on
-//! the facade ALONE tries to use something. Every test in this workspace imports what it needs
-//! directly, so none of them can see it - the facade itself carries `syn` as a dev-dependency, and
-//! that single line hid the whole class.
-//!
-//! The rounds, so the shape is on record: Tr(Diagnose) in generated derive output; M(flag),
-//! M(name_value) and M(variants); seven sites in the Attr(derive(Generator)) and
-//! Attr(derive(Syntax)) emissions; then eighty-nine across the whole vocabulary suite. Reviewing
-//! for it does not work. This does.
-//!
-//! WHAT IT CANNOT CATCH, stated so nobody trusts it further than it goes: it is a text scan, so a
-//! path assembled at runtime or spelled through an alias passes. The real guarantee is the one
-//! N(proc_macro_flow_demo) gives - a crate with no `syn` dependency that uses the macros for real."
+// NOTE(#hygiene/generated-paths-are-checked): V[N(workspace) != emits(bare paths)], "Generated code never names ::syn, ::quote or ::proc_macro2"
+// Generated code that names `::syn::`, `::quote::` or `::proc_macro2::` compiles perfectly HERE and
+// fails in the AUTHOR'S crate with `cannot find syn in the list of imported crates` - because those
+// paths resolve at the CALL SITE, where the author has no reason to depend on any of them.
+//
+// It has been found four times, each by accident and each the same way: a crate that depends on
+// the facade ALONE tries to use something. Every test in this workspace imports what it needs
+// directly, so none of them can see it - the facade itself carries `syn` as a dev-dependency, and
+// that single line hid the whole class.
+//
+// The rounds, so the shape is on record: Tr(Diagnose) in generated derive output; M(flag),
+// M(name_value) and M(variants); seven sites in the Attr(derive(Generator)) and
+// Attr(derive(Syntax)) emissions; then eighty-nine across the whole vocabulary suite. Reviewing
+// for it does not work. This does.
+//
+// WHAT IT CANNOT CATCH, stated so nobody trusts it further than it goes: it is a text scan, so a
+// path assembled at runtime or spelled through an alias passes. The real guarantee is the one
+// N(proc_macro_flow_demo) gives - a crate with no `syn` dependency that uses the macros for real.
 
 #[cfg(test)]
 mod tests {

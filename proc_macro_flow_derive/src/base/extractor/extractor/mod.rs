@@ -1,8 +1,10 @@
 // @review [ ]
-// NOTE(#extractor/pipeline): S(ExtractorPipeline) names the three stages so the BOUNDS make them
+// NOTE(#extractor/pipeline): V[S(ExtractorPipeline).has(extractor + processor + generator)], "ExtractorPipeline names the three stages so bounds check them"
+// S(ExtractorPipeline) names the three stages so the BOUNDS make them
 // agree, and holds no data of its own. If it ever grows a field restating the extraction, that is the
 // drift to undo.
-// NOTE(#extractor/macro-wiring): the entry point is F(field_names); F(extractor) is the DERIVE. Two
+// NOTE(#extractor/macro-wiring): V[F(field_names).is(entry) && F(extractor).is(derive)], "field_names is the entry point; extractor is the derive"
+// the entry point is F(field_names); F(extractor) is the DERIVE. Two
 // Attr(proc_macro_derive(Extractor)) in one crate is `error[E0428]`, which forced the split.
 use syn::{DataStruct, DeriveInput, Field};
 
@@ -15,7 +17,8 @@ use crate::base::extractor::extractor::field::FieldExtraction;
 
 pub mod field;
 
-// NOTE(#extractor/recursive-source): F(extract_from) descends from its OWN source, never from a
+// NOTE(#extractor/recursive-source): V[F(extract_from).has(own source)], "extract_from descends from its own source, never a parent's"
+// F(extract_from) descends from its OWN source, never from a
 // child's genesis type. There is no Visit walk.
 
 pub(crate) struct StructExtraction<'ast> {
@@ -36,7 +39,7 @@ impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
             Ok(data) => Extraction::value(Self {
                 fields: FieldExtraction::extract_each(data.fields.iter()),
             }),
-            // validate's reason is RECORDED here - see NOTE(#validate/reason-is-offered-not-imposed)
+            // validate's reason is RECORDED here - see ID(validate/reason-is-offered-not-imposed)
             // for why that is a choice this function makes rather than something the signature
             // forces.
             Err(reason) => Extraction::failed(reason),
@@ -49,7 +52,8 @@ impl<'ast> Extractor<'ast> for StructExtraction<'ast> {
     }
 }
 
-// NOTE(#extractor/error): meaning comes from the closed E(ReasonKind) set, not a taxonomy of error
+// NOTE(#extractor/error): V[E(ReasonKind).is(closed)], "Meaning comes from the closed ReasonKind set"
+// meaning comes from the closed E(ReasonKind) set, not a taxonomy of error
 // types. Ty(Validate::ValidityError) is gone - it was written by five impls and read by none.
 
 impl<'ast> Validate<'ast> for StructExtraction<'ast> {
@@ -75,7 +79,7 @@ impl<'ast> Assert for StructExtraction<'ast> {}
 
 impl<'ast> Diagnose for StructExtraction<'ast> {
     /// Only where the children are - the `Extracted` around each one renders its reasons, because
-    /// it is the only thing that knows the node they span against. See NOTE(#render/who-renders).
+    /// it is the only thing that knows the node they span against. See ID(render/who-renders).
     fn diagnose(&self, out: &mut Vec<syn::Error>) {
         self.fields.diagnose(out);
     }
@@ -166,7 +170,7 @@ mod tests {
 
     #[test]
     fn a_source_that_pins_nothing_still_resolves() {
-        // REGRESSION for NOTE(#pipeline/source-is-associated). While the source was a trait
+        // REGRESSION for ID(pipeline/source-is-associated). While the source was a trait
         // PARAMETER these two shapes failed with `error[E0283]: type annotations needed` the
         // moment a type had more than one impl - and both are ordinary things for the derive to
         // emit for an Option field or an empty iterator. Neither argument pins the source; the

@@ -49,7 +49,7 @@ impl<'ast> Generator<'ast> for ExtractorExpansion {
         };
 
         // Parsed SEPARATELY: `parse2::<ItemImpl>` consumes its whole input, so two impls in one
-        // call is an error rather than two items. See NOTE(#derive/expansion-is-typed-items).
+        // call is an error rather than two items. See ID(derive/expansion-is-typed-items).
         let extractor = parse2::<ItemImpl>(quote! {
             impl #impl_generics ::proc_macro_flow_traits::extractor::Extractor<#lifetime>
                 for #name #type_generics #where_clause
@@ -103,7 +103,13 @@ impl<'ast> Generator<'ast> for ExtractorExpansion {
 
         // Rides along for the same reason Tr(Diagnose) does. Empty, not a descent: every field of
         // an extraction type is an S(Extracted), and a rule inside one is reached by the diagnose
-        // walk instead - NOTE(#assert/extracted-is-the-handoff).
+        // walk instead - ID(assert/extracted-is-the-handoff).
+        //
+        // TODO[ ](#assert/extractor-values-are-asked): U[Impl(Assert).has(value fields)], "derive(Extractor) never asks its #[value] fields, so a grammar held there loses its rules"
+        // 'Every field is an S(Extracted)' stopped being true with ID(extractor/fields-may-hold-values):
+        // a `#[value]` field is plain data, and if that data is a grammar its rules are never asked -
+        // the gap ID(assert/walked-fields-are-asked) closed for derive(Diagnose). Descending needs
+        // every `#[value]` type to be askable, and a borrowed `&Ident` is not yet.
         let assert = parse2::<ItemImpl>(quote! {
             impl #impl_generics ::proc_macro_flow_traits::assert::Assert
                 for #name #type_generics #where_clause
@@ -121,7 +127,7 @@ impl<'ast> Generator<'ast> for ExtractorExpansion {
         }
     }
 
-    /// No vacant form - NOTE(#derive/the-impl-is-the-product).
+    /// No vacant form - ID(derive/the-impl-is-the-product).
     fn stub(subject: &'ast DeriveInput) -> syn::Result<Self> {
         Err(syn::Error::new_spanned(
             &subject.ident,

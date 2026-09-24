@@ -4,19 +4,19 @@
 //! Closes the spine half of ID(attribute/name-value) and is what ID(attribute/list) meant by "a
 //! struct (named fields)".
 //!
-//! NOTE(#meta-list/requiredness-is-written): V[M(meta_list).matches(Option<_>)], "Requiredness is
-//! read off the field's WRITTEN type: `backoff: Option<LitStr>` is optional, `times: LitInt` is
-//! not. There is no #[required] and no second vocabulary for arity, which is ID(syntax/type)'s rule
-//! kept intact. The mechanism is syntactic, not type inspection - macro_rules matches the tokens
-//! `Option < .. >` before it matches a bare type, so a field spelled
-//! `std::option::Option<LitStr>` would be treated as REQUIRED. Nothing can detect that; the derive
-//! will not have the limitation because a proc macro sees the parsed type"
+// NOTE(#meta-list/requiredness-is-written): V[MacDef(meta_list).has(Option<_>)], "Requiredness is read off the field's written type"
+// Requiredness is read off the field's WRITTEN type: `backoff: Option<LitStr>` is optional, `times:
+// LitInt` is not. There is no #[required] and no second vocabulary for arity, which is
+// ID(syntax/type)'s rule kept intact. The mechanism is syntactic, not type inspection - macro_rules
+// matches the tokens `Option < .. >` before it matches a bare type, so a field spelled
+// `std::option::Option<LitStr>` would be treated as REQUIRED. Nothing can detect that; the derive
+// will not have the limitation because a proc macro sees the parsed type
 //!
-//! NOTE(#meta-list/uniform-read): V[F(from_meta).per_field], "Every field is read the same way -
-//! `<FieldTy as FromMeta>::from_meta(meta)` - whatever shape it is. A flag reads a Meta::Path, a
-//! leaf the right-hand side of `=`, a nested list its own body, and this macro does not know or
-//! care which. That is why ID(leaves/uniform-field-read) exists and why there is no shape dispatch
-//! here"
+// NOTE(#meta-list/uniform-read): V[F(from_meta).has(one read per field)], "Every field is read the same way, whatever its shape"
+// Every field is read the same way - `<FieldTy as FromMeta>::from_meta(meta)` - whatever shape it
+// is. A flag reads a Meta::Path, a leaf the right-hand side of `=`, a nested list its own body, and
+// this macro does not know or care which. That is why ID(leaves/uniform-field-read) exists and why
+// there is no shape dispatch here
 
 /// Declare a struct read from a list body.
 ///
@@ -90,14 +90,15 @@ macro_rules! meta_list {
             /// Replaces the `const KEYS: &[&str]` this macro used to emit. That const was a
             /// second list of the same names with nothing holding the two in step; a Ty(Node) is
             /// the shape ID(diagnostics) and the Node half of ID(reason) actually need, and it
-            /// carries arity, which a bare key list could not. See NOTE(#keys/one-table).
+            /// carries arity, which a bare key list could not. See ID(keys/one-table).
             const NODE: $crate::node::Node = $crate::node::Node {
                 name: ::std::stringify!($name),
                 children: &[
                     $(
                         $crate::node::Child {
                             key: $key,
-                            // TODO[ ](#meta-list/aliases): M(meta_list) has no alias syntax yet -
+                            // TODO[ ](#meta-list/aliases): U[MacDef(meta_list) ->+ alias syntax], "meta_list! has no alias syntax yet"
+                            // M(meta_list) has no alias syntax yet -
                             // ID(alias-attr) is the author-facing surface and lands with the
                             // derive. The field is here so Ty(Node) does not change shape when it
                             // does.
@@ -113,8 +114,13 @@ macro_rules! meta_list {
         }
 
         // Askable, so a grammar holding one can descend into its fields -
-        // NOTE(#assert/leaves-are-askable).
+        // ID(assert/leaves-are-askable).
         impl $crate::assert::Assert for $name {}
+
+        // And walkable - ID(diagnose/values-are-walkable).
+        impl $crate::render::Diagnose for $name {
+            fn diagnose(&self, _: &mut ::std::vec::Vec<$crate::syn::Error>) {}
+        }
 
         impl $crate::vocab::leaves::FromMeta for $name {
             fn from_meta(meta: &$crate::syn::Meta) -> $crate::syn::Result<Self> {
@@ -196,7 +202,7 @@ macro_rules! meta_list {
                 // `errors.finish()` is CONSUMED to decide, rather than tested with is_empty and
                 // then unwrapped. The old shape called `.err().expect("not empty")` in the else
                 // arm - a panic standing on an invariant two lines apart, in code that runs in the
-                // AUTHOR'S compile. See NOTE(#vocab/no-panics-in-generated-code).
+                // AUTHOR'S compile. See ID(vocab/no-panics-in-generated-code).
                 match errors.finish() {
                     ::std::result::Result::Ok(()) => ::std::result::Result::Ok($name {
                         $( $field: $crate::meta_list!(@take $req $field, $key, body)?, )*

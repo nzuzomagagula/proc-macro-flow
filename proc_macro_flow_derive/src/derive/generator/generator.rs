@@ -47,7 +47,7 @@ impl<'ast> Generator<'ast> for GeneratorExpansion {
                     #(#calls)*
 
                     // The author supplies the SHAPE; the derive supplied everything else. See
-                    // NOTE(#generator-derive/plumbing-not-logic).
+                    // ID(generator-derive/plumbing-not-logic).
                     match Self::assemble(&input, #(#names),*) {
                         ::std::result::Result::Ok(item) => {
                             out.value = ::std::option::Option::Some(item);
@@ -103,7 +103,7 @@ impl<'ast> Generator<'ast> for GeneratorExpansion {
         }
     }
 
-    /// No vacant form - NOTE(#derive/the-impl-is-the-product).
+    /// No vacant form - ID(derive/the-impl-is-the-product).
     fn stub(subject: &'ast DeriveInput) -> syn::Result<Self> {
         Err(syn::Error::new_spanned(
             &subject.ident,

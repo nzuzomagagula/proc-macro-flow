@@ -29,7 +29,7 @@ impl<'ast> Processor<'ast> for GeneratorDeclaration<'ast> {
     /// and isolates its failure, and a second that produces its vacant form.
     fn process(input: Self::Input) -> Extraction<Self::Output> {
         let node = *input.source();
-        // NOTE(#processor/reasons-are-new-not-inherited).
+        // ID(processor/reasons-are-new-not-inherited).
         let mut out: Extraction<Self::Output> = Extraction::default();
 
         let Some(value) = input.into_extraction().value else {
@@ -37,7 +37,7 @@ impl<'ast> Processor<'ast> for GeneratorDeclaration<'ast> {
         };
 
         // A leaf wrapping a syn item borrows nothing, so it may have no lifetime of its own - see
-        // NOTE(#derive/lifetime-is-introduced-when-absent).
+        // ID(derive/lifetime-is-introduced-when-absent).
         let (generics, lifetime) = super::super::stage_lifetime(node);
 
         let mut names = Vec::new();

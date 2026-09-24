@@ -1,15 +1,16 @@
 // @review [ ]
 //! What a stage DECLARES about itself: the node it reads, and the arguments beside it.
 //!
-//! NOTE(#stage/one-reader-two-generators): V[S(StageDeclaration).used_by(Validate, Processor)],
-//! "Attr(derive(Validate)) and Attr(derive(Processor)) read the SAME declaration - `#[source(Ty)]`,
-//! plus `#[args(Ty)]` for the one that cares - and differ only in the impl they write. So they
-//! share an extractor and a processor and part company at the generator, which is two pipelines
-//! over one reader rather than two readers saying the same thing twice.
-//!
-//! That is the same permission ID(pipeline/no-processor-is-the-extractor) grants in the other
-//! direction: a stage type is named by whichever roles it can honestly fill, and nothing says a
-//! type may fill a role in only one pipeline."
+// NOTE(#stage/one-reader-two-generators): V[S(StageDeclaration).has(Validate + Processor)], "One stage reader, two generators"
+//
+// Attr(derive(Validate)) and Attr(derive(Processor)) read the SAME declaration - `#[source(Ty)]`,
+// plus `#[args(Ty)]` for the one that cares - and differ only in the impl they write. So they
+// share an extractor and a processor and part company at the generator, which is two pipelines
+// over one reader rather than two readers saying the same thing twice.
+//
+// That is the same permission ID(pipeline/no-processor-is-the-extractor) grants in the other
+// direction: a stage type is named by whichever roles it can honestly fill, and nothing says a
+// type may fill a role in only one pipeline.
 
 use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::extractor::{
@@ -109,15 +110,16 @@ impl<'ast> Processor<'ast> for StageDeclaration<'ast> {
 
     /// The one real decision these two derives make.
     ///
-    /// NOTE(#stage/lifetime-is-the-processing): V[F(process).computes(lifetime)], "It looks like an
-    /// identity and is not quite: every stage trait carries `'ast`, but not every stage TYPE
-    /// declares one, so the impl's generics are the type's own plus an INTRODUCED lifetime when it
-    /// has none (ID(derive/lifetime-is-introduced-when-absent)). Deciding that needs the whole
-    /// declaration at once, which is what makes it processing rather than extraction."
+    /// NOTE(#stage/lifetime-is-the-processing): V[F(process).has(computes the lifetime)], "Processing computes the impl generics, including 'ast"
+    /// It looks like an identity and is not quite: every stage trait carries `'ast`, but not every
+    /// stage TYPE declares one, so the impl's generics are the type's own plus an INTRODUCED
+    /// lifetime when it has none (ID(derive/lifetime-is-introduced-when-absent)). Deciding that
+    /// needs the whole declaration at once, which is what makes it processing rather than
+    /// extraction.
     fn process(input: Self::Input) -> Extraction<Self::Output> {
         let node = *input.source();
         // The input's reasons stay where they are - the walk has already rendered them.
-        // NOTE(#processor/reasons-are-new-not-inherited).
+        // ID(processor/reasons-are-new-not-inherited).
         let mut out: Extraction<Self::Output> = Extraction::default();
 
         let Some(value) = input.into_extraction().value else {

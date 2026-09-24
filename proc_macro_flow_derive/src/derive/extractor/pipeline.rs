@@ -7,9 +7,9 @@ use super::extractor::ExtractorExtraction;
 use super::generator::ExtractorExpansion;
 
 /// `#[derive(Extractor)]`, wired.
-// TODO[x](#extractor/derive-is-a-pipeline): R[F(derive_extractor) -> S(ExtractorWiring)], "The
-// first with a REAL validate - a DeriveInput narrowed to named fields - and a real processor:
-// arity off each field's written type picks F(extract_from), F(extract_each) or F(extract_maybe)"
+// TODO[x](#extractor/derive-is-a-pipeline): R[F(derive_extractor) -> S(ExtractorWiring)], "derive(Extractor) is a pipeline with a real validate and processor"
+// The first with a REAL validate - a DeriveInput narrowed to named fields - and a real processor:
+// arity off each field's written type picks F(extract_from), F(extract_each) or F(extract_maybe)
 pub(crate) struct ExtractorWiring;
 
 impl<'ast> Pipeline<'ast> for ExtractorWiring {
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn diagnose_visits_every_declared_child() {
         // A forgotten visit is a silently unreachable subtree, which is why this is generated
-        // rather than opt-in - NOTE(#derive/diagnose-rides-along).
+        // rather than opt-in - ID(derive/diagnose-rides-along).
         let out = expand(
             "#[source(DeriveInput)] struct Read<'ast> { \
              #[from(a())] a: Vec<Extracted<C<'ast>, &'ast I>>, \

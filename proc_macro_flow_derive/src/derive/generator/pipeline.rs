@@ -7,9 +7,9 @@ use super::extractor::GeneratorDeclaration;
 use super::generator::GeneratorExpansion;
 
 /// `#[derive(Generator)]`, wired.
-// TODO[x](#generator/derive-is-a-pipeline): R[F(derive_generator) -> S(GeneratorWiring)], "Its
-// validate is the newtype check - a generator IS a tuple struct, and what it wraps is what it
-// emits (ID(generation/newtype-per-item))"
+// TODO[x](#generator/derive-is-a-pipeline): R[F(derive_generator) -> S(GeneratorWiring)], "derive(Generator) is a pipeline; validate is the newtype check"
+// Its validate is the newtype check - a generator IS a tuple struct, and what it wraps is what it
+// emits (ID(generation/newtype-per-item))
 pub(crate) struct GeneratorWiring;
 
 impl<'ast> Pipeline<'ast> for GeneratorWiring {
