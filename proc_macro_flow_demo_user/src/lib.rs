@@ -1,5 +1,5 @@
 // @review [ ]
-// TODO[ ](#user/the-chain-ends-here): C[N(demo_user)], "Nothing downstream of the macro author was
+// TODO[x](#user/the-chain-ends-here): C[N(demo_user)], "Nothing downstream of the macro author was
 // ever compiled, so every claim about what a USER needs was untested. This crate depends on the
 // macro and nothing else, which makes its Cargo.toml the assertion"
 //! The furthest user: somebody who writes `#[derive(Columns)]` and never reads this framework.
