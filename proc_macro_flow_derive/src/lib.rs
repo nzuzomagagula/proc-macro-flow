@@ -96,7 +96,7 @@ pub fn syntax(input: TokenStream) -> TokenStream {
 /// child and what the parent feeds it. The author supplies `assemble` and `assemble_stub` — the
 /// derive cannot know what SHAPE the parent's item is. See
 /// NOTE(#generator-derive/plumbing-not-logic).
-// TODO[ ](#generator-derive/wiring-renamed): R[Attr(generator).on(derive) -> Attr(builds)], "One
+// TODO[x](#generator-derive/wiring-renamed): R[Attr(generator).on(derive) -> Attr(builds)], "One
 // head meaning two things, and F(stripped) with no way to tell them apart - so a generator inside a
 // pipeline module could not use its own derive"
 // NOTE(#generator-derive/wiring-has-its-own-name): V[Attr(builds) != E(Role).V(Generator)], "Was
