@@ -1,7 +1,7 @@
 // @review [~]
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
-use syn::{DeriveInput, Item, parse_macro_input};
+use quote::ToTokens;
+use syn::{DeriveInput, parse_macro_input};
 
 use proc_macro_flow_traits::pipeline::Pipeline;
 
@@ -87,6 +87,10 @@ pub fn processor(input: TokenStream) -> TokenStream {
     derive::ProcessorWiring::run(&parsed).to_token_stream().into()
 }
 
+// TODO[ ](#derive/entries-are-parse-and-run): D[F(expand)], "The shared entry every derive went
+// through could report exactly ONE error, because `?` returns on the first - so a grammar with
+// three mistakes showed one and cost the author two extra recompiles. ID(no-result) is why a
+// pipeline cannot do that"
 // NOTE(#derive/every-entry-is-parse-and-run): V[N(lib).!F(expand)], "There was a shared F(expand)
 // here that every derive went through: parse the input, call a function returning
 // `Result<Vec<Item>>`, lower it or lower the error. It is GONE, and its absence is the measure of

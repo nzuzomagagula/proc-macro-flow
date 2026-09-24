@@ -222,6 +222,10 @@ impl<'ast> Generator<'ast> for Wiring {
     }
 }
 
+// TODO[ ](#pipeline/entry-reads-args): U[F(Entry::generate).emits(two_input_parse)], "The
+// generated attribute entry took `_attr` and threw it away, so `#[trace(level = ..)]` could not be
+// written at all. It parses both inputs now, reading the arguments through the ordinary grammar
+// reader"
 impl<'ast> Generator<'ast> for Entry {
     type Input = &'ast ProcessedPipeline<'ast>;
     type Subject = &'ast Ident;

@@ -19,6 +19,12 @@
 //! Worth keeping as a caution rather than deleting. The original note was well argued and wrong,
 //! and it stood long enough to shape ~60 lines of bespoke orchestration around it"
 
+// TODO[ ](#attribute/source-is-a-pair): C[S(Attributed)] && C[Tr(Annotated)], "An attribute
+// macro has TWO inputs and Ty(Source) was one borrowed node, so the arguments were discarded -
+// the generated entry read `_attr: TokenStream`. A pair that is itself a node carries both, and
+// Tr(Annotated) makes the macro KIND a fact the compiler checks rather than a promise
+// E(MacroKind) makes"
+
 use quote::ToTokens;
 use syn::visit::Visit;
 

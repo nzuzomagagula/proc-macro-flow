@@ -88,6 +88,10 @@ pub trait FromMeta: Sized {
 // They are emitted from M(leaf) and M(leaf_meta) - the same two lists that already decide what a
 // leaf is - rather than written out again, so a leaf added later cannot be askable in one sense
 // and not the other."
+// TODO[ ](#attribute/args-are-a-grammar): C[Tr(FromBody)] && V[Tr(FromMeta).delegates(Tr(FromBody))],
+// "An attribute macro's arguments must obey the SAME rules as a helper attribute - same keys,
+// aliases, arity, shapes, did-you-mean - rather than a second grammar kept in step by hand. The
+// reader never wanted the head, so one split is the whole adapter"
 pub trait FromBody: Sized {
     /// Read the body.
     ///

@@ -86,6 +86,10 @@ pub trait Processor<'ast>: Sized {
     /// What the generator receives.
     type Output;
 
+    // TODO[ ](#reason/reported-once): U[F(process).R(reasons).new_only], "Six processors copied
+    // their input's reasons forward, and F(run) had already rendered those from the tree, so EVERY
+    // diagnostic in the crate came out twice. Nothing caught it because every test asserted a
+    // complaint was present and none asserted how many"
     /// NOTE(#processor/reasons-are-new-not-inherited): V[F(process).R(reasons).new_only], "The
     /// E(Reason)s on a processor's OUTPUT are the ones PROCESSING discovered, never the ones its
     /// input already carried. Inheriting them double-reports, because F(run) renders the whole

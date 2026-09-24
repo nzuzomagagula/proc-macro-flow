@@ -366,6 +366,9 @@ impl<'ast> Generator<'ast> for ExtractorExpansion {
 }
 
 /// `#[derive(Extractor)]`, wired.
+// TODO[ ](#extractor/derive-is-a-pipeline): R[F(derive_extractor) -> S(ExtractorWiring)], "The
+// first with a REAL validate - a DeriveInput narrowed to named fields - and a real processor:
+// arity off each field's written type picks F(extract_from), F(extract_each) or F(extract_maybe)"
 pub(crate) struct ExtractorWiring;
 
 impl<'ast> Pipeline<'ast> for ExtractorWiring {

@@ -26,6 +26,10 @@ use extractor::{PipelineExtraction, PipelineSource};
 use generator::{PipelineArgs, PipelineExpansion};
 
 /// The wiring this macro runs through - the same marker type it generates for everyone else.
+// TODO[ ](#pipeline/macro-is-a-pipeline): C[Impl(Pipeline).for(PipelineWiring)] && D[F(expand).orchestration],
+// "The macro that writes pipelines drove its own three stages by hand, because
+// ID(pipeline/subject-equals-source-breaks-attributes) concluded Tr(Pipeline) could not express an
+// attribute macro. It can - the binding was never the obstacle, a single-node Ty(Source) was"
 pub(crate) struct PipelineWiring;
 
 impl<'ast> Pipeline<'ast> for PipelineWiring {
@@ -78,7 +82,7 @@ mod tests {
     /// the macro's stages line up the way every generated pipeline's must. This function is never
     /// called; it not compiling is the failure.
     #[allow(dead_code)]
-    fn the_macro_is_a_pipeline<'ast>() {
+    fn the_macro_is_a_pipeline() {
         fn requires_a_pipeline<'ast, P: Pipeline<'ast>>() {}
         requires_a_pipeline::<PipelineWiring>();
     }

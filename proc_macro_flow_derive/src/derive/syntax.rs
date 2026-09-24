@@ -433,6 +433,10 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
 }
 
 /// `#[derive(Syntax)]`, wired.
+// TODO[ ](#syntax/derive-is-a-pipeline): R[F(derive_syntax) -> S(SyntaxWiring)], "The largest
+// split: extraction carries Attr(alias), Attr(shape) and the rule metas AS WRITTEN, and everything
+// derived - heck's casings, the entry head, arity, and the three rule checks - is processing,
+// which is the only stage that sees every field at once"
 pub(crate) struct SyntaxWiring;
 
 impl<'ast> Pipeline<'ast> for SyntaxWiring {
@@ -644,6 +648,10 @@ impl<'ast> Grammar<'ast> {
     }
 }
 
+// TODO[ ](#assert/derive-reads-rules): C[Attr(assert)] && V[F(Rule::resolve).rejects(required)],
+// "Attr(assert) read off the type, with three checks a derive can make and a runtime cannot: the
+// field exists, the rule takes that many keys, and - the one that earns it - a REQUIRED field is
+// always written, so a rule asking whether it was is a statement its own type contradicts"
 impl<'ast> Rule<'ast> {
     fn read(meta: syn::Meta, fields: &[Field<'ast>]) -> Result<Self> {
         match meta {
@@ -760,7 +768,11 @@ impl Grammar<'_> {
     /// The descent is unconditional and needs no knowledge of which fields are grammars, because
     /// every leaf is askable too - NOTE(#assert/leaves-are-askable).
     fn assert(&self) -> Result<ImplItem> {
-        let checks = self.rules.iter().map(|rule| rule.emit(&self.fields));
+        let checks = self
+            .rules
+            .iter()
+            .map(|rule| rule.emit(&self.fields))
+            .collect::<Result<Vec<syn::Stmt>>>()?;
         let descend = self.fields.iter().map(|field| {
             let ident = field.ident;
             quote!(::proc_macro_flow_traits::assert::Assert::assert(&self.#ident, out);)
@@ -780,13 +792,13 @@ impl Field<'_> {
     ///
     /// `Arity::One` never reaches here - a required key is always written, and
     /// ID(assert/rules-are-checked-at-derive-time) rejects a rule naming one.
-    fn was_written(&self) -> proc_macro2::TokenStream {
+    fn was_written(&self) -> Result<syn::Expr> {
         let ident = self.ident;
-        match self.arity {
+        parse2(match self.arity {
             Arity::Maybe => quote!(::std::option::Option::is_some(&self.#ident)),
             Arity::Many => quote!(!::std::vec::Vec::is_empty(&self.#ident)),
             Arity::One => quote!(true),
-        }
+        })
     }
 }
 
@@ -796,26 +808,31 @@ impl Rule<'_> {
     /// Each one records a E(Reason) and carries on - there is no `?` and no early return, so a
     /// grammar stating three rules reports all three it breaks rather than the first
     /// (NOTE(#assert/no-result)).
-    fn emit(&self, fields: &[Field<'_>]) -> proc_macro2::TokenStream {
+    fn emit(&self, fields: &[Field<'_>]) -> Result<syn::Stmt> {
         let (kind, named, _) = match self {
             // An author's rule words its OWN reason, so nothing is built here -
             // NOTE(#assert/with-never-violates).
             Rule::With(path) => {
-                return quote! {
+                return parse2(quote! {
                     <#path as ::proc_macro_flow_traits::assert::Rule>::check(self, out);
-                };
+                });
             }
             Rule::Builtin { kind, fields, head } => (kind, fields, head),
         };
 
-        let presence = named.iter().map(|name| {
-            fields
-                .iter()
-                .find(|field| field.ident == *name)
-                // Resolved at read time, so this cannot miss on a grammar that compiled.
-                .map(Field::was_written)
-                .unwrap_or_else(|| quote!(false))
-        });
+        // Resolved when the rule was read, so a miss here cannot happen on a grammar that got
+        // this far - and it still bubbles rather than panicking (NOTE(#derive/no-panics)).
+        let presence = named
+            .iter()
+            .map(|name| match fields.iter().find(|field| field.ident == *name) {
+                Some(field) => field.was_written(),
+                None => Err(Error::new_spanned(
+                    name,
+                    "internal: a rule named a field that resolved earlier and cannot be found \
+                     now. This is a proc_macro_flow bug.",
+                )),
+            })
+            .collect::<Result<Vec<syn::Expr>>>()?;
 
         // The VARIANT ident, derived from the vocabulary's own spelling rather than written out
         // again - `one_of` becomes `OneOf`, `at_most_one` becomes `AtMostOne`. A second table
@@ -836,14 +853,13 @@ impl Rule<'_> {
 
         // `requires` asks about ONE key's effect on another, so it is not a count at all.
         if let AssertKind::Requires = kind {
-            let mut presence = presence;
-            let first = presence.next().unwrap_or_else(|| quote!(false));
-            let second = presence.next().unwrap_or_else(|| quote!(true));
-            return quote! {
+            let mut presence = presence.into_iter();
+            let (first, second) = (presence.next(), presence.next());
+            return parse2(quote! {
                 if #first && !(#second) {
                     #violation
                 }
-            };
+            });
         }
 
         let test = match kind {
@@ -856,7 +872,7 @@ impl Rule<'_> {
             AssertKind::Requires | AssertKind::With => quote!(false),
         };
 
-        quote! {
+        parse2(quote! {
             {
                 let written = [ #(#presence),* ]
                     .into_iter()
@@ -866,7 +882,7 @@ impl Rule<'_> {
                     #violation
                 }
             }
-        }
+        })
     }
 }
 
@@ -876,29 +892,27 @@ mod tests {
     use quote::ToTokens;
     use syn::parse_str;
 
-    fn expand(source: &str) -> Result<String> {
+    /// Drive the WHOLE pipeline, exactly as the entry function does.
+    fn expand(source: &str) -> String {
         let input: DeriveInput = parse_str(source).expect("the item parses");
-        derive_syntax(input).map(|items| {
-            items
-                .iter()
-                .map(|item| item.to_token_stream().to_string())
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        SyntaxWiring::run(&input).to_token_stream().to_string()
     }
 
+    /// The same, asserting the grammar was refused.
+    ///
+    /// A pipeline does not return an error - it emits one, beside whatever it could still build.
+    /// So a rejection is read out of the OUTPUT now, which is also what the author sees.
     fn rejected(source: &str) -> String {
-        match expand(source) {
-            Err(error) => error.to_string(),
-            Ok(out) => panic!("the derive accepted this: {out}"),
-        }
+        let out = expand(source);
+        assert!(out.contains("compile_error"), "the derive accepted this: {out}");
+        out
     }
 
     #[test]
     fn a_grammar_with_no_rules_still_gets_an_assert_that_descends() {
         // The descent is what carries a NESTED grammar's rules up, so it is emitted whether or not
         // this type states any of its own.
-        let out = expand("struct Retry { times: Option<LitInt> }").expect("expands");
+        let out = expand("struct Retry { times: Option<LitInt> }");
 
         assert!(out.contains("Assert for Retry"), "{out}");
         assert!(out.contains("Assert :: assert (& self . times"), "{out}");
@@ -908,8 +922,7 @@ mod tests {
     fn a_rule_becomes_a_check_against_the_arity_the_type_declared() {
         let out = expand(
             "#[assert(one_of(times, forever))] struct Retry { times: Option<LitInt>, forever: Option<LitBool> }",
-        )
-        .expect("expands");
+        );
 
         assert!(out.contains("AssertKind :: OneOf"), "{out}");
         // Presence read off the TYPE - Option asks is_some, and nothing declared it.
@@ -919,7 +932,7 @@ mod tests {
     #[test]
     fn a_repeated_field_asks_whether_it_is_empty() {
         let out = expand("#[assert(any_of(a, b))] struct G { a: Vec<LitStr>, b: Vec<LitStr> }")
-            .expect("expands");
+            ;
 
         assert!(out.contains("! :: std :: vec :: Vec :: is_empty (& self . a)"), "{out}");
     }
@@ -983,7 +996,7 @@ mod tests {
     #[test]
     fn an_authors_rule_is_called_against_self() {
         let out = expand("#[assert(with = NoZeroRetries)] struct G { a: Option<LitStr> }")
-            .expect("expands");
+            ;
 
         assert!(out.contains("NoZeroRetries as :: proc_macro_flow_traits :: assert :: Rule"), "{out}");
         assert!(out.contains(":: check (self , out)"), "{out}");

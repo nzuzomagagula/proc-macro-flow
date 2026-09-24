@@ -387,6 +387,9 @@ impl<'ast> Generator<'ast> for GeneratorExpansion {
 }
 
 /// `#[derive(Generator)]`, wired.
+// TODO[ ](#generator/derive-is-a-pipeline): R[F(derive_generator) -> S(GeneratorWiring)], "Its
+// validate is the newtype check - a generator IS a tuple struct, and what it wraps is what it
+// emits (ID(generation/newtype-per-item))"
 pub(crate) struct GeneratorWiring;
 
 impl<'ast> Pipeline<'ast> for GeneratorWiring {

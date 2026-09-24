@@ -110,6 +110,10 @@ impl Args {
     }
 }
 
+// TODO[ ](#pipeline/declarations-are-read): U[S(ProcessedPipeline).P(source)] && C[E(Emission)],
+// "`source = Ty` was written in every pipeline test since the macro existed and read by NOTHING -
+// the entry hardcoded Ty(DeriveInput), which is right for a derive and silently wrong for
+// everything else. Resolving it needs the whole module at once, which is this stage's job"
 impl<'ast> Processor<'ast> for PipelineExtraction<'ast> {
     type Input = Extracted<PipelineExtraction<'ast>, PipelineSource<'ast>>;
     type Output = ProcessedPipeline<'ast>;

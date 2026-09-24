@@ -23,6 +23,11 @@
 
 use syn::Error;
 
+// TODO[ ](#assert/rules-ride-the-walk): U[Tr(Diagnose)], "Tr(Assert) becomes a SUPERTRAIT. A rule stated three
+// levels down must reach the top, spanned against its own node. F(render) already descends every
+// child and already knows that node, so making Tr(Assert) a supertrait gets propagation with no
+// second traversal - see NOTE(#assert/diagnose-requires-assert) for what it costs"
+
 use crate::assert::Assert;
 use crate::extractor::{Extracted, Reason, ReasonKind};
 
