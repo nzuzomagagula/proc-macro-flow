@@ -25,7 +25,7 @@
 ///
 /// `TryFrom<&Meta>` rejects anything that is not a `Meta::Path`: a flag written as `no_clean(x)` or
 /// `no_clean = 1` has a payload, and a flag by definition has nowhere to put one.
-// TODO[ ](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "M(flag), M(name_value)
+// TODO[x](#vocab/macros-need-the-reexports): U[M(flag).paths -> $crate], "M(flag), M(name_value)
 // and M(variants) emitted `::quote::ToTokens` and `::proc_macro2::Span` as BARE PATHS, so a crate
 // using any of them had to depend on quote and proc_macro2 under exactly those names - the same
 // bargain ID(traits/reexport-syn) already closed for syn, and one the derives were fixed for
