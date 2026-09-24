@@ -1,4 +1,14 @@
 // @review [~]
+// NOTE(#derive/inception-is-the-point): V[N(x).N(x).deliberate], "`clippy::module_inception` fires
+// on N(extractor/extractor), N(processor/processor) and N(generator/generator), and each one is
+// exactly what ID(derive/structure-mirrors-the-pattern) asked for: a derive is a pipeline, so its
+// directory holds the three stages, and one of those stages shares the derive's own name. Renaming
+// to silence the lint would cost the property the structure exists to carry.
+//
+// Allowed here rather than per module so the decision sits in one place. N(base/extractor) has had
+// the same shape since long before the lint was looked at."
+#![allow(clippy::module_inception)]
+
 use proc_macro::TokenStream;
 use quote::ToTokens;
 use syn::{DeriveInput, parse_macro_input};

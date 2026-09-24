@@ -16,7 +16,7 @@
 //! Deriving what you want generated and hand-writing the rest is ordinary Rust and needs no opt-out
 //! attribute, which is the same reasoning ID(processor/optionality) already settled"
 
-// TODO[~](#derive/structure-mirrors-the-pattern): M[N(derive).F(flat) => N(derive).N(stage)],
+// TODO[x](#derive/structure-mirrors-the-pattern): M[N(derive).F(flat) => N(derive).N(stage)],
 // "Each derive BECAME a pipeline in the conversion and stayed a single flat file, so the shape is
 // true of the code and invisible in the tree. N(base/extractor) already shows what it should look
 // like - a directory whose mod.rs names extractor, processor, generator and pipeline - and a
@@ -32,11 +32,11 @@ mod stage;
 mod syntax;
 mod validate;
 
-pub(crate) use extractor::ExtractorWiring;
-pub(crate) use generator::GeneratorWiring;
-pub(crate) use processor::ProcessorWiring;
-pub(crate) use syntax::SyntaxWiring;
-pub(crate) use validate::ValidateWiring;
+pub(crate) use extractor::pipeline::ExtractorWiring;
+pub(crate) use generator::pipeline::GeneratorWiring;
+pub(crate) use processor::pipeline::ProcessorWiring;
+pub(crate) use syntax::pipeline::SyntaxWiring;
+pub(crate) use validate::pipeline::ValidateWiring;
 
 use ext::TypeExt;
 use syn::{DeriveInput, Result, Type};

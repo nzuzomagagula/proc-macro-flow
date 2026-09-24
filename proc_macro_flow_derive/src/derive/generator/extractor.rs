@@ -1,39 +1,26 @@
 // @review [ ]
-//! `#[derive(Generator)]` — a parent declares its children and what it feeds each one.
-//!
-//! NOTE(#generator-derive/plumbing-not-logic): V[F(derive_generator).emits(composition) && !emits(assemble)],
-//! "The derive emits the COMPOSITION - call each child with its fed input, absorb the result, stub
-//! the ones that failed - and requires the author to write F(assemble), which puts the children
-//! into an item. That split is forced rather than chosen: the derive cannot know what SHAPE a
-//! parent's item is. It knows there are two children; it cannot know they belong inside
-//! `impl Thing { .. }` rather than a module or a match arm.
-//!
-//! Which is the same split ID(processor/derive-enforces) settles for processing, and it lands the
-//! same way: a missing F(assemble) is a compile error, not a silently trivial generator"
+//! Reading a generator's declaration: what it consumes, and which children it composes.
 
 use proc_macro_flow_traits::assert::Assert;
 use proc_macro_flow_traits::extractor::{
     Extracted, Extraction, Extractor, Reason, ReasonKind, Validate,
 };
-use proc_macro_flow_traits::generator::Generator;
-use proc_macro_flow_traits::pipeline::Pipeline;
-use proc_macro_flow_traits::processor::Processor;
 use proc_macro_flow_traits::render::Diagnose;
-use quote::{quote, ToTokens};
+use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{parse2, Data, DeriveInput, Error, Expr, Ident, ItemImpl, Result, Stmt, Token, Type};
+use syn::{parse2, Data, DeriveInput, Error, Expr, Ident, Result, Stmt, Token, Type};
 
-use super::Arity;
-use super::ext::{AttributesExt, TypeExt};
+use super::super::Arity;
+use super::super::ext::{AttributesExt, TypeExt};
 
 /// One declared child: its name, its type, and what the parent feeds it.
-struct Child {
-    name: Ident,
+pub(crate) struct Child {
+    pub(crate) name: Ident,
     /// The child's type as WRITTEN, so arity is read off it - ID(from/arity-from-type).
-    declared: Type,
+    pub(crate) declared: Type,
     /// Spliced verbatim and never inspected, the Attr(from) bargain.
-    feed: Expr,
+    pub(crate) feed: Expr,
 }
 
 impl Parse for Child {
@@ -59,9 +46,9 @@ impl Child {
 }
 
 /// `from = Ty, subject = Ty` — what this generator consumes, and what a stub is written against.
-struct Wiring {
-    from: Type,
-    subject: Type,
+pub(crate) struct Wiring {
+    pub(crate) from: Type,
+    pub(crate) subject: Type,
 }
 
 impl Parse for Wiring {
@@ -91,8 +78,8 @@ impl Parse for Wiring {
 }
 
 struct Assign {
-    key: Ident,
-    value: Type,
+    pub(crate) key: Ident,
+    pub(crate) value: Type,
 }
 
 impl Parse for Assign {
@@ -108,12 +95,12 @@ impl Parse for Assign {
 
 /// A generator type, as declared.
 pub(crate) struct GeneratorDeclaration<'ast> {
-    name: &'ast Ident,
-    declared: &'ast syn::Generics,
-    wiring: Wiring,
-    children: Vec<Child>,
+    pub(crate) name: &'ast Ident,
+    pub(crate) declared: &'ast syn::Generics,
+    pub(crate) wiring: Wiring,
+    pub(crate) children: Vec<Child>,
     /// One index per field, so the `ToTokens` impl concatenates them in declaration order.
-    indices: Vec<syn::Index>,
+    pub(crate) indices: Vec<syn::Index>,
 }
 
 impl<'ast> Validate<'ast> for GeneratorDeclaration<'ast> {
@@ -215,193 +202,10 @@ impl Diagnose for GeneratorDeclaration<'_> {
     fn diagnose(&self, _: &mut Vec<syn::Error>) {}
 }
 
-/// Every declared child turned into the statements that produce it.
-pub(crate) struct ProcessedGenerator<'ast> {
-    name: &'ast Ident,
-    declared: &'ast syn::Generics,
-    generics: syn::Generics,
-    lifetime: syn::Lifetime,
-    from: Type,
-    subject: Type,
-    names: Vec<Ident>,
-    calls: Vec<Stmt>,
-    stubs: Vec<Stmt>,
-    indices: Vec<syn::Index>,
-}
-
-impl<'ast> Processor<'ast> for GeneratorDeclaration<'ast> {
-    type Input = Extracted<GeneratorDeclaration<'ast>, &'ast DeriveInput>;
-    type Output = ProcessedGenerator<'ast>;
-
-    /// The real work: each declared child becomes a statement that calls it, absorbs its result
-    /// and isolates its failure, and a second that produces its vacant form.
-    fn process(input: Self::Input) -> Extraction<Self::Output> {
-        let node = *input.source();
-        // NOTE(#processor/reasons-are-new-not-inherited).
-        let mut out: Extraction<Self::Output> = Extraction::default();
-
-        let Some(value) = input.into_extraction().value else {
-            return out;
-        };
-
-        // A leaf wrapping a syn item borrows nothing, so it may have no lifetime of its own - see
-        // NOTE(#derive/lifetime-is-introduced-when-absent).
-        let (generics, lifetime) = super::stage_lifetime(node);
-
-        let mut names = Vec::new();
-        let mut calls = Vec::new();
-        let mut stubs = Vec::new();
-        for child in &value.children {
-            match (child.call(), child.stub()) {
-                (Ok(call), Ok(stub)) => {
-                    names.push(child.name.clone());
-                    calls.push(call);
-                    stubs.push(stub);
-                }
-                (Err(error), _) | (_, Err(error)) => {
-                    out.reasons.push(Reason::new(ReasonKind::Internal(error)));
-                }
-            }
-        }
-
-        out.value = Some(ProcessedGenerator {
-            name: value.name,
-            declared: value.declared,
-            generics,
-            lifetime,
-            from: value.wiring.from,
-            subject: value.wiring.subject,
-            names,
-            calls,
-            stubs,
-            indices: value.indices,
-        });
-        out
-    }
-}
-
-/// The `Generator` impl and the `ToTokens` that lowers what it built.
-pub(crate) struct GeneratorExpansion(ItemImpl, ItemImpl);
-
-impl ToTokens for GeneratorExpansion {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        self.0.to_tokens(tokens);
-        self.1.to_tokens(tokens);
-    }
-}
-
-impl<'ast> Generator<'ast> for GeneratorExpansion {
-    type Input = ProcessedGenerator<'ast>;
-    type Subject = &'ast DeriveInput;
-    type Output = Self;
-
-    fn generate(input: ProcessedGenerator<'ast>) -> Extraction<Self> {
-        let (impl_generics, _, _) = input.generics.split_for_impl();
-        let (to_tokens_generics, type_generics, where_clause) = input.declared.split_for_impl();
-        let (name, lifetime) = (input.name, &input.lifetime);
-        let (from, subject) = (&input.from, &input.subject);
-        let (names, calls, stubs) = (&input.names, &input.calls, &input.stubs);
-        let indices = &input.indices;
-
-        let generator = parse2::<ItemImpl>(quote! {
-            impl #impl_generics ::proc_macro_flow_traits::generator::Generator<#lifetime>
-                for #name #type_generics #where_clause
-            {
-                type Input = #from;
-                type Subject = #subject;
-                type Output = Self;
-
-                fn generate(
-                    input: Self::Input,
-                ) -> ::proc_macro_flow_traits::extractor::Extraction<Self> {
-                    let mut out = ::proc_macro_flow_traits::extractor::Extraction::default();
-
-                    #(#calls)*
-
-                    // The author supplies the SHAPE; the derive supplied everything else. See
-                    // NOTE(#generator-derive/plumbing-not-logic).
-                    match Self::assemble(&input, #(#names),*) {
-                        ::std::result::Result::Ok(item) => {
-                            out.value = ::std::option::Option::Some(item);
-                            out
-                        }
-                        ::std::result::Result::Err(error) => {
-                            out.reasons.push(
-                                ::proc_macro_flow_traits::extractor::Reason::new(
-                                    ::proc_macro_flow_traits::extractor::ReasonKind::Internal(
-                                        error,
-                                    ),
-                                ),
-                            );
-                            out
-                        }
-                    }
-                }
-
-                fn stub(subject: Self::Subject) -> ::syn::Result<Self> {
-                    #(#stubs)*
-                    Self::assemble_stub(subject, #(#names),*)
-                }
-            }
-        });
-
-        // Forwarding boilerplate. Ty(Output) is bound `ToTokens`, and for a newtype that impl is
-        // always the same one line - so the author writing it by hand would be the derive failing
-        // to do its job. Every field, in declaration order: the item they compose to is their
-        // concatenation.
-        let to_tokens = parse2::<ItemImpl>(quote! {
-            impl #to_tokens_generics ::proc_macro_flow_traits::quote::ToTokens
-                for #name #type_generics #where_clause
-            {
-                fn to_tokens(
-                    &self,
-                    tokens: &mut ::proc_macro_flow_traits::proc_macro2::TokenStream,
-                ) {
-                    #(::proc_macro_flow_traits::quote::ToTokens::to_tokens(
-                        &self.#indices,
-                        tokens,
-                    );)*
-                }
-            }
-        });
-
-        match (generator, to_tokens) {
-            (Ok(generator), Ok(to_tokens)) => {
-                Extraction::value(GeneratorExpansion(generator, to_tokens))
-            }
-            (Err(error), _) | (_, Err(error)) => {
-                Extraction::failed(Reason::new(ReasonKind::Internal(error)))
-            }
-        }
-    }
-
-    /// No vacant form - NOTE(#derive/the-impl-is-the-product).
-    fn stub(subject: &'ast DeriveInput) -> syn::Result<Self> {
-        Err(syn::Error::new_spanned(
-            &subject.ident,
-            "`#[derive(Generator)]` describes a NEWTYPE wrapping the item it generates - \
-             `struct Fields(syn::ImplItem);` - or several, for a generator that emits more than \
-             one item - and needs `#[generator(from = Ty, subject = Ty)]` beside it",
-        ))
-    }
-}
-
-/// `#[derive(Generator)]`, wired.
-// TODO[x](#generator/derive-is-a-pipeline): R[F(derive_generator) -> S(GeneratorWiring)], "Its
-// validate is the newtype check - a generator IS a tuple struct, and what it wraps is what it
-// emits (ID(generation/newtype-per-item))"
-pub(crate) struct GeneratorWiring;
-
-impl<'ast> Pipeline<'ast> for GeneratorWiring {
-    type Extractor = GeneratorDeclaration<'ast>;
-    type Processor = GeneratorDeclaration<'ast>;
-    type Generator = GeneratorExpansion;
-}
-
 impl Child {
     /// The call that produces this child, with per-child failure isolation.
     /// The statement that produces this child, with per-child failure isolation.
-    fn call(&self) -> Result<Stmt> {
+    pub(crate) fn call(&self) -> Result<Stmt> {
         let name = &self.name;
         let leaf = self.leaf();
         let feed = &self.feed;
@@ -468,7 +272,7 @@ impl Child {
 
     /// The same child, vacant.
     /// The same child, vacant.
-    fn stub(&self) -> Result<Stmt> {
+    pub(crate) fn stub(&self) -> Result<Stmt> {
         let name = &self.name;
         let leaf = self.leaf();
 
