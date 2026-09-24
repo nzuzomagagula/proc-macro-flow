@@ -90,6 +90,17 @@ pub fn syntax(input: TokenStream) -> TokenStream {
     derive::SyntaxWiring::run(&parsed).to_token_stream().into()
 }
 
+/// Write a type's `Diagnose` walk, and the empty `Assert` its supertrait requires.
+///
+/// Every field is descended into unless marked `#[skip]`. That default is deliberate: a field
+/// wrongly walked is a compile error, while one wrongly skipped compiles and silently loses every
+/// diagnostic beneath it - see NOTE(#diagnose-derive/walk-all-and-skip).
+#[proc_macro_derive(Diagnose, attributes(skip))]
+pub fn diagnose(input: TokenStream) -> TokenStream {
+    let parsed = parse_macro_input!(input as DeriveInput);
+    derive::DiagnoseWiring::run(&parsed).to_token_stream().into()
+}
+
 /// Declare a generator: what it consumes, and which children it composes.
 ///
 /// `#[builds(from = Ty, subject = Ty)]` wires it; `#[generates(name: Ty = expr)]` declares each

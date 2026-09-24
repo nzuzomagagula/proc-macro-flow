@@ -25,6 +25,7 @@
 // The structure is the cheapest documentation there is: it is read before any comment, it cannot
 // disagree with itself, and a stage that has nowhere to live is a stage somebody skipped"
 pub(crate) mod ext;
+mod diagnose;
 mod extractor;
 mod generator;
 mod processor;
@@ -32,6 +33,7 @@ mod stage;
 mod syntax;
 mod validate;
 
+pub(crate) use diagnose::pipeline::DiagnoseWiring;
 pub(crate) use extractor::pipeline::ExtractorWiring;
 pub(crate) use generator::pipeline::GeneratorWiring;
 pub(crate) use processor::pipeline::ProcessorWiring;

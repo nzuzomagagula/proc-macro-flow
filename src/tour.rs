@@ -135,7 +135,7 @@ mod grammar_patterns {
 
 // ---------- 3. a pipeline, end to end ----------
 mod pipeline_patterns {
-    use proc_macro_flow_derive::{pipeline, Extractor, Generator, Processor, Validate};
+    use proc_macro_flow_derive::{pipeline, Diagnose, Extractor, Generator, Processor, Validate};
     use proc_macro_flow_traits::{
         assert::Assert,
         attributed::{Annotated, Attributed},
@@ -174,6 +174,7 @@ mod pipeline_patterns {
     impl Diagnose for Marker<'_> { fn diagnose(&self, _: &mut Vec<syn::Error>) {} }
 
     // --- the root, with a REAL validate written by hand ---
+    #[derive(Diagnose)]
     pub struct Table<'ast> {
         cols: Vec<Extracted<Col<'ast>, &'ast Field>>,
     }
@@ -201,10 +202,9 @@ mod pipeline_patterns {
             Extracted::new(e, node)
         }
     }
-    impl Assert for Table<'_> {}
-    impl Diagnose for Table<'_> {
-        fn diagnose(&self, out: &mut Vec<syn::Error>) { self.cols.diagnose(out); }
-    }
+    // Both impls WRITTEN FOR US. The walk is the field list, and `Assert` is empty because this
+    // type states no rules - neither is a decision anybody makes, so neither is typed out.
+    // See NOTE(#diagnose-derive/why-a-seventh-derive).
 
     // --- processing: real work, so hand-written ---
     pub struct Counted<'ast> { item: &'ast syn::Ident, cols: usize }
