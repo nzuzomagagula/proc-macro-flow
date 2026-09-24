@@ -254,7 +254,7 @@ impl<'ast> Grammar<'ast> {
                 // same reason: it needs no unique name and there is no second public name to keep in
                 // step. Unlike meta_list!, aliases are real here, because a proc macro can build the
                 // literals.
-                // TODO[ ](#syntax/key-set-shadowing): U[E(keys).name], "The generated key enum
+                // TODO[x](#syntax/key-set-shadowing): U[E(keys).name], "The generated key enum
                 // was called `Key` and shadowed any author type of that name, failing with a path
                 // nobody wrote"
                 // NOTE(#syntax-derive/the-key-set-cannot-shadow): V[E(keys).name.derived], "Named
