@@ -1,5 +1,5 @@
 // @review [ ]
-// TODO[ ](#diagnose/derive-the-walk): C[MacDef(Diagnose)], "About fifteen hand-written stages each
+// TODO[x](#diagnose/derive-the-walk): C[MacDef(Diagnose)], "About fifteen hand-written stages each
 // carried an `impl Assert for X {}` that states nothing and a Diagnose body that only lists fields.
 // Neither is a decision anybody made. Added on a COUNT, not on taste - at two or three a derive
 // would have been ceremony"
