@@ -86,7 +86,7 @@ pub trait Processor<'ast>: Sized {
     /// What the generator receives.
     type Output;
 
-    // TODO[ ](#reason/reported-once): U[F(process).R(reasons).new_only], "Six processors copied
+    // TODO[x](#reason/reported-once): U[F(process).R(reasons).new_only], "Six processors copied
     // their input's reasons forward, and F(run) had already rendered those from the tree, so EVERY
     // diagnostic in the crate came out twice. Nothing caught it because every test asserted a
     // complaint was present and none asserted how many"
