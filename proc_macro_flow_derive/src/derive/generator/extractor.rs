@@ -138,7 +138,7 @@ impl<'ast> Extractor<'ast> for GeneratorDeclaration<'ast> {
 
             let mut out: Extraction<GeneratorDeclaration<'_>> = Extraction::default();
 
-            let wiring = match node.attrs.find_one("generator") {
+            let wiring = match node.attrs.find_one("builds") {
                 Ok(Some(attr)) => match attr.parse_args::<Wiring>() {
                     Ok(wiring) => Some(wiring),
                     Err(error) => {
@@ -149,8 +149,8 @@ impl<'ast> Extractor<'ast> for GeneratorDeclaration<'ast> {
                 Ok(None) => {
                     out.reasons.push(Reason::new(ReasonKind::Syntax(syn::Error::new_spanned(
                         &node.ident,
-                        "`#[generator(from = Ty, subject = Ty)]` says what this consumes and what \
-                         a stub is written against",
+                        "`#[builds(from = Ty, subject = Ty)]` says what this consumes and what a \
+                         stub is written against",
                     ))));
                     None
                 }
@@ -219,7 +219,7 @@ impl Child {
                     .filter_map(|fed| {
                         // FAIL UPWARD: a reason that is not OURS adopts the span of the source
                         // this element came from, so the author sees the syntax responsible.
-                        let span = ::syn::spanned::Spanned::span(&fed);
+                        let span = ::proc_macro_flow_traits::syn::spanned::Spanned::span(&fed);
                         let produced = <#leaf as ::proc_macro_flow_traits::generator::Generator>
                             ::generate(fed);
                         let value = out.absorb(::proc_macro_flow_traits::extractor::Extraction {

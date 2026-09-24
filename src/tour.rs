@@ -242,7 +242,7 @@ mod pipeline_patterns {
     }
 
     #[derive(Generator)]
-    #[generator(from = Counted<'ast>, subject = &'ast DeriveInput)]
+    #[builds(from = Counted<'ast>, subject = &'ast DeriveInput)]
     #[generates(count: Count = input.cols)]
     pub struct Block(ItemImpl);
 

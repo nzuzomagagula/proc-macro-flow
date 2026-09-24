@@ -30,13 +30,14 @@ impl<'ast> Generator<'ast> for ExtractorExpansion {
         let (_, type_generics, _) = stage.declared.split_for_impl();
         let (name, lifetime, source) = (stage.name, &stage.lifetime, &stage.source);
 
-        let assignments = input.children.iter().map(|child| {
-            let (ident, call) = (child.ident, &child.call);
+        let assignments = input.fields.iter().map(|field| {
+            let (ident, call) = (field.ident, &field.call);
             quote!(#ident: #call)
         });
-        // Every field is a child by construction - reaching it is the whole reason it is declared.
-        let visits = input.children.iter().map(|child| {
-            let ident = child.ident;
+        // Only the fields that hold CHILDREN. A `#[value]` field is ordinary data - it does not
+        // implement Tr(Diagnose) and there is nothing beneath it to reach.
+        let visits = input.fields.iter().filter(|field| field.walked).map(|field| {
+            let ident = field.ident;
             quote!(::proc_macro_flow_traits::render::Diagnose::diagnose(&self.#ident, out);)
         });
 

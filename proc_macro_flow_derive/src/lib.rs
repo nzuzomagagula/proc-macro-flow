@@ -48,7 +48,7 @@ pub fn field_names(input: TokenStream) -> TokenStream {
 // never use them on its own types.
 
 /// Generate `extract_from` from `#[source(Ty)]` and each field's `#[from]` / `#[with]`.
-#[proc_macro_derive(Extractor, attributes(source, args, from, with))]
+#[proc_macro_derive(Extractor, attributes(source, args, from, with, value))]
 pub fn extractor(input: TokenStream) -> TokenStream {
     let parsed = parse_macro_input!(input as DeriveInput);
     derive::ExtractorWiring::run(&parsed).to_token_stream().into()
@@ -92,11 +92,24 @@ pub fn syntax(input: TokenStream) -> TokenStream {
 
 /// Declare a generator: what it consumes, and which children it composes.
 ///
-/// `#[generator(from = Ty, subject = Ty)]` wires it; `#[generates(name: Ty = expr)]` declares each
+/// `#[builds(from = Ty, subject = Ty)]` wires it; `#[generates(name: Ty = expr)]` declares each
 /// child and what the parent feeds it. The author supplies `assemble` and `assemble_stub` — the
 /// derive cannot know what SHAPE the parent's item is. See
 /// NOTE(#generator-derive/plumbing-not-logic).
-#[proc_macro_derive(Generator, attributes(generator, generates))]
+// TODO[ ](#generator-derive/wiring-renamed): R[Attr(generator).on(derive) -> Attr(builds)], "One
+// head meaning two things, and F(stripped) with no way to tell them apart - so a generator inside a
+// pipeline module could not use its own derive"
+// NOTE(#generator-derive/wiring-has-its-own-name): V[Attr(builds) != E(Role).V(Generator)], "Was
+// `#[generator(from = Ty, subject = Ty)]`, which collided head-for-head with Attr(pipeline)'s
+// GENERATOR ROLE. A generator inside a pipeline module therefore could not use this derive at all:
+// F(stripped) removes an attribute by its head, and with one head meaning two things it took the
+// derive's wiring away with the role it was asked to strip.
+//
+// Nothing could have disambiguated them - a head is all F(stripped) has to go on - so one of the
+// two had to move, and this is the cheaper: the role names appear in every pipeline module, while
+// this is written only by an author of a generator. Attr(generates) never collided and is
+// untouched."
+#[proc_macro_derive(Generator, attributes(builds, generates))]
 pub fn generator(input: TokenStream) -> TokenStream {
     let parsed = parse_macro_input!(input as DeriveInput);
     derive::GeneratorWiring::run(&parsed).to_token_stream().into()

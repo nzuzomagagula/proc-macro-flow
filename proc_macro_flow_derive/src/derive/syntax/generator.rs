@@ -82,8 +82,8 @@ impl<'ast> Generator<'ast> for SyntaxExpansion {
                 impl #impl_generics ::proc_macro_flow_traits::vocab::leaves::FromMeta
                     for #name #type_generics #where_clause
                 {
-                    fn from_meta(meta: &::syn::Meta) -> ::syn::Result<Self> {
-                        let list = ::syn::Meta::require_list(meta)?;
+                    fn from_meta(meta: &::proc_macro_flow_traits::syn::Meta) -> ::proc_macro_flow_traits::syn::Result<Self> {
+                        let list = ::proc_macro_flow_traits::syn::Meta::require_list(meta)?;
                         <Self as ::proc_macro_flow_traits::vocab::leaves::FromBody>::from_body(
                             &list.tokens,
                             meta,
@@ -201,7 +201,7 @@ impl<'ast> Grammar<'ast> {
                 let key = &field.key;
                 quote! {
                     if #ident.is_none() {
-                        errors.push(::syn::Error::new_spanned(
+                        errors.push(::proc_macro_flow_traits::syn::Error::new_spanned(
                             at,
                             ::std::concat!("missing required key `", #key, "`"),
                         ));
@@ -226,7 +226,7 @@ impl<'ast> Grammar<'ast> {
                     #ident: match #ident {
                         ::std::option::Option::Some(value) => value,
                         ::std::option::Option::None => {
-                            return ::std::result::Result::Err(::syn::Error::new_spanned(
+                            return ::std::result::Result::Err(::proc_macro_flow_traits::syn::Error::new_spanned(
                                 at,
                                 ::std::concat!(
                                     "internal: `", #key, "` passed the required check and then was \
@@ -243,7 +243,7 @@ impl<'ast> Grammar<'ast> {
             fn from_body<__At>(
                 body: &::proc_macro_flow_traits::proc_macro2::TokenStream,
                 at: &__At,
-            ) -> ::syn::Result<Self>
+            ) -> ::proc_macro_flow_traits::syn::Result<Self>
             where
                 __At: ::proc_macro_flow_traits::quote::ToTokens + ?::std::marker::Sized,
             {

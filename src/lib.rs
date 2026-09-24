@@ -844,7 +844,7 @@ mod generation {
 
     /// The PARENT, entirely derived except for the two assembly functions.
     #[derive(Generator)]
-    #[generator(from = (), subject = ())]
+    #[builds(from = (), subject = ())]
     #[generates(
         good: Good = (),
         bad: Bad = (),

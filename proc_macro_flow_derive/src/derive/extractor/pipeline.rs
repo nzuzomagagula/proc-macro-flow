@@ -128,6 +128,55 @@ mod tests {
     }
 
     #[test]
+    fn a_value_field_may_be_any_type_and_is_spliced_verbatim() {
+        // ID(extractor-derive/children-are-marked-not-inferred). `#[value]` says this field holds
+        // ordinary data, so F(Child::of) is never consulted and the type is nobody's business.
+        let out = expand(
+            "#[source(DeriveInput)] struct Read<'ast> { \
+             #[value(&source.ident)] item: &'ast Ident }",
+        );
+
+        assert!(!out.contains("compile_error"), "{out}");
+        assert!(out.contains("item : & source . ident"), "spliced verbatim: {out}");
+        assert!(!out.contains("extract_from (& source . ident)"), "it was run as a child: {out}");
+    }
+
+    #[test]
+    fn the_walk_descends_into_children_and_not_into_values() {
+        // THE half of the change that would break in the AUTHOR'S crate rather than here: a plain
+        // `&'ast Ident` does not implement Diagnose, so a visit emitted for one does not compile
+        // where the derive is used.
+        let out = expand(
+            "#[source(DeriveInput)] struct Read<'ast> { \
+             #[from(source.attrs.iter())] kids: Vec<Extracted<C<'ast>, &'ast I>>, \
+             #[value(&source.ident)] item: &'ast Ident }",
+        );
+
+        assert!(out.contains("diagnose (& self . kids"), "the child is not walked: {out}");
+        assert!(!out.contains("diagnose (& self . item"), "a value field was walked: {out}");
+    }
+
+    #[test]
+    fn a_child_field_still_has_to_be_an_extraction() {
+        // Keeping this error is WHY the two are marked apart rather than inferred - inference
+        // would have made this shape silently legal, and silently mean something else.
+        let out = expand("#[source(DeriveInput)] struct Read<'ast> { #[from(x())] a: &'ast str }");
+
+        assert!(out.contains("compile_error"), "{out}");
+        assert!(out.contains("Extracted"), "the message must name the shape wanted: {out}");
+    }
+
+    #[test]
+    fn a_field_declaring_two_ways_to_reach_it_is_reported() {
+        let out = expand(
+            "#[source(DeriveInput)] struct Read<'ast> { \
+             #[from(a())] #[value(b)] a: Vec<Extracted<C<'ast>, &'ast I>> }",
+        );
+
+        assert!(out.contains("compile_error"), "{out}");
+    }
+
+    #[test]
     fn a_field_that_does_not_hold_an_extraction_is_reported_against_its_type() {
         let out = expand("#[source(DeriveInput)] struct Read<'ast> { #[from(x())] a: &'ast str }");
 

@@ -34,12 +34,48 @@ pub(crate) struct ChildDeclaration<'ast> {
     pub(crate) reach: Reach,
 }
 
-/// The two ways a field says where its children are.
+// TODO[ ](#extractor/fields-may-hold-values): C[Attr(value)], "Attr(derive(Extractor)) accepted
+// only fields that were child EXTRACTIONS, so a stage reading plain data off the AST could not use
+// it at all - it hand-wrote extract_from and then owed two empty impls. A third head says the field
+// holds a value; marking it apart rather than inferring it from the type keeps the `Extracted<T, I>`
+// error where it belongs"
+/// What a field holds, and how to get there.
+///
+/// NOTE(#extractor-derive/children-are-marked-not-inferred): V[E(Reach).V(Value).declared],
+/// "Whether a field holds a CHILD EXTRACTION or a plain VALUE is DECLARED, never read off its type.
+/// Inferring it - `Extracted<T, I>` means child, anything else means value - was considered and is
+/// wrong twice over.
+///
+/// It would make a typo in the type silently change what the field MEANS, from 'descend into this
+/// child' to 'assign this expression', with no error anywhere. And it would throw away the check
+/// worth keeping: with the two marked apart, `#[from]` can still INSIST on `Extracted<T, I>` and
+/// say so when it does not get one, which is the same error this derive has always given.
+///
+/// The type still decides everything it decided before - arity for a child comes off it and
+/// nothing may contradict that (ID(from/arity-from-type)). What it does not decide is which
+/// question is being asked of it"
 pub(crate) enum Reach {
-    /// `#[from(expr)]` - an expression evaluated with `source` in scope.
+    /// `#[from(expr)]` - a CHILD, reached by an expression evaluated with `source` in scope.
     From(Expr),
-    /// `#[with(callable)]` - applied to `source`.
+    /// `#[with(callable)]` - a child, reached by applying a callable to `source`.
     With(Expr),
+    /// `#[value(expr)]` - a plain value read straight off the source. Not an extraction, so the
+    /// render walk does not descend into it.
+    Value(Expr),
+}
+
+impl Reach {
+    /// The expression, whichever way it was written.
+    pub(crate) fn expr(&self) -> &Expr {
+        match self {
+            Reach::From(expr) | Reach::With(expr) | Reach::Value(expr) => expr,
+        }
+    }
+
+    /// Whether this field holds an extraction the walk must descend into.
+    pub(crate) fn is_child(&self) -> bool {
+        !matches!(self, Reach::Value(_))
+    }
 }
 
 impl<'ast> Validate<'ast> for ChildDeclaration<'ast> {
@@ -61,24 +97,38 @@ impl<'ast> Extractor<'ast> for ChildDeclaration<'ast> {
                 Err(error) => return Extraction::failed(Reason::new(ReasonKind::Syntax(error))),
             };
 
-            let (from, with) = match (node.attrs.find_one("from"), node.attrs.find_one("with")) {
-                (Ok(from), Ok(with)) => (from, with),
-                (Err(error), _) | (_, Err(error)) => {
-                    return Extraction::failed(Reason::new(ReasonKind::Syntax(error)));
-                }
-            };
+            let written = [
+                node.attrs.find_one("from"),
+                node.attrs.find_one("with"),
+                node.attrs.find_one("value"),
+            ];
 
-            let reach = match (from, with) {
-                (Some(_), Some(other)) => {
-                    return Extraction::failed(Reason::at(
-                        ReasonKind::Ambiguous,
-                        other,
-                    ));
+            let mut found: Vec<(usize, &syn::Attribute)> = Vec::new();
+            for (which, attr) in written.into_iter().enumerate() {
+                match attr {
+                    Ok(Some(attr)) => found.push((which, attr)),
+                    Ok(None) => {}
+                    Err(error) => {
+                        return Extraction::failed(Reason::new(ReasonKind::Syntax(error)));
+                    }
                 }
-                (Some(from), None) => from.expr_arg().map(Reach::From),
-                (None, Some(with)) => with.expr_arg().map(Reach::With),
-                (None, None) => {
+            }
+
+            // The three are ALTERNATIVES: one field, one answer to 'where does this come from'.
+            let reach = match found.as_slice() {
+                [(0, attr)] => attr.expr_arg().map(Reach::From),
+                [(1, attr)] => attr.expr_arg().map(Reach::With),
+                [(2, attr)] => attr.expr_arg().map(Reach::Value),
+                [] => {
                     return Extraction::failed(Reason::at(ReasonKind::Missing, ident));
+                }
+                [_, (_, extra), ..] => {
+                    return Extraction::failed(Reason::at(ReasonKind::Ambiguous, extra));
+                }
+                // `found` holds at most one entry per index, so a single entry is one of the
+                // three above. Unreachable from any declaration that parsed.
+                [(_, attr)] => {
+                    return Extraction::failed(Reason::at(ReasonKind::WrongShape, attr));
                 }
             };
 

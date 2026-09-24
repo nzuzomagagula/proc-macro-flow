@@ -22,21 +22,27 @@ use proc_macro_flow_derive::pipeline;
 
 // MUST BE AT THE CRATE ROOT. Attr(pipeline) emits the entry function as a SIBLING of this module,
 // and (2) above is why that is the only place it can land - NOTE(#pipeline/entry-is-a-sibling).
+// TODO[ ](#demo/boilerplate-absorbed): U[N(demo).lines], "99 non-comment lines of which ~14 were
+// the author's own logic: a twin struct with a field-for-field copy between them, a hand-forwarded
+// ToTokens, and two EMPTY impls. Only *how* belongs to the author - what the shape must be is
+// declared, and everything between is the macro's"
 #[pipeline(derive = Generated)]
 mod generated {
+    use proc_macro_flow_derive::{Extractor, Generator, Processor};
     use proc_macro_flow_traits::{
-        assert::Assert,
-        extractor::{Extracted, Extraction, Extractor, Reason, ReasonKind, Validate},
-        generator::Generator,
-        processor::Processor,
-        proc_macro2::TokenStream,
-        quote::{quote, ToTokens},
-        render::Diagnose,
-        syn::{self, Data, DeriveInput, Ident, ItemImpl},
+        extractor::{Reason, ReasonKind, Validate},
+        quote::quote,
+        syn::{self, parse2, Data, DeriveInput, FieldsNamed, Ident, ItemImpl},
     };
 
     /// Reads the struct's field names, and is its own processor - one type, two roles, which is
     /// ID(pipeline/no-processor-is-the-extractor) and the commonest shape there is.
+    ///
+    /// Attr(derive(Extractor)) writes Tr(Extractor), Tr(Diagnose) and Tr(Assert); Attr(derive(Processor))
+    /// writes the identity. Neither field is a child extraction, so both are Attr(value) - see
+    /// NOTE(#extractor-derive/children-are-marked-not-inferred).
+    #[derive(Extractor, Processor)]
+    #[source(DeriveInput)]
     // FULLY QUALIFIED, and it must be: this type is spliced into the entry function, which
     // Attr(pipeline) emits as a SIBLING of this module and therefore OUTSIDE it - so the `use`
     // above is not in scope there. Naming a path rather than an ident is what
@@ -44,29 +50,22 @@ mod generated {
     #[extractor(source = ::proc_macro_flow_traits::syn::DeriveInput)]
     #[processor(from = Read)]
     pub struct Read<'ast> {
+        #[value(source.0)]
         pub item: &'ast Ident,
+        #[value(source.1.named.iter().filter_map(|f| f.ident.as_ref()).collect())]
         pub fields: Vec<&'ast Ident>,
     }
 
-    /// What generation is written against.
-    #[generator(from = Read)]
-    pub struct Named<'ast> {
-        pub item: &'ast Ident,
-        pub fields: Vec<&'ast Ident>,
-    }
-
-    /// One impl, and the type says one - ID(generation/newtype-per-item).
-    pub struct Block(ItemImpl);
-
-    impl ToTokens for Block {
-        fn to_tokens(&self, tokens: &mut TokenStream) {
-            self.0.to_tokens(tokens);
-        }
-    }
-
+    /// The only hand-written stage, and the only one that should be.
+    ///
+    /// NOTE(#demo/valid-is-what-the-stage-needs): V[Ty(Valid).pair], "A narrowing is a DECISION, so
+    /// Attr(derive(Validate)) declines to guess at one and this is written out. What it narrows to
+    /// is a PAIR rather than the `&FieldsNamed` the shape check produces, because every Attr(value)
+    /// below is written against `source`: narrowing to the fields alone would put the type's own
+    /// name out of reach. Ty(Valid) is exactly the place to say what this stage needs."
     impl<'ast> Validate<'ast> for Read<'ast> {
         type Source = &'ast DeriveInput;
-        type Valid = &'ast syn::FieldsNamed;
+        type Valid = (&'ast Ident, &'ast FieldsNamed);
 
         fn validate(input: Self::Source) -> Result<Self::Valid, Reason> {
             let Data::Struct(data) = &input.data else {
@@ -74,79 +73,47 @@ mod generated {
             };
 
             match &data.fields {
-                syn::Fields::Named(named) => Ok(named),
+                syn::Fields::Named(named) => Ok((&input.ident, named)),
                 _ => Err(Reason::at(ReasonKind::WrongShape, &input.ident)),
             }
         }
     }
 
-    impl<'ast> Extractor<'ast> for Read<'ast> {
-        type Output = Extracted<Self, &'ast DeriveInput>;
+    /// One impl, and the type says one - ID(generation/newtype-per-item). Attr(derive(Generator))
+    /// writes Tr(Generator) and the Tr(ToTokens) that lowers it; the two assemble functions are the
+    /// only thing it cannot know (NOTE(#generator-derive/plumbing-not-logic)).
+    #[derive(Generator)]
+    #[builds(from = Read<'ast>, subject = &'ast DeriveInput)]
+    pub struct Block(ItemImpl);
 
-        fn extract_from(node: &'ast DeriveInput) -> Self::Output {
-            let extraction = match Self::validate(node) {
-                Ok(named) => Extraction::value(Read {
-                    item: &node.ident,
-                    fields: named.named.iter().filter_map(|f| f.ident.as_ref()).collect(),
-                }),
-                Err(reason) => Extraction::failed(reason),
-            };
+    /// The generator ROLE, on an alias.
+    ///
+    /// The generated wiring names every stage `module::Name<'ast>`, and a generator leaf wrapping a
+    /// syn item borrows nothing - so S(Block) has no lifetime to give it. An alias may carry one it
+    /// does not use, which is the documented way to wire a lifetime-free stage without inventing a
+    /// lifetime for it.
+    #[generator(from = Read)]
+    pub type Built<'ast> = Block;
 
-            Extracted::new(extraction, node)
-        }
-    }
-
-    impl Assert for Read<'_> {}
-
-    impl Diagnose for Read<'_> {
-        /// A leaf: its children are idents borrowed from the AST, not extractions.
-        fn diagnose(&self, _: &mut Vec<syn::Error>) {}
-    }
-
-    impl<'ast> Processor<'ast> for Read<'ast> {
-        type Input = Extracted<Read<'ast>, &'ast DeriveInput>;
-        type Output = Named<'ast>;
-
-        fn process(input: Self::Input) -> Extraction<Self::Output> {
-            // NOTE(#processor/reasons-are-new-not-inherited): the walk has already rendered
-            // whatever the extraction carried.
-            match input.into_extraction().value {
-                Some(read) => Extraction::value(Named {
-                    item: read.item,
-                    fields: read.fields,
-                }),
-                None => Extraction::default(),
-            }
-        }
-    }
-
-    impl<'ast> Generator<'ast> for Named<'ast> {
-        type Input = Self;
-        type Subject = &'ast DeriveInput;
-        type Output = Block;
-
-        fn generate(input: Self) -> Extraction<Block> {
+    impl Block {
+        fn assemble(input: &Read<'_>) -> syn::Result<Self> {
             let item = input.item;
             let names = input.fields.iter().map(|ident| ident.to_string());
 
-            match syn::parse2(quote! {
+            parse2(quote! {
                 impl #item {
                     /// Every field's name, in declaration order.
                     pub const FIELD_NAMES: &'static [&'static str] = &[ #(#names),* ];
                 }
-            }) {
-                Ok(block) => Extraction::value(Block(block)),
-                Err(error) => {
-                    Extraction::failed(Reason::new(ReasonKind::Internal(error)))
-                }
-            }
+            })
+            .map(Block)
         }
 
         /// The vacant form is the same SHAPE, so a failure does not cascade into
         /// "no associated item" at every use site - ID(generator/stub-is-not-empty).
-        fn stub(subject: &'ast DeriveInput) -> syn::Result<Block> {
+        fn assemble_stub(subject: &DeriveInput) -> syn::Result<Self> {
             let item = &subject.ident;
-            syn::parse2(quote! {
+            parse2(quote! {
                 impl #item {
                     pub const FIELD_NAMES: &'static [&'static str] = &[];
                 }

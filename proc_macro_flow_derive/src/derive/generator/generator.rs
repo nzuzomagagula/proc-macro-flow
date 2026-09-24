@@ -66,7 +66,7 @@ impl<'ast> Generator<'ast> for GeneratorExpansion {
                     }
                 }
 
-                fn stub(subject: Self::Subject) -> ::syn::Result<Self> {
+                fn stub(subject: Self::Subject) -> ::proc_macro_flow_traits::syn::Result<Self> {
                     #(#stubs)*
                     Self::assemble_stub(subject, #(#names),*)
                 }
@@ -109,7 +109,7 @@ impl<'ast> Generator<'ast> for GeneratorExpansion {
             &subject.ident,
             "`#[derive(Generator)]` describes a NEWTYPE wrapping the item it generates - \
              `struct Fields(syn::ImplItem);` - or several, for a generator that emits more than \
-             one item - and needs `#[generator(from = Ty, subject = Ty)]` beside it",
+             one item - and needs `#[builds(from = Ty, subject = Ty)]` beside it",
         ))
     }
 }
