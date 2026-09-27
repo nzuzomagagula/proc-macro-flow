@@ -7,7 +7,9 @@ use quote::quote;
 use syn::{parse2, DeriveInput, Expr};
 
 use super::super::stage::{ProcessedStage, StageDeclaration};
-use super::super::{Arity, Child};
+use proc_macro_flow_traits::node::Arity;
+
+use super::super::ext::Child;
 use super::extractor::{ExtractorExtraction, Reach};
 
 /// Every field turned into the call that fills it.
@@ -89,9 +91,9 @@ impl<'ast> Processor<'ast> for ExtractorExtraction<'ast> {
 
                 let extractor = &child.extractor;
                 match child.arity {
-                    Arity::One => quote!( <#extractor>::extract_from(#reach) ),
-                    Arity::Many => quote!( <#extractor>::extract_each(#reach) ),
-                    Arity::Maybe => quote!( <#extractor>::extract_maybe(#reach) ),
+                    Arity::Required => quote!( <#extractor>::extract_from(#reach) ),
+                    Arity::Repeated => quote!( <#extractor>::extract_each(#reach) ),
+                    Arity::Optional => quote!( <#extractor>::extract_maybe(#reach) ),
                 }
             } else {
                 reach

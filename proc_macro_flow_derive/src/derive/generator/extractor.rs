@@ -11,7 +11,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{parse2, Data, DeriveInput, Error, Expr, Ident, Result, Stmt, Token, Type};
 
-use super::super::Arity;
+use proc_macro_flow_traits::node::Arity;
 use super::super::ext::{AttributesExt, TypeExt};
 
 /// One declared child: its name, its type, and what the parent feeds it.
@@ -213,7 +213,7 @@ impl Child {
         let tokens = match self.declared.arity() {
             // MANY: one call per element. A failure isolates to the ELEMENT, not the whole child,
             // which is what makes ID(generation/parent-feeds-children) worth the extra syntax.
-            Arity::Many => quote! {
+            Arity::Repeated => quote! {
                 let #name: ::std::vec::Vec<#leaf> = (#feed)
                     .into_iter()
                     .filter_map(|fed| {
@@ -278,7 +278,7 @@ impl Child {
 
         let tokens = match self.declared.arity() {
             // A repeated child with nothing written is NONE of them, not one empty one.
-            Arity::Many => quote! {
+            Arity::Repeated => quote! {
                 let #name: ::std::vec::Vec<#leaf> = ::std::vec::Vec::new();
             },
             _ => quote! {

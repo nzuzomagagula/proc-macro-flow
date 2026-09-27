@@ -14,7 +14,7 @@
 
 use syn::{Attribute, Error, Expr, Field, GenericArgument, Ident, PathArguments, Result, Type};
 
-use super::Arity;
+use proc_macro_flow_traits::node::Arity;
 
 /// Reading a declared type: what it wraps, and how many of it there are.
 pub(crate) trait TypeExt {
@@ -64,11 +64,11 @@ impl TypeExt for Type {
 
     fn arity(&self) -> Arity {
         if self.unwrap_generic("Vec").is_some() {
-            Arity::Many
+            Arity::Repeated
         } else if self.unwrap_generic("Option").is_some() {
-            Arity::Maybe
+            Arity::Optional
         } else {
-            Arity::One
+            Arity::Required
         }
     }
 
@@ -99,6 +99,29 @@ impl TypeExt for Type {
                 "expected `Extracted<T, I>`, optionally inside `Vec` or `Option` - a field with \
                  `#[from]` holds what its child extractor produced",
             )
+        })
+    }
+}
+
+// TODO[x](#cleanup/arity-once): D[E(Arity)] && V[N(derive).has(node::Arity)], "Arity is defined twice and mapped by hand"
+// proc_macro_flow_traits::node::Arity already said Required/Optional/Repeated; the derive crate kept
+// a One/Maybe/Many copy whose only job was to be translated into it at emission.
+/// A field's arity and the extractor that produces its children.
+///
+/// This is ID(from/arity-from-type), and it is where a proc macro beats `macro_rules!`: the type is
+/// PARSED, so `std::option::Option<T>` and `Option<T>` are the same thing here.
+pub(crate) struct Child {
+    pub(crate) arity: Arity,
+    /// The `T` of `Extracted<T, I>`, which the generated call must name — `T::Output` is an
+    /// associated type and so not inferable (`#from/names-its-target`).
+    pub(crate) extractor: Type,
+}
+
+impl Child {
+    pub(crate) fn of(ty: &Type) -> Result<Self> {
+        Ok(Child {
+            arity: ty.arity(),
+            extractor: ty.inner().extractor()?,
         })
     }
 }

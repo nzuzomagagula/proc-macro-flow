@@ -38,7 +38,7 @@ impl<'ast> Processor<'ast> for GeneratorDeclaration<'ast> {
 
         // A leaf wrapping a syn item borrows nothing, so it may have no lifetime of its own - see
         // ID(derive/lifetime-is-introduced-when-absent).
-        let (generics, lifetime) = super::super::stage_lifetime(node);
+        let (generics, lifetime) = super::super::stage::stage_lifetime(node);
 
         let mut names = Vec::new();
         let mut calls = Vec::new();

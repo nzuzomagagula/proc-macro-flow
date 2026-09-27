@@ -7,7 +7,7 @@ use proc_macro_flow_traits::extractor::{Extracted, Extraction, Reason, ReasonKin
 use proc_macro_flow_traits::processor::Processor;
 use syn::{DeriveInput, Error, Result};
 
-use super::super::Arity;
+use proc_macro_flow_traits::node::Arity;
 use super::super::ext::TypeExt;
 use super::extractor::{AliasDeclaration, GrammarDeclaration};
 
@@ -214,7 +214,7 @@ impl<'ast> Rule<'ast> {
 
         // ID(assert/rules-are-checked-at-derive-time). A required field is ALWAYS written, so a
         // rule asking whether it was is a statement its own type contradicts.
-        if field.arity == Arity::One {
+        if field.arity == Arity::Required {
             return Err(Error::new_spanned(
                 name,
                 format!(

@@ -21,7 +21,6 @@ use proc_macro_flow_traits::render::Diagnose;
 use syn::{DeriveInput, Generics, Lifetime, Type};
 
 use super::ext::DeriveInputExt;
-use super::stage_lifetime;
 
 /// A stage's declaration, as written.
 pub(crate) struct StageDeclaration<'ast> {
@@ -91,6 +90,32 @@ impl Diagnose for StageDeclaration<'_> {
     /// A leaf: a declaration has no child extractions, only the two types it names.
     fn diagnose(&self, _: &mut Vec<syn::Error>) {}
 }
+
+/// The lifetime a stage impl is written against, and the generics to declare it with.
+///
+/// NOTE(#derive/lifetime-is-introduced-when-absent): V[F(stage_lifetime).has(introduces 'ast)], "A stage lifetime is introduced when the type has none"
+/// Every stage trait carries 'ast (ID(pipeline/one-shape-per-stage)), but not every stage TYPE
+/// needs one - a generator leaf wrapping a `syn::ImplItem` borrows nothing. So the derive uses the
+/// type's own lifetime when it has one and INTRODUCES `'ast` when it does not, which is legal
+/// because the trait reference constrains it. Requiring authors to declare a lifetime they never
+/// use would be the derive making its own convenience their problem
+pub(crate) fn stage_lifetime(input: &DeriveInput) -> (syn::Generics, syn::Lifetime) {
+    match input.generics.lifetimes().next() {
+        Some(def) => (input.generics.clone(), def.lifetime.clone()),
+        None => {
+            let lifetime = syn::Lifetime::new("'ast", proc_macro2::Span::call_site());
+            // A real Ty(Generics) rather than the tokens that would print as one - so the caller
+            // splits it the same way it splits any other, and nothing malformed can be spliced.
+            let mut generics = input.generics.clone();
+            generics.params.insert(
+                0,
+                syn::GenericParam::Lifetime(syn::LifetimeParam::new(lifetime.clone())),
+            );
+            (generics, lifetime)
+        }
+    }
+}
+
 
 /// A declaration with the impl's generics worked out.
 pub(crate) struct ProcessedStage<'ast> {

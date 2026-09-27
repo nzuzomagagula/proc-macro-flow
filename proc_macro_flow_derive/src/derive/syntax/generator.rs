@@ -8,7 +8,7 @@ use proc_macro_flow_traits::generator::Generator;
 use quote::{quote, ToTokens};
 use syn::{parse2, DeriveInput, Error, ImplItem, Item, ItemImpl, Result};
 
-use super::super::Arity;
+use proc_macro_flow_traits::node::Arity;
 use super::super::ext::TypeExt;
 use super::processor::{Field, Grammar, Rule};
 
@@ -151,10 +151,12 @@ impl<'ast> Grammar<'ast> {
         let children = fields.iter().map(|field| {
             let key = &field.key;
             let aliases = &field.aliases;
+            // A LOWERING, not a translation: the table's Arity is the one this reader used. It
+            // stays a match because the enum is foreign here, so it cannot carry ToTokens.
             let arity = match field.arity {
-                Arity::One => quote!(Required),
-                Arity::Maybe => quote!(Optional),
-                Arity::Many => quote!(Repeated),
+                Arity::Required => quote!(Required),
+                Arity::Optional => quote!(Optional),
+                Arity::Repeated => quote!(Repeated),
             };
             let shapes = match &field.shape {
                 // The selector names a TYPE, so its runtime identity comes from the Shape impl rather
@@ -214,7 +216,7 @@ impl<'ast> Grammar<'ast> {
         // invariant established two lines away.
         let missing = fields
             .iter()
-            .filter(|field| field.arity != Arity::Maybe)
+            .filter(|field| field.arity != Arity::Optional)
             .map(|field| {
                 let ident = field.ident;
                 let key = &field.key;
@@ -237,7 +239,7 @@ impl<'ast> Grammar<'ast> {
                 // reported against the AUTHOR's struct - they see a warning about a line they
                 // did not write and cannot silence. Generated code owes the same cleanliness as
                 // written code; see ID(derive/no-panics) for the same argument about panics.
-                Arity::Maybe => quote!( #ident ),
+                Arity::Optional => quote!( #ident ),
                 // Reached only inside the Ok arm, where the check above has already passed - so None
                 // would be a FRAMEWORK bug. It bubbles a diagnostic saying so rather than panicking;
                 // see ID(derive/no-panics).
@@ -380,14 +382,14 @@ impl Grammar<'_> {
 impl Field<'_> {
     /// Whether this key was WRITTEN, read off the arity the type already stated.
     ///
-    /// `Arity::One` never reaches here - a required key is always written, and
+    /// `Arity::Required` never reaches here - a required key is always written, and
     /// ID(assert/rules-are-checked-at-derive-time) rejects a rule naming one.
     fn was_written(&self) -> Result<syn::Expr> {
         let ident = self.ident;
         parse2(match self.arity {
-            Arity::Maybe => quote!(::std::option::Option::is_some(&self.#ident)),
-            Arity::Many => quote!(!::std::vec::Vec::is_empty(&self.#ident)),
-            Arity::One => quote!(true),
+            Arity::Optional => quote!(::std::option::Option::is_some(&self.#ident)),
+            Arity::Repeated => quote!(!::std::vec::Vec::is_empty(&self.#ident)),
+            Arity::Required => quote!(true),
         })
     }
 }
