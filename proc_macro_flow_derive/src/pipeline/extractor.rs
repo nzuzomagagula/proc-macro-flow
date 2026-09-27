@@ -1,7 +1,7 @@
 // @review [ ]
 //! Reading a `#[pipeline]` module: which items are stages, and which is the helper vocabulary.
 //!
-// NOTE(#pipeline-macro/dogfoods-the-pattern): V[N(base/pipeline).has(extractor, processor, generator)] && V[Impl(Pipeline).for(PipelineWiring)], "The macro that writes macros is written as a pipeline"
+// NOTE(#pipeline-macro/dogfoods-the-pattern): V[N(pipeline).has(extractor, processor, generator)] && V[Impl(Pipeline).for(PipelineWiring)], "The macro that writes macros is written as a pipeline"
 // The macro that writes macros is itself written as extractor -> processor -> generator, and now
 // RUNS through Tr(Pipeline)::run like any other. That is dogfooding with a purpose rather than
 // symmetry for its own sake: if the pattern could not express its own macro, that is a finding

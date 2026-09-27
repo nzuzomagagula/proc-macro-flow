@@ -275,7 +275,7 @@ mod tests {
             parse_str(source).expect("the module parses"),
         ));
         let args: &'static PipelineArgs = Box::leak(Box::new(PipelineArgs {
-            kind: crate::base::pipeline::generator::MacroKind::Derive,
+            kind: crate::pipeline::generator::MacroKind::Derive,
             exported: parse_str("Thing").expect("an ident"),
             entry: true,
         }));

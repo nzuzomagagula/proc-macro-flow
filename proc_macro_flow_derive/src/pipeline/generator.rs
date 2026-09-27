@@ -481,7 +481,7 @@ impl<'ast> Generator<'ast> for PipelineExpansion {
 
 #[cfg(test)]
 mod tests {
-    use crate::base::pipeline::expand;
+    use crate::pipeline::expand;
     use quote::quote;
 
     /// A module whose EXTRACTOR declaration varies, because that is what now decides the shape of

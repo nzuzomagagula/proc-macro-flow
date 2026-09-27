@@ -18,7 +18,7 @@ use proc_macro_flow_traits::pipeline::Pipeline;
 
 use crate::base::extractor::pipeline::ExtractorPipeline;
 
-// TODO[~](#cleanup/pipeline-home): M[N(base/pipeline) => N(pipeline)], "#[pipeline] is the product and does not belong in base"
+// TODO[x](#cleanup/pipeline-home): M[N(base/pipeline) => N(pipeline)], "#[pipeline] is the product and does not belong in base"
 // `base` held three unrelated things; the macro that writes macros is the one that is live.
 // TODO[ ](#cleanup/retire-syntax-prototype): D[N(base/syntax)], "The pre-derive syntax stage is superseded by derive(Syntax)"
 // Its still-true design moves into derive/syntax; what it promised and nothing implements becomes
@@ -27,6 +27,7 @@ use crate::base::extractor::pipeline::ExtractorPipeline;
 // Behaviour its tests proved that no live test covers is recorded as a gap before it goes.
 mod base;
 mod derive;
+mod pipeline;
 
 // Answer(#extractor/entry-is-generated): A[ID(extractor/entry-is-generated) ==? F(field_names)], "This entry stays hand-written"
 // this entry STAYS hand-written, and the plan that asked
@@ -85,7 +86,7 @@ pub fn validate(input: TokenStream) -> TokenStream {
 /// misplaced one fails with rustc's own message, which at least says exactly what is wrong.
 #[proc_macro_attribute]
 pub fn pipeline(attr: TokenStream, item: TokenStream) -> TokenStream {
-    crate::base::pipeline::expand(attr.into(), item.into()).into()
+    crate::pipeline::expand(attr.into(), item.into()).into()
 }
 
 /// Declare a grammar node: a struct of fields becomes something readable from a `syn::Meta`.
