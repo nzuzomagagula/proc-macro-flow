@@ -75,7 +75,7 @@ pub(crate) fn stage_lifetime(input: &DeriveInput) -> (syn::Generics, syn::Lifeti
 /// This is `#from/arity-from-type`, and it is where a proc macro beats `macro_rules!`: the type is
 /// *parsed*, so `std::option::Option<T>` and `Option<T>` are the same thing here, where a
 /// declarative macro could only match the tokens it was handed.
-// TODO[ ](#cleanup/arity-once): D[E(Arity)] && V[N(derive).has(node::Arity)], "Arity is defined twice and mapped by hand"
+// TODO[~](#cleanup/arity-once): D[E(Arity)] && V[N(derive).has(node::Arity)], "Arity is defined twice and mapped by hand"
 // proc_macro_flow_traits::node::Arity already says Required/Optional/Repeated; this One/Maybe/Many
 // copy exists only to be translated into it.
 #[derive(Clone, Copy, PartialEq, Eq)]
