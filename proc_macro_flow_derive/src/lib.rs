@@ -18,7 +18,7 @@ use proc_macro_flow_traits::pipeline::Pipeline;
 
 use crate::base::extractor::pipeline::ExtractorPipeline;
 
-// TODO[ ](#cleanup/pipeline-home): M[N(base/pipeline) => N(pipeline)], "#[pipeline] is the product and does not belong in base"
+// TODO[~](#cleanup/pipeline-home): M[N(base/pipeline) => N(pipeline)], "#[pipeline] is the product and does not belong in base"
 // `base` held three unrelated things; the macro that writes macros is the one that is live.
 // TODO[ ](#cleanup/retire-syntax-prototype): D[N(base/syntax)], "The pre-derive syntax stage is superseded by derive(Syntax)"
 // Its still-true design moves into derive/syntax; what it promised and nothing implements becomes
