@@ -1,7 +1,7 @@
 pub use proc_macro_flow_derive::*;
 pub use proc_macro_flow_traits::*;
 
-// TODO[ ](#cleanup/port-scratch): M[N(base/syntax/scratch) => N(proofs/scratch)], "The maximal grammar compiles in the facade, gaps gated one by one"
+// TODO[~](#cleanup/port-scratch): M[N(base/syntax/scratch) => N(proofs/scratch)], "The maximal grammar compiles in the facade, gaps gated one by one"
 // It could never compile inside the derive crate, which cannot use its own derives. Here each
 // missing feature is its own gated block under its own open item, instead of 18 lumped errors.
 // TODO[ ](#cleanup/facade-layout): M[N(proc_macro_flow).has(tests) => N(proofs)], "The facade's thousand lines of proofs split one module per file"
